@@ -25,7 +25,10 @@ namespace
 	const FName ReasonTooStrong(TEXT("radiation_too_strong"));
 	const FName ReasonEnclosureEmpty(TEXT("enclosure_empty"));
 
+	const FName ReasonRecipeLocked(TEXT("recipe_locked"));
+
 	const FName IrradiateEvent(TEXT("irradiate"));
+	const FName UnlockEvent(TEXT("unlock"));
 
 	FString DescribeReason(FName Reason)
 	{
@@ -41,6 +44,7 @@ namespace
 		if (Reason == ReasonNothingPlaced) { return TEXT("nothing deployed in that cell"); }
 		if (Reason == ReasonAlreadySorted) { return TEXT("already sorted"); }
 		if (Reason == ReasonUnknownRecipe) { return TEXT("pick something to craft"); }
+		if (Reason == ReasonRecipeLocked) { return TEXT("that recipe isn't unlocked yet"); }
 		if (Reason == ReasonNoEnclosure) { return TEXT("select a cell with an irradiation enclosure"); }
 		if (Reason == ReasonNothingToLoad) { return TEXT("select a loot box or radiation source in the inventory"); }
 		if (Reason == ReasonChamberFull) { return TEXT("the enclosure already holds a loot box"); }
@@ -95,6 +99,9 @@ void FLRSimulation::Reset(int32 Seed)
 	LootBoxes.Reset();
 	Placed.Reset();
 	ActionStates.Reset();
+	Unlocked.Reset();
+	Stats.Reset();
+	RefreshUnlocks(); // starting unlocks, not announced
 
 	OnInventoryChanged.Broadcast();
 	OnWorldChanged.Broadcast();
@@ -111,12 +118,14 @@ FLRSaveData FLRSimulation::Save() const
 	LootBoxes.GenerateValueArray(Out.LootBoxes);
 	Placed.GenerateValueArray(Out.Placed);
 	ActionStates.GenerateValueArray(Out.Actions);
+	Out.Unlocked = Unlocked.Array();
+	Out.Stats = Stats;
 	return Out;
 }
 
 bool FLRSimulation::Load(const FLRSaveData& SaveData)
 {
-	if (SaveData.Version != SaveVersion)
+	if (SaveData.Version < MinCompatibleSaveVersion || SaveData.Version > SaveVersion)
 	{
 		return false;
 	}
@@ -143,6 +152,11 @@ bool FLRSimulation::Load(const FLRSaveData& SaveData)
 	{
 		ActionStates.Add(State.Name, State);
 	}
+
+	Unlocked.Reset();
+	Unlocked.Append(SaveData.Unlocked);
+	Stats = SaveData.Stats;
+	RefreshUnlocks(); // catch up with data changes, not announced
 
 	// Never hand out an instance id that is already in use, even if the save is inconsistent.
 	for (const FLRInventorySlot& Slot : Inventory)
@@ -252,6 +266,7 @@ void FLRSimulation::AdvanceIrradiation(double DeltaSeconds)
 		Result.Message = Message;
 		OnActionCompleted.Broadcast(Result);
 	}
+	AnnounceUnlocks(RefreshUnlocks());
 }
 
 bool FLRSimulation::IsExposureComplete(const FLRLootBoxInstance& Box, const FLRItemDef& EnclosureDef)
@@ -271,10 +286,12 @@ FString FLRSimulation::ApplyExposure(FLRLootBoxInstance& Box, const FLRRadiation
 		}
 		Box.RevealedContents = Table ? MergeAmounts(RollLootTable(ApplyModifiers(*Table, Box.Modifiers))) : TArray<FLRItemAmount>();
 		Box.bRevealed = true;
+		AddStat(StatKey(TEXT("exposed"), Radiation.Id));
 		return FString::Printf(TEXT("%s revealed the contents: %s (locked)"), *Radiation.Name,
 			Box.RevealedContents.IsEmpty() ? TEXT("nothing!") : *DescribeAmounts(Box.RevealedContents));
 	}
 
+	AddStat(StatKey(TEXT("exposed"), Radiation.Id));
 	FLRLootModifier Modifier = Radiation.Effect;
 	Modifier.Source = Radiation.Id;
 	Box.Modifiers.Add(Modifier);
@@ -333,12 +350,89 @@ bool FLRSimulation::CanAffordAnyRecipe() const
 {
 	for (const FLRRecipeDef& Recipe : Data.Recipes)
 	{
-		if (CanAfford(Recipe.Cost))
+		if (IsRecipeUnlocked(Recipe.Id) && CanAfford(Recipe.Cost))
 		{
 			return true;
 		}
 	}
 	return false;
+}
+
+// ---------------------------------------------------------------------------------------
+// Tech tree / stats
+// ---------------------------------------------------------------------------------------
+
+FName FLRSimulation::StatKey(const TCHAR* Prefix, FName Id)
+{
+	return FName(*FString::Printf(TEXT("%s:%s"), Prefix, *Id.ToString()));
+}
+
+int32 FLRSimulation::GetStat(FName Key) const
+{
+	const int32* Value = Stats.Find(Key);
+	return Value ? *Value : 0;
+}
+
+void FLRSimulation::AddStat(FName Key, int32 Delta)
+{
+	Stats.FindOrAdd(Key) += Delta;
+}
+
+bool FLRSimulation::IsRecipeUnlocked(FName RecipeId) const
+{
+	const FLRRecipeDef* Recipe = Data.FindRecipe(RecipeId);
+	return Recipe && (Recipe->RevealRequirements.IsEmpty() || Unlocked.Contains(FLRGameData::RecipeUnlockKey(RecipeId)));
+}
+
+bool FLRSimulation::IsActionUnlocked(FName ActionName) const
+{
+	const FLRActionDef* Action = Data.FindAction(ActionName);
+	return Action && (Action->RevealRequirements.IsEmpty() || Unlocked.Contains(FLRGameData::ActionUnlockKey(ActionName)));
+}
+
+TArray<FString> FLRSimulation::RefreshUnlocks()
+{
+	// Unlocks latch: once met, they stay. Loop so chains ("unlocked" requirements) resolve
+	// in one pass no matter how the data is ordered.
+	TArray<FString> Messages;
+	bool bChanged = true;
+	while (bChanged)
+	{
+		bChanged = false;
+		for (const FLRRecipeDef& Recipe : Data.Recipes)
+		{
+			const FName Key = FLRGameData::RecipeUnlockKey(Recipe.Id);
+			if (!Recipe.RevealRequirements.IsEmpty() && !Unlocked.Contains(Key) && CheckRequirements(Recipe.RevealRequirements))
+			{
+				Unlocked.Add(Key);
+				Messages.Add(FString::Printf(TEXT("New recipe unlocked: %s"), *Recipe.Label));
+				bChanged = true;
+			}
+		}
+		for (const FLRActionDef& Action : Data.Actions)
+		{
+			const FName Key = FLRGameData::ActionUnlockKey(Action.Name);
+			if (!Action.RevealRequirements.IsEmpty() && !Unlocked.Contains(Key) && CheckRequirements(Action.RevealRequirements))
+			{
+				Unlocked.Add(Key);
+				Messages.Add(FString::Printf(TEXT("New action unlocked: %s"), *Action.Label));
+				bChanged = true;
+			}
+		}
+	}
+	return Messages;
+}
+
+void FLRSimulation::AnnounceUnlocks(const TArray<FString>& Messages)
+{
+	for (const FString& Message : Messages)
+	{
+		FLRActionResult Result;
+		Result.Action = UnlockEvent;
+		Result.bSuccess = true;
+		Result.Message = Message;
+		OnActionCompleted.Broadcast(Result);
+	}
 }
 
 bool FLRSimulation::IsSortNeeded() const
@@ -349,7 +443,15 @@ bool FLRSimulation::IsSortNeeded() const
 bool FLRSimulation::CheckRequirement(const FLRRequirement& Requirement) const
 {
 	int32 Actual = 0;
-	if (Requirement.Check == LRNames::CheckPlaced)
+	if (Requirement.Check == LRNames::CheckStat)
+	{
+		Actual = GetStat(Requirement.Id);
+	}
+	else if (Requirement.Check == LRNames::CheckUnlocked)
+	{
+		Actual = Unlocked.Contains(Requirement.Id) ? 1 : 0;
+	}
+	else if (Requirement.Check == LRNames::CheckPlaced)
 	{
 		for (const TPair<FIntVector, FLRPlacedEntity>& Pair : Placed)
 		{
@@ -400,7 +502,7 @@ FLRActionStatus FLRSimulation::GetActionStatus(FName ActionName) const
 	Status.Tooltip = Def->Tooltip;
 	Status.Cooldown = Def->Cooldown;
 	Status.CastTime = Def->CastTime;
-	Status.bRevealed = CheckRequirements(Def->RevealRequirements);
+	Status.bRevealed = IsActionUnlocked(ActionName); // latched tech-tree unlock
 
 	// Rails: PlayerAction#update_disabled special-cased sort_inventory the same way.
 	if (ActionName == LRNames::Craft)
@@ -448,12 +550,23 @@ FLRActionResult FLRSimulation::MakeFailure(FName Action, FName Reason, const FSt
 
 void FLRSimulation::Complete(const FLRActionResult& Result)
 {
+	TArray<FString> NewUnlocks;
+	if (Result.bSuccess && !Result.bStarted)
+	{
+		AddStat(StatKey(TEXT("done"), Result.Action));
+		for (const FLRItemAmount& Amount : Result.Gained)
+		{
+			AddStat(StatKey(TEXT("gained"), Amount.Item), Amount.Count);
+		}
+		NewUnlocks = RefreshUnlocks();
+	}
 	if (Result.bSuccess)
 	{
 		OnInventoryChanged.Broadcast();
 		OnWorldChanged.Broadcast();
 	}
 	OnActionCompleted.Broadcast(Result);
+	AnnounceUnlocks(NewUnlocks);
 }
 
 FLRActionResult FLRSimulation::RequestAction(const FLRActionRequest& Request)
@@ -515,6 +628,7 @@ FName FLRSimulation::ValidateRequest(const FLRActionRequest& Request) const
 	{
 		const FLRRecipeDef* Recipe = Data.FindRecipe(Request.Choice);
 		if (!Recipe) { return ReasonUnknownRecipe; }
+		if (!IsRecipeUnlocked(Recipe->Id)) { return ReasonRecipeLocked; }
 		if (!CanAfford(Recipe->Cost)) { return ReasonInsufficientMaterials; }
 	}
 	else if (Request.Action == LRNames::Use)
@@ -627,6 +741,10 @@ FLRActionResult FLRSimulation::ExecuteCraft(const FLRActionRequest& Request)
 	{
 		return MakeFailure(Request.Action, ReasonUnknownRecipe, TEXT("Can't craft: pick something to craft"));
 	}
+	if (!IsRecipeUnlocked(Recipe->Id))
+	{
+		return MakeFailure(Request.Action, ReasonRecipeLocked, FString::Printf(TEXT("Can't craft %s: %s"), *Recipe->Label, *DescribeReason(ReasonRecipeLocked)));
+	}
 	if (!CanAfford(Recipe->Cost))
 	{
 		return MakeFailure(Request.Action, ReasonInsufficientMaterials,
@@ -656,6 +774,7 @@ FLRActionResult FLRSimulation::ExecuteCraft(const FLRActionRequest& Request)
 	Result.Spent = Recipe->Cost;
 	Result.Gained.Emplace(Recipe->Output, OutputCount);
 	Result.Message = FString::Printf(TEXT("Crafted %s"), *DescribeAmounts(Result.Gained));
+	AddStat(StatKey(TEXT("crafted"), Recipe->Id));
 	return Result;
 }
 
@@ -721,6 +840,7 @@ FLRActionResult FLRSimulation::ExecuteUse(const FLRActionRequest& Request)
 	Result.bSuccess = true;
 	Result.Spent.Emplace(BoxSlot.Item, 1);
 	Result.Gained = Rolled;
+	AddStat(StatKey(TEXT("opened"), BoxSlot.Item));
 	Result.Message = FString::Printf(TEXT("Opened %s: %s"), *BoxDef->DisplayName,
 		Rolled.IsEmpty() ? TEXT("nothing!") : *DescribeAmounts(Rolled));
 	return Result;
@@ -905,6 +1025,7 @@ bool FLRSimulation::GiveItem(FName Item, int32 Count)
 	if (bAdded)
 	{
 		OnInventoryChanged.Broadcast();
+		AnnounceUnlocks(RefreshUnlocks()); // inventory-based unlocks (no stats: this is a cheat)
 	}
 	return bAdded;
 }

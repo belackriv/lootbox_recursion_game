@@ -18,6 +18,7 @@ rules are ported:
 - opening boxes, including boxes inside boxes
 - deploying and recalling entities, now on a 3D grid
 - **new:** irradiating loot boxes in enclosures with radiation sources
+- **new:** a data-driven tech tree: recipes and actions unlock as you play
 - inventory sort and compress
 
 It also adds save/load, a 3D view of the grid, and carbon and iron irradiation enclosures.
@@ -94,6 +95,8 @@ In the editor, press **Play** (Alt+P).
 | `R` | Reset camera angle and zoom |
 | `H` / **Home** | Fly to the first deployed entity (or the origin) |
 | `~` | Console: `LRGive carbon 500`, `LRTimeScale 10`, `LRItems`, `LRSave`, `LRReset` |
+
+New games start with just **Inject Matter**. Everything else unlocks as you play (see *Tech tree* in [docs/DESIGN.md](docs/DESIGN.md)); the log announces each unlock.
 
 The game autosaves every 30s and on exit to `Saved/SaveGames/LootboxRecursion.sav`. Use
 `LRReset` to start over.

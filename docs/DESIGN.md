@@ -55,6 +55,55 @@ Irradiation enclosures create them (see below).
   next to the enclosure. Vertical stacking could be a way to keep distances short.
 - **Multi-cell machines** (2x2x2 and so on), as the machines get more complex.
 
+## Tech tree (implemented)
+
+Recipes and actions can have `revealRequirements`. Until those have all been met once, the
+recipe or action is hidden (and refused). After that it is **unlocked for good**, saved,
+and announced in the log. There's no separate research system: the tree *is* these
+requirements, so it lives entirely in `recipes.json` and `actions.json`.
+
+Requirement checks:
+
+| check | counts | example |
+|---|---|---|
+| `inventory` | items held (by `item` or `category`) | `{"check":"inventory","category":"lootbox","condition":"gt","value":0}` |
+| `placed` | entities deployed in the grid | `{"check":"placed","condition":"gt","value":0}` |
+| `stat` | lifetime counters the game records | `{"check":"stat","id":"exposed:x_rays","condition":"gte","value":1}` |
+| `unlocked` | 1 if another recipe/action is unlocked | `{"check":"unlocked","id":"recipe:grow_lamp","condition":"eq","value":1}` |
+
+Stats recorded automatically:
+
+- `done:<action>` for each completed action
+- `gained:<item>` for items received through actions
+- `crafted:<recipe>`
+- `opened:<loot box item>`
+- `exposed:<radiation>` for each irradiation exposure
+
+Cheat items (`LRGive`) don't count.
+
+**Starter tree** (placeholder pacing):
+
+| Unlocks | When |
+|---|---|
+| Inject Matter, Loot Box recipe, Sort | from the start |
+| Craft | after 2 injections |
+| Use | when you first hold a loot box |
+| Carbon Irradiation Enclosure | after opening a loot box |
+| Deploy, then Recall | when you first hold a deployable, then once Deploy is unlocked |
+| Grow Lamp | after crafting a carbon enclosure |
+| Load, then Unload | once the Grow Lamp is unlocked, then once Load is |
+| Infrared Emitter | after 3 visible-light exposures |
+| Microwave Emitter | after 3 infrared exposures |
+| Iron Irradiation Enclosure | after 2 microwave exposures |
+| X-Ray Tube | after crafting an iron enclosure |
+| Gamma Source | after your first X-ray |
+
+The `TechTree.ShippedTreeIsPlayable` automation test plays this tree from a new game to
+the last unlock, so a data change that creates a dead end fails a test.
+
+**Later:** a tech tree viewer (locked entries shown as "???" with hints), branching choices,
+and requirements with OR.
+
 ## Irradiation (implemented, v1)
 
 Irradiation is how loot boxes get better. Numbers are placeholder tuning in

@@ -15,7 +15,7 @@ CATEGORIES = {"material", "lootbox", "placeable", "source"}
 MODIFIER_KINDS = {"extra_rolls", "item_weight_mult", "item_count_mult", "add_entry", "reveal"}
 KINDS_NEEDING_ITEM = {"item_weight_mult", "item_count_mult", "add_entry"}
 CONDITIONS = {"gt", "gte", "lt", "lte", "eq"}
-CHECKS = {"inventory", "placed"}
+CHECKS = {"inventory", "placed", "stat", "unlocked"}
 REQUIRED_ACTIONS = {"inject", "craft", "use", "deploy", "recall", "sort_inventory", "load", "unload"}
 
 
@@ -72,8 +72,25 @@ def main() -> int:
         if stacks < 0 or tier < 0 or (stacks > 0 and item.get("exposureSeconds", 10) <= 0):
             errors.append(f"{where}: enclosure needs maxExposureStacks/maxRadiationTier >= 0 and exposureSeconds > 0")
 
+    unlock_keys = {f"recipe:{r.get('id')}" for r in recipes} | {f"action:{a.get('name')}" for a in actions}
+
+    def check_requirements(reqs, where):
+        for req in reqs:
+            check = req.get("check", "inventory")
+            if check not in CHECKS:
+                errors.append(f"{where}: unknown requirement check '{check}'")
+            if req.get("condition", "gt") not in CONDITIONS:
+                errors.append(f"{where}: unknown condition '{req.get('condition')}'")
+            if req.get("item"):
+                check_item(req["item"], f"{where} requirement")
+            if check == "stat" and not req.get("id"):
+                errors.append(f"{where}: stat requirement needs an id")
+            if check == "unlocked" and req.get("id") not in unlock_keys:
+                errors.append(f"{where}: unknown unlock '{req.get('id')}' (use recipe:<id> or action:<name>)")
+
     for recipe in recipes:
         where = f"recipe '{recipe.get('id')}'"
+        check_requirements(recipe.get("revealRequirements", []), where)
         check_item(recipe.get("output"), f"{where} output")
         if recipe.get("outputCount", 1) < 1:
             errors.append(f"{where}: outputCount must be >= 1")
@@ -105,13 +122,7 @@ def main() -> int:
         table = action.get("lootTable")
         if table and table not in tables:
             errors.append(f"{where}: unknown lootTable '{table}'")
-        for req in action.get("requirements", []) + action.get("revealRequirements", []):
-            if req.get("check", "inventory") not in CHECKS:
-                errors.append(f"{where}: unknown requirement check '{req.get('check')}'")
-            if req.get("condition", "gt") not in CONDITIONS:
-                errors.append(f"{where}: unknown condition '{req.get('condition')}'")
-            if req.get("item"):
-                check_item(req["item"], f"{where} requirement")
+        check_requirements(action.get("requirements", []) + action.get("revealRequirements", []), where)
     for missing in sorted(REQUIRED_ACTIONS - names):
         errors.append(f"action '{missing}' is required by the code but not defined")
 

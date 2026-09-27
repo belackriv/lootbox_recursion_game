@@ -49,6 +49,16 @@ bool FLRRequirement::IsValidCondition(FName InCondition)
 		|| InCondition == TEXT("lte") || InCondition == TEXT("eq");
 }
 
+FName FLRGameData::RecipeUnlockKey(FName RecipeId)
+{
+	return FName(*FString::Printf(TEXT("recipe:%s"), *RecipeId.ToString()));
+}
+
+FName FLRGameData::ActionUnlockKey(FName ActionName)
+{
+	return FName(*FString::Printf(TEXT("action:%s"), *ActionName.ToString()));
+}
+
 const FLRRecipeDef* FLRGameData::FindRecipe(FName Id) const
 {
 	return Recipes.FindByPredicate([Id](const FLRRecipeDef& Recipe) { return Recipe.Id == Id; });
@@ -115,6 +125,39 @@ TArray<FString> FLRGameData::Validate() const
 		}
 	};
 
+	auto CheckRequirements = [this, &Errors, &CheckItemRef](const TArray<FLRRequirement>& Requirements, const FString& Where)
+	{
+		for (const FLRRequirement& Req : Requirements)
+		{
+			if (Req.Check != LRNames::CheckInventory && Req.Check != LRNames::CheckPlaced
+				&& Req.Check != LRNames::CheckStat && Req.Check != LRNames::CheckUnlocked)
+			{
+				Errors.Add(FString::Printf(TEXT("%s: unknown requirement check '%s'"), *Where, *Req.Check.ToString()));
+			}
+			if (!FLRRequirement::IsValidCondition(Req.Condition))
+			{
+				Errors.Add(FString::Printf(TEXT("%s: unknown condition '%s'"), *Where, *Req.Condition.ToString()));
+			}
+			if (!Req.Item.IsNone())
+			{
+				CheckItemRef(Req.Item, Where + TEXT(" requirement"));
+			}
+			if (Req.Check == LRNames::CheckStat && Req.Id.IsNone())
+			{
+				Errors.Add(FString::Printf(TEXT("%s: stat requirement needs an id"), *Where));
+			}
+			if (Req.Check == LRNames::CheckUnlocked)
+			{
+				const bool bKnown = Recipes.ContainsByPredicate([&Req](const FLRRecipeDef& R) { return RecipeUnlockKey(R.Id) == Req.Id; })
+					|| Actions.ContainsByPredicate([&Req](const FLRActionDef& A) { return ActionUnlockKey(A.Name) == Req.Id; });
+				if (!bKnown)
+				{
+					Errors.Add(FString::Printf(TEXT("%s: unknown unlock '%s' (use recipe:<id> or action:<name>)"), *Where, *Req.Id.ToString()));
+				}
+			}
+		}
+	};
+
 	for (const TPair<FName, FLRItemDef>& Pair : Items)
 	{
 		const FLRItemDef& Item = Pair.Value;
@@ -170,6 +213,7 @@ TArray<FString> FLRGameData::Validate() const
 				Errors.Add(FString::Printf(TEXT("%s: negative cost"), *Where));
 			}
 		}
+		CheckRequirements(Recipe.RevealRequirements, Where);
 	}
 
 	for (const TPair<FName, FLRLootTableDef>& Pair : LootTables)
@@ -209,23 +253,8 @@ TArray<FString> FLRGameData::Validate() const
 		{
 			Errors.Add(FString::Printf(TEXT("%s: unknown lootTable '%s'"), *Where, *Action.LootTable.ToString()));
 		}
-		TArray<FLRRequirement> AllRequirements = Action.Requirements;
-		AllRequirements.Append(Action.RevealRequirements);
-		for (const FLRRequirement& Req : AllRequirements)
-		{
-			if (Req.Check != LRNames::CheckInventory && Req.Check != LRNames::CheckPlaced)
-			{
-				Errors.Add(FString::Printf(TEXT("%s: unknown requirement check '%s'"), *Where, *Req.Check.ToString()));
-			}
-			if (!FLRRequirement::IsValidCondition(Req.Condition))
-			{
-				Errors.Add(FString::Printf(TEXT("%s: unknown condition '%s'"), *Where, *Req.Condition.ToString()));
-			}
-			if (!Req.Item.IsNone())
-			{
-				CheckItemRef(Req.Item, Where + TEXT(" requirement"));
-			}
-		}
+		CheckRequirements(Action.Requirements, Where);
+		CheckRequirements(Action.RevealRequirements, Where);
 	}
 
 	TSet<FName> RadiationIds;

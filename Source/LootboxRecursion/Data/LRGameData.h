@@ -44,6 +44,8 @@ namespace LRNames
 	// Requirement checks
 	inline const FName CheckInventory(TEXT("inventory"));
 	inline const FName CheckPlaced(TEXT("placed"));
+	inline const FName CheckStat(TEXT("stat"));
+	inline const FName CheckUnlocked(TEXT("unlocked"));
 
 	// Loot table used when a loot box's own table is missing (mirrors LootTable.for fallback)
 	inline const FName DefaultLootTable(TEXT("default"));
@@ -123,6 +125,49 @@ struct LOOTBOXRECURSION_API FLRItemDef
 	FLinearColor GetLinearColor() const;
 };
 
+/**
+ * One condition. Rails: an entry in a player action's requirements / reveal_requirements list.
+ * Used for action requirements, and as reveal (unlock) requirements for actions and recipes,
+ * which together form the tech tree.
+ */
+USTRUCT(BlueprintType)
+struct LOOTBOXRECURSION_API FLRRequirement
+{
+	GENERATED_BODY()
+
+	/**
+	 * inventory - count items you hold (optionally filtered by Item / Category)
+	 * placed    - count entities deployed in the world (optionally filtered by Item / Category)
+	 * stat      - a lifetime counter named by Id, e.g. "crafted:loot_box", "opened:loot_box",
+	 *             "gained:iron", "exposed:x_rays", "done:inject"
+	 * unlocked  - 1 if Id ("recipe:<id>" or "action:<name>") is unlocked, else 0
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FName Check = LRNames::CheckInventory;
+
+	/** For stat / unlocked checks: the counter or unlock key. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FName Id;
+
+	/** Optional: only count this item id. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FName Item;
+
+	/** Optional: only count items in this category. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FName Category;
+
+	/** gt | gte | lt | lte | eq */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FName Condition = TEXT("gt");
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	int32 Value = 0;
+
+	static bool EvaluateCondition(int32 Actual, FName InCondition, int32 Expected);
+	static bool IsValidCondition(FName InCondition);
+};
+
 /** A craftable thing. Rails: User#get_craft_choices + <Class>::CRAFTING_COST. */
 USTRUCT(BlueprintType)
 struct LOOTBOXRECURSION_API FLRRecipeDef
@@ -146,6 +191,10 @@ struct LOOTBOXRECURSION_API FLRRecipeDef
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	TArray<FLRItemAmount> Cost;
+
+	/** Tech tree: the recipe is hidden until all of these have been met once (then it stays unlocked). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	TArray<FLRRequirement> RevealRequirements;
 };
 
 USTRUCT(BlueprintType)
@@ -185,35 +234,6 @@ struct LOOTBOXRECURSION_API FLRLootTableDef
 	TArray<FLRLootEntry> Entries;
 };
 
-/** Rails: an entry in a player action's requirements / reveal_requirements list. */
-USTRUCT(BlueprintType)
-struct LOOTBOXRECURSION_API FLRRequirement
-{
-	GENERATED_BODY()
-
-	/** inventory (count items you hold) | placed (count entities deployed in the world) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	FName Check = LRNames::CheckInventory;
-
-	/** Optional: only count this item id. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	FName Item;
-
-	/** Optional: only count items in this category. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	FName Category;
-
-	/** gt | gte | lt | lte | eq */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	FName Condition = TEXT("gt");
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	int32 Value = 0;
-
-	static bool EvaluateCondition(int32 Actual, FName InCondition, int32 Expected);
-	static bool IsValidCondition(FName InCondition);
-};
-
 /** Rails: PlayerAction (the static half - the dynamic half is FLRActionState). */
 USTRUCT(BlueprintType)
 struct LOOTBOXRECURSION_API FLRActionDef
@@ -244,6 +264,7 @@ struct LOOTBOXRECURSION_API FLRActionDef
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	TArray<FLRRequirement> Requirements;
 
+	/** Tech tree: the action is hidden until all of these have been met once (then it stays unlocked). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	TArray<FLRRequirement> RevealRequirements;
 };
@@ -369,6 +390,10 @@ struct LOOTBOXRECURSION_API FLRGameData
 
 	/** Merge one parsed file into this data set. Later files override earlier ids. */
 	void AddFrom(const FLRDataFile& File);
+
+	/** Unlock keys used by the tech tree: "recipe:<id>" / "action:<name>". */
+	static FName RecipeUnlockKey(FName RecipeId);
+	static FName ActionUnlockKey(FName ActionName);
 
 	/** Cross-reference checks (unknown ids, bad ranges...). Empty = valid. */
 	TArray<FString> Validate() const;

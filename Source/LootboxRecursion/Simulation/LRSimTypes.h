@@ -266,4 +266,12 @@ struct LOOTBOXRECURSION_API FLRSaveData
 
 	UPROPERTY()
 	TArray<FLRActionState> Actions;
+
+	/** Tech tree: unlocked keys ("recipe:<id>", "action:<name>"). */
+	UPROPERTY()
+	TArray<FName> Unlocked;
+
+	/** Lifetime counters ("crafted:loot_box", "gained:iron", ...). */
+	UPROPERTY()
+	TMap<FName, int32> Stats;
 };

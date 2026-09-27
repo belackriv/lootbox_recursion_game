@@ -132,6 +132,40 @@ namespace LRTest
 		Data.Actions.Add(MakeAction(LRNames::SortInventory, 1.f, 0.f));
 		Data.Actions.Add(MakeAction(LRNames::Load, 0.f, 0.f));
 		Data.Actions.Add(MakeAction(LRNames::Unload, 0.f, 0.f));
+
+		// Tech tree: a recipe unlocked by crafting a loot box, one chained off it, and an
+		// action revealed by holding a loot box.
+		FLRRequirement CraftedABox;
+		CraftedABox.Check = LRNames::CheckStat;
+		CraftedABox.Id = TEXT("crafted:loot_box");
+		CraftedABox.Condition = TEXT("gte");
+		CraftedABox.Value = 1;
+		FLRRecipeDef Gated;
+		Gated.Id = TEXT("gated_enclosure");
+		Gated.Label = TEXT("Gated Enclosure");
+		Gated.Output = Enclosure;
+		Gated.Cost = { FLRItemAmount(Carbon, 10) };
+		Gated.RevealRequirements.Add(CraftedABox);
+		Data.Recipes.Add(Gated);
+
+		FLRRequirement AfterGated;
+		AfterGated.Check = LRNames::CheckUnlocked;
+		AfterGated.Id = TEXT("recipe:gated_enclosure");
+		AfterGated.Condition = TEXT("eq");
+		AfterGated.Value = 1;
+		FLRRecipeDef Chained;
+		Chained.Id = TEXT("chained_lamp");
+		Chained.Label = TEXT("Chained Lamp");
+		Chained.Output = Lamp;
+		Chained.Cost = { FLRItemAmount(Carbon, 5) };
+		Chained.RevealRequirements.Add(AfterGated);
+		Data.Recipes.Add(Chained);
+
+		FLRActionDef Scan = MakeAction(TEXT("scan"), 1.f, 0.f, TEXT("inject"));
+		FLRRequirement HoldsBox;
+		HoldsBox.Category = LRNames::CategoryLootBox;
+		Scan.RevealRequirements.Add(HoldsBox);
+		Data.Actions.Add(Scan);
 		return Data;
 	}
 
@@ -627,6 +661,169 @@ bool FLRSimIrradiateSaveTest::RunTest(const FString& Parameters)
 	Loaded.GiveItem(LRTest::Box, 1);
 	TestFalse(TEXT("no id collision"),
 		Loaded.GetInventory().ContainsByPredicate([BoxId](const FLRInventorySlot& Slot) { return Slot.InstanceId == BoxId; }));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRTechTreeRecipeTest, "LootboxRecursion.TechTree.RecipesUnlockAndLatch", LR_TEST_FLAGS)
+bool FLRTechTreeRecipeTest::RunTest(const FString& Parameters)
+{
+	FLRSimulation Sim(LRTest::MakeData(), 1);
+	const FName Gated(TEXT("gated_enclosure"));
+	const FName Chained(TEXT("chained_lamp"));
+	TestTrue(TEXT("no reveal requirements = unlocked"), Sim.IsRecipeUnlocked(LRTest::Box));
+	TestFalse(TEXT("gated starts locked"), Sim.IsRecipeUnlocked(Gated));
+	TestFalse(TEXT("chained starts locked"), Sim.IsRecipeUnlocked(Chained));
+
+	Sim.GiveItem(LRTest::Carbon, 200);
+	Sim.GiveItem(LRTest::Iron, 100);
+	FLRActionRequest CraftGated = FLRActionRequest::Make(LRNames::Craft);
+	CraftGated.Choice = Gated;
+	const FLRActionResult Locked = Sim.RequestAction(CraftGated);
+	TestFalse(TEXT("locked recipe can't be crafted"), Locked.bSuccess);
+	TestTrue(TEXT("reason"), Locked.Reason == FName(TEXT("recipe_locked")));
+
+	int32 UnlockMessages = 0;
+	Sim.OnActionCompleted.AddLambda([&UnlockMessages](const FLRActionResult& Result)
+	{
+		UnlockMessages += Result.Action == FName(TEXT("unlock")) ? 1 : 0;
+	});
+	FLRActionRequest CraftBox = FLRActionRequest::Make(LRNames::Craft);
+	CraftBox.Choice = LRTest::Box;
+	Sim.RequestAction(CraftBox);
+	Sim.Advance(5.0);
+
+	TestEqual(TEXT("stat counted"), Sim.GetStat(TEXT("crafted:loot_box")), 1);
+	TestEqual(TEXT("gained stat counted"), Sim.GetStat(TEXT("gained:loot_box")), 1);
+	TestTrue(TEXT("gated unlocked"), Sim.IsRecipeUnlocked(Gated));
+	TestTrue(TEXT("chain resolved in the same pass"), Sim.IsRecipeUnlocked(Chained));
+	// Gated + Chained recipes, plus the "scan" action (revealed by now holding a loot box).
+	TestEqual(TEXT("all three unlocks announced"), UnlockMessages, 3);
+
+	Sim.Advance(5.0); // craft cooldown
+	TestTrue(TEXT("now craftable"), Sim.RequestAction(CraftGated).bStarted);
+
+	FLRSimulation Loaded(LRTest::MakeData(), 0);
+	TestTrue(TEXT("load"), Loaded.Load(Sim.Save()));
+	TestTrue(TEXT("unlock survives save/load"), Loaded.IsRecipeUnlocked(Gated));
+	TestEqual(TEXT("stats survive save/load"), Loaded.GetStat(TEXT("crafted:loot_box")), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRTechTreeActionTest, "LootboxRecursion.TechTree.ActionsRevealAndLatch", LR_TEST_FLAGS)
+bool FLRTechTreeActionTest::RunTest(const FString& Parameters)
+{
+	FLRSimulation Sim(LRTest::MakeData(), 1);
+	const FName Scan(TEXT("scan"));
+	TestFalse(TEXT("hidden at first"), Sim.GetActionStatus(Scan).bRevealed);
+	TestFalse(TEXT("hidden actions can't be used"), Sim.RequestAction(FLRActionRequest::Make(Scan)).bSuccess);
+
+	Sim.GiveItem(LRTest::Box, 1);
+	TestTrue(TEXT("revealed once a box is held"), Sim.GetActionStatus(Scan).bRevealed);
+
+	Sim.RequestAction(LRTest::UseSlot(0));
+	Sim.Advance(5.0);
+	TestEqual(TEXT("box gone"), Sim.CountItem(LRTest::Box), 0);
+	TestTrue(TEXT("stays revealed (latched)"), Sim.GetActionStatus(Scan).bRevealed);
+	TestEqual(TEXT("opened stat"), Sim.GetStat(TEXT("opened:loot_box")), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRTechTreePlaythroughTest, "LootboxRecursion.TechTree.ShippedTreeIsPlayable", LR_TEST_FLAGS)
+bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
+{
+	// Walks the real Content/Data tech tree from a new game to the last unlock, so a data
+	// change that creates a dead end fails here. Materials are cheated in (GiveItem doesn't
+	// count toward stats); everything else is played through real actions.
+	FLRGameData Data;
+	TArray<FString> Errors;
+	if (!FLRGameData::LoadFromDirectory(FLRGameData::GetDefaultDataDirectory(), Data, Errors))
+	{
+		for (const FString& Error : Errors)
+		{
+			AddError(Error);
+		}
+		return false;
+	}
+	FLRSimulation Sim(Data, 7);
+	const FName Carbon(TEXT("carbon"));
+	const FName Iron(TEXT("iron"));
+	const FName LootBox(TEXT("loot_box"));
+
+	auto Act = [&Sim](const FLRActionRequest& Request)
+	{
+		const bool bOk = Sim.RequestAction(Request).bSuccess;
+		Sim.Advance(6.0); // past any cast time and cooldown
+		return bOk;
+	};
+	auto Craft = [&Act](const TCHAR* Recipe)
+	{
+		FLRActionRequest Request = FLRActionRequest::Make(LRNames::Craft);
+		Request.Choice = Recipe;
+		return Act(Request);
+	};
+	auto AtCell = [](FName Action, const FIntVector& Cell, int32 Slot = INDEX_NONE)
+	{
+		FLRActionRequest Request = LRTest::AtCell(Action, Cell);
+		Request.Slot = Slot;
+		return Request;
+	};
+	auto OpenFirstBox = [&Sim, &Act, LootBox]()
+	{
+		FLRActionRequest Request = FLRActionRequest::Make(LRNames::Use);
+		Request.Slot = LRTest::SlotOf(Sim, LootBox);
+		return Act(Request);
+	};
+	auto Irradiate = [&Sim, &Act, &Craft, &AtCell, &OpenFirstBox, LootBox](const FIntVector& Cell, FName Source, double Seconds)
+	{
+		// A fresh box: open any leftover one first so the new one is the only box.
+		while (Sim.CountItem(LootBox) > 0 && OpenFirstBox()) {}
+		Craft(TEXT("loot_box"));
+		const bool bBox = Act(AtCell(LRNames::Load, Cell, LRTest::SlotOf(Sim, LootBox)));
+		const bool bSource = Act(AtCell(LRNames::Load, Cell, LRTest::SlotOf(Sim, Source)));
+		Sim.Advance(Seconds);
+		Act(AtCell(LRNames::Unload, Cell));
+		return bBox && bSource;
+	};
+
+	TestTrue(TEXT("inject available from the start"), Sim.GetActionStatus(LRNames::Inject).bRevealed);
+	TestFalse(TEXT("craft hidden at the start"), Sim.GetActionStatus(LRNames::Craft).bRevealed);
+	Act(FLRActionRequest::Make(LRNames::Inject));
+	Act(FLRActionRequest::Make(LRNames::Inject));
+	TestTrue(TEXT("craft revealed after injecting"), Sim.GetActionStatus(LRNames::Craft).bRevealed);
+
+	Sim.GiveItem(Carbon, 1000);
+	Sim.GiveItem(Iron, 1000);
+	TestTrue(TEXT("craft a loot box"), Craft(TEXT("loot_box")));
+	TestTrue(TEXT("use revealed"), Sim.GetActionStatus(LRNames::Use).bRevealed);
+	TestTrue(TEXT("open it"), OpenFirstBox());
+
+	TestTrue(TEXT("carbon enclosure"), Craft(TEXT("carbon_irradiation_enclosure")));
+	const FIntVector CarbonCell(0, 0, 0);
+	TestTrue(TEXT("deploy it"), Act(AtCell(LRNames::Deploy, CarbonCell, LRTest::SlotOf(Sim, TEXT("carbon_irradiation_enclosure")))));
+
+	TestTrue(TEXT("grow lamp"), Craft(TEXT("grow_lamp")));
+	TestTrue(TEXT("visible light run"), Irradiate(CarbonCell, TEXT("grow_lamp"), 35.0));
+	TestTrue(TEXT("infrared emitter"), Craft(TEXT("infrared_emitter")));
+	// Unload returned the lamp too, so the enclosure is free for the next source.
+	TestTrue(TEXT("infrared run"), Irradiate(CarbonCell, TEXT("infrared_emitter"), 35.0));
+	TestTrue(TEXT("microwave emitter"), Craft(TEXT("microwave_emitter")));
+	TestTrue(TEXT("microwave run"), Irradiate(CarbonCell, TEXT("microwave_emitter"), 25.0));
+
+	TestTrue(TEXT("iron enclosure"), Craft(TEXT("iron_irradiation_enclosure")));
+	const FIntVector IronCell(1, 0, 0);
+	TestTrue(TEXT("deploy iron enclosure"), Act(AtCell(LRNames::Deploy, IronCell, LRTest::SlotOf(Sim, TEXT("iron_irradiation_enclosure")))));
+	TestTrue(TEXT("x-ray tube"), Craft(TEXT("xray_tube")));
+	TestTrue(TEXT("x-ray run"), Irradiate(IronCell, TEXT("xray_tube"), 13.0));
+	TestTrue(TEXT("gamma source"), Craft(TEXT("gamma_source")));
+
+	for (const FLRRecipeDef& Recipe : Data.Recipes)
+	{
+		TestTrue(*FString::Printf(TEXT("recipe '%s' reachable"), *Recipe.Id.ToString()), Sim.IsRecipeUnlocked(Recipe.Id));
+	}
+	for (const FLRActionDef& Action : Data.Actions)
+	{
+		TestTrue(*FString::Printf(TEXT("action '%s' reachable"), *Action.Name.ToString()), Sim.IsActionUnlocked(Action.Name));
+	}
 	return true;
 }
 

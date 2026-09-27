@@ -305,6 +305,7 @@ TSharedRef<SWidget> SLRGameHud::BuildActionsPanel()
 	.Padding(FMargin(0.f, 4.f, 0.f, 2.f))
 	[
 		SNew(SHorizontalBox)
+		.Visibility_Lambda([this]() { return GetStatus(LRNames::Craft).bRevealed ? EVisibility::Visible : EVisibility::Collapsed; })
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
@@ -335,6 +336,29 @@ TSharedRef<SWidget> SLRGameHud::BuildActionsPanel()
 			];
 		}
 	}
+
+	Box->AddSlot()
+	.AutoHeight()
+	.Padding(FMargin(0.f, 4.f, 0.f, 0.f))
+	[
+		SNew(STextBlock)
+		.Font(Style.SmallFont)
+		.ColorAndOpacity(Style.TextDark)
+		.Text_Lambda([this]()
+		{
+			const FLRSimulation* Sim = GetSimulation();
+			int32 Locked = 0;
+			if (Sim)
+			{
+				for (const FLRRecipeDef& Recipe : Sim->GetData().Recipes)
+				{
+					Locked += Sim->IsRecipeUnlocked(Recipe.Id) ? 0 : 1;
+				}
+			}
+			return Locked > 0 ? AsText(FString::Printf(TEXT("%d recipe(s) still to discover..."), Locked)) : FText::GetEmpty();
+		})
+		.Visibility_Lambda([this]() { return GetStatus(LRNames::Craft).bRevealed ? EVisibility::Visible : EVisibility::Collapsed; })
+	];
 
 	return MakePanel(LOCTEXT("Actions", "ACTIONS"),
 		SNew(SBox).WidthOverride(440.f)[Box],
@@ -664,7 +688,9 @@ TSharedRef<SWidget> SLRGameHud::MakeActionButton(FName ActionName, TFunction<voi
 {
 	const FLRHudStyle& Style = FLRHudStyle::Get();
 
+	// Tech tree: actions stay hidden until revealed (then they stay).
 	return SNew(SVerticalBox)
+		.Visibility_Lambda([this, ActionName]() { return GetStatus(ActionName).bRevealed ? EVisibility::Visible : EVisibility::Collapsed; })
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		[
@@ -749,6 +775,12 @@ TSharedRef<SWidget> SLRGameHud::MakeRecipeButton(FName RecipeId)
 		.ButtonStyle(&Style.ButtonStyle)
 		.IsFocusable(false)
 		.ContentPadding(FMargin(10.f, 4.f))
+		// Tech tree: only unlocked recipes are shown.
+		.Visibility_Lambda([this, RecipeId]()
+		{
+			const FLRSimulation* S = GetSimulation();
+			return (S && S->IsRecipeUnlocked(RecipeId) && GetStatus(LRNames::Craft).bRevealed) ? EVisibility::Visible : EVisibility::Collapsed;
+		})
 		.IsEnabled_Lambda([this, RecipeId]()
 		{
 			const FLRSimulation* S = GetSimulation();

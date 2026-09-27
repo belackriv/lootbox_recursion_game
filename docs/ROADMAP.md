@@ -33,6 +33,13 @@ See [DESIGN.md](DESIGN.md#irradiation-implemented-v1).
 - [x] Modifiers and revealed contents in the loot box tooltip.
 - [ ] Tuning pass, and a visual effect while an enclosure is active (Niagara glow).
 
+## M2.2: Tech tree
+
+- [x] Reveal requirements on recipes and actions latch into permanent unlocks (saved).
+- [x] Lifetime stats (`crafted:`, `opened:`, `gained:`, `exposed:`, `done:`) and `unlocked` chains.
+- [x] Starter tree from Inject to Gamma, with a playthrough test.
+- [ ] Tech tree viewer panel with hints for locked entries.
+
 ## M2.5: Game menu
 
 - [ ] Esc opens a pause menu: Resume, New Game, Save, Load, Settings, Quit.

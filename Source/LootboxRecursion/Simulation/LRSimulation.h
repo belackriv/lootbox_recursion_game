@@ -20,7 +20,9 @@ class LOOTBOXRECURSION_API FLRSimulation
 {
 public:
 	static constexpr int32 PlayerInventorySlots = 50; // Rails: User::BASE_INVENTORY_SLOTS
-	static constexpr int32 SaveVersion = 3; // 2: 3D grid, wood -> carbon. 3: enclosure contents
+	static constexpr int32 SaveVersion = 4; // 2: 3D grid, wood -> carbon. 3: enclosure contents. 4: unlocks + stats
+	/** Oldest save that still loads (newer fields just start empty). */
+	static constexpr int32 MinCompatibleSaveVersion = 3;
 
 	DECLARE_MULTICAST_DELEGATE(FOnChanged);
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnActionCompleted, const FLRActionResult& /*Result*/);
@@ -52,6 +54,15 @@ public:
 	/** Rails: Entity#inventory_sort_needed? */
 	bool IsSortNeeded() const;
 	FLRActionStatus GetActionStatus(FName ActionName) const;
+
+	// ---- Tech tree / stats --------------------------------------------------------------
+	/** A recipe with no reveal requirements is always unlocked; otherwise once they've been met. */
+	bool IsRecipeUnlocked(FName RecipeId) const;
+	bool IsActionUnlocked(FName ActionName) const;
+	bool IsUnlocked(FName Key) const { return Unlocked.Contains(Key); }
+	int32 GetStat(FName Key) const;
+	const TMap<FName, int32>& GetStats() const { return Stats; }
+	static FName StatKey(const TCHAR* Prefix, FName Id);
 
 	// ---- Commands ---------------------------------------------------------------------
 	/**
@@ -150,7 +161,14 @@ private:
 	static TArray<FLRItemAmount> MergeAmounts(const TArray<FLRItemAmount>& Amounts);
 	static FLRActionResult MakeFailure(FName Action, FName Reason, const FString& Message);
 
+	void AddStat(FName Key, int32 Delta = 1);
+	/** Latch every reveal requirement that is now met; returns "unlocked" log messages. */
+	TArray<FString> RefreshUnlocks();
+	void AnnounceUnlocks(const TArray<FString>& Messages);
+
 	FLRGameData Data;
+	TSet<FName> Unlocked;
+	TMap<FName, int32> Stats;
 	double Now = 0.0;
 	FRandomStream Rng;
 	int32 NextInstanceId = 1;

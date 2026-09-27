@@ -1,5 +1,5 @@
 {
-	"_comment": "Ported from app/data/player_actions.yml. cooldown and castTime are in simulation seconds. Requirement: check = inventory | placed, filtered by item or category, condition = gt | gte | lt | lte | eq. 'craft' is enabled when any recipe is affordable and 'sort_inventory' when the inventory is unsorted (special-cased in code, like PlayerAction#update_disabled).",
+	"_comment": "Ported from app/data/player_actions.yml. cooldown and castTime are in simulation seconds. Requirement: check = inventory | placed, filtered by item or category, condition = gt | gte | lt | lte | eq. 'craft' is enabled when any recipe is affordable and 'sort_inventory' when the inventory is unsorted (special-cased in code, like PlayerAction#update_disabled). revealRequirements unlock an action for good once met (tech tree); requirements are checked every time.",
 	"actions": [
 		{
 			"name": "inject",
@@ -14,7 +14,15 @@
 			"label": "Craft",
 			"tooltip": "Craft items from your gathered materials.",
 			"cooldown": 5,
-			"castTime": 5
+			"castTime": 5,
+			"revealRequirements": [
+				{
+					"check": "stat",
+					"id": "done:inject",
+					"condition": "gte",
+					"value": 2
+				}
+			]
 		},
 		{
 			"name": "use",
@@ -23,6 +31,14 @@
 			"cooldown": 5,
 			"castTime": 5,
 			"requirements": [
+				{
+					"check": "inventory",
+					"category": "lootbox",
+					"condition": "gt",
+					"value": 0
+				}
+			],
+			"revealRequirements": [
 				{
 					"check": "inventory",
 					"category": "lootbox",
@@ -44,6 +60,14 @@
 					"condition": "gt",
 					"value": 0
 				}
+			],
+			"revealRequirements": [
+				{
+					"check": "inventory",
+					"category": "placeable",
+					"condition": "gt",
+					"value": 0
+				}
 			]
 		},
 		{
@@ -58,6 +82,14 @@
 					"condition": "gt",
 					"value": 0
 				}
+			],
+			"revealRequirements": [
+				{
+					"check": "unlocked",
+					"id": "action:deploy",
+					"condition": "eq",
+					"value": 1
+				}
 			]
 		},
 		{
@@ -65,14 +97,30 @@
 			"label": "Load",
 			"tooltip": "Load the selected loot box or radiation source into the irradiation enclosure in the selected cell.",
 			"cooldown": 1,
-			"castTime": 0
+			"castTime": 0,
+			"revealRequirements": [
+				{
+					"check": "unlocked",
+					"id": "recipe:grow_lamp",
+					"condition": "eq",
+					"value": 1
+				}
+			]
 		},
 		{
 			"name": "unload",
 			"label": "Unload",
 			"tooltip": "Take the loot box and source out of the irradiation enclosure in the selected cell.",
 			"cooldown": 1,
-			"castTime": 0
+			"castTime": 0,
+			"revealRequirements": [
+				{
+					"check": "unlocked",
+					"id": "action:load",
+					"condition": "eq",
+					"value": 1
+				}
+			]
 		},
 		{
 			"name": "sort_inventory",

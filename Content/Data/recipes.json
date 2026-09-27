@@ -1,5 +1,5 @@
 {
-	"_comment": "Craft action choices. Ported from User#get_craft_choices + the CRAFTING_COST constants (ItemCraftingCost). The Rails IrradiationEnclosure (100 wood + 100 iron) is split into carbon and iron variants; their costs are placeholder tuning. Radiation source costs are placeholder tuning too.",
+	"_comment": "Craft action choices. Ported from User#get_craft_choices + the CRAFTING_COST constants (ItemCraftingCost). revealRequirements make this the tech tree: a recipe stays hidden until they have all been met once, then it is unlocked for good. Useful checks: stat (lifetime counters: crafted:<recipe>, opened:<item>, gained:<item>, exposed:<radiation>, done:<action>) and unlocked (recipe:<id> / action:<name>). Costs and unlock thresholds are placeholder tuning.",
 	"recipes": [
 		{
 			"id": "loot_box",
@@ -33,6 +33,14 @@
 					"item": "iron",
 					"count": 50
 				}
+			],
+			"revealRequirements": [
+				{
+					"check": "stat",
+					"id": "opened:loot_box",
+					"condition": "gte",
+					"value": 1
+				}
 			]
 		},
 		{
@@ -49,6 +57,14 @@
 				{
 					"item": "iron",
 					"count": 150
+				}
+			],
+			"revealRequirements": [
+				{
+					"check": "stat",
+					"id": "exposed:microwaves",
+					"condition": "gte",
+					"value": 2
 				}
 			]
 		},
@@ -67,6 +83,14 @@
 					"item": "iron",
 					"count": 20
 				}
+			],
+			"revealRequirements": [
+				{
+					"check": "stat",
+					"id": "crafted:carbon_irradiation_enclosure",
+					"condition": "gte",
+					"value": 1
+				}
 			]
 		},
 		{
@@ -83,6 +107,14 @@
 				{
 					"item": "iron",
 					"count": 40
+				}
+			],
+			"revealRequirements": [
+				{
+					"check": "stat",
+					"id": "exposed:visible_light",
+					"condition": "gte",
+					"value": 3
 				}
 			]
 		},
@@ -101,6 +133,14 @@
 					"item": "iron",
 					"count": 80
 				}
+			],
+			"revealRequirements": [
+				{
+					"check": "stat",
+					"id": "exposed:infrared",
+					"condition": "gte",
+					"value": 3
+				}
 			]
 		},
 		{
@@ -118,6 +158,14 @@
 					"item": "iron",
 					"count": 120
 				}
+			],
+			"revealRequirements": [
+				{
+					"check": "stat",
+					"id": "crafted:iron_irradiation_enclosure",
+					"condition": "gte",
+					"value": 1
+				}
 			]
 		},
 		{
@@ -134,6 +182,14 @@
 				{
 					"item": "iron",
 					"count": 200
+				}
+			],
+			"revealRequirements": [
+				{
+					"check": "stat",
+					"id": "exposed:x_rays",
+					"condition": "gte",
+					"value": 1
 				}
 			]
 		}
