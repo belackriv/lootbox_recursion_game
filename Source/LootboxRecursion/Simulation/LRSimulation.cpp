@@ -26,6 +26,7 @@ namespace
 	const FName ReasonEnclosureEmpty(TEXT("enclosure_empty"));
 
 	const FName ReasonRecipeLocked(TEXT("recipe_locked"));
+	const FName ReasonNothingSelected(TEXT("nothing_selected"));
 
 	const FName IrradiateEvent(TEXT("irradiate"));
 	const FName UnlockEvent(TEXT("unlock"));
@@ -45,6 +46,7 @@ namespace
 		if (Reason == ReasonAlreadySorted) { return TEXT("already sorted"); }
 		if (Reason == ReasonUnknownRecipe) { return TEXT("pick something to craft"); }
 		if (Reason == ReasonRecipeLocked) { return TEXT("that recipe isn't unlocked yet"); }
+		if (Reason == ReasonNothingSelected) { return TEXT("select an inventory slot first"); }
 		if (Reason == ReasonNoEnclosure) { return TEXT("select a cell with an irradiation enclosure"); }
 		if (Reason == ReasonNothingToLoad) { return TEXT("select a loot box or radiation source in the inventory"); }
 		if (Reason == ReasonChamberFull) { return TEXT("the enclosure already holds a loot box"); }
@@ -650,6 +652,10 @@ FName FLRSimulation::ValidateRequest(const FLRActionRequest& Request) const
 	{
 		return ValidateLoad(Request);
 	}
+	else if (Request.Action == LRNames::Annihilate)
+	{
+		if (!Inventory.IsValidIndex(Request.Slot) || Inventory[Request.Slot].IsEmpty()) { return ReasonNothingSelected; }
+	}
 	else if (Request.Action == LRNames::Unload)
 	{
 		if (!Request.bHasCell) { return ReasonNoCell; }
@@ -696,6 +702,7 @@ FLRActionResult FLRSimulation::Execute(const FLRActionRequest& Request)
 	if (Request.Action == LRNames::Recall)        { return ExecuteRecall(Request); }
 	if (Request.Action == LRNames::Load)          { return ExecuteLoad(Request); }
 	if (Request.Action == LRNames::Unload)        { return ExecuteUnload(Request); }
+	if (Request.Action == LRNames::Annihilate)    { return ExecuteAnnihilate(Request); }
 	if (Request.Action == LRNames::SortInventory) { return ExecuteSort(); }
 	if (!Def->LootTable.IsNone())                 { return ExecuteLootAction(*Def); }
 
@@ -988,6 +995,26 @@ FLRActionResult FLRSimulation::ExecuteUnload(const FLRActionRequest& Request)
 	Result.Action = Request.Action;
 	Result.bSuccess = true;
 	Result.Message = FString::Printf(TEXT("Unloaded the %s at %s"), *Data.GetDisplayName(Entity.Item), *DescribeCell(Entity.Cell));
+	return Result;
+}
+
+FLRActionResult FLRSimulation::ExecuteAnnihilate(const FLRActionRequest& Request)
+{
+	// Destroys the whole stack in one slot. Sci-fi flavour: matter meets antimatter.
+	if (!Inventory.IsValidIndex(Request.Slot) || Inventory[Request.Slot].IsEmpty())
+	{
+		return MakeFailure(Request.Action, ReasonNothingSelected, FString::Printf(TEXT("Can't annihilate: %s"), *DescribeReason(ReasonNothingSelected)));
+	}
+	const FLRInventorySlot Slot = Inventory[Request.Slot];
+	LootBoxes.Remove(Slot.InstanceId); // a destroyed loot box takes its modifiers with it
+	Inventory[Request.Slot].Clear();
+	AddStat(StatKey(TEXT("annihilated"), Slot.Item), Slot.Count);
+
+	FLRActionResult Result;
+	Result.Action = Request.Action;
+	Result.bSuccess = true;
+	Result.Spent.Emplace(Slot.Item, Slot.Count);
+	Result.Message = FString::Printf(TEXT("Annihilated %d %s"), Slot.Count, *Data.GetDisplayName(Slot.Item));
 	return Result;
 }
 

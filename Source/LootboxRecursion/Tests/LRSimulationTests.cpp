@@ -132,6 +132,7 @@ namespace LRTest
 		Data.Actions.Add(MakeAction(LRNames::SortInventory, 1.f, 0.f));
 		Data.Actions.Add(MakeAction(LRNames::Load, 0.f, 0.f));
 		Data.Actions.Add(MakeAction(LRNames::Unload, 0.f, 0.f));
+		Data.Actions.Add(MakeAction(LRNames::Annihilate, 0.f, 0.f));
 
 		// Tech tree: a recipe unlocked by crafting a loot box, one chained off it, and an
 		// action revealed by holding a loot box.
@@ -824,6 +825,32 @@ bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 	{
 		TestTrue(*FString::Printf(TEXT("action '%s' reachable"), *Action.Name.ToString()), Sim.IsActionUnlocked(Action.Name));
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimAnnihilateTest, "LootboxRecursion.Simulation.Annihilate", LR_TEST_FLAGS)
+bool FLRSimAnnihilateTest::RunTest(const FString& Parameters)
+{
+	FLRSimulation Sim(LRTest::MakeData(), 1);
+	Sim.GiveItem(LRTest::Carbon, 150); // slots 0 (100) and 1 (50)
+	Sim.GiveItem(LRTest::Box, 1);      // slot 2
+	const int32 BoxId = Sim.GetInventory()[2].InstanceId;
+
+	TestFalse(TEXT("needs a selected slot"), Sim.RequestAction(FLRActionRequest::Make(LRNames::Annihilate)).bSuccess);
+
+	FLRActionRequest Request = FLRActionRequest::Make(LRNames::Annihilate);
+	Request.Slot = 0;
+	TestTrue(TEXT("annihilate the first stack"), Sim.RequestAction(Request).bSuccess);
+	TestEqual(TEXT("only that stack is gone"), Sim.CountItem(LRTest::Carbon), 50);
+	TestTrue(TEXT("slot empty"), Sim.GetInventory()[0].IsEmpty());
+	TestEqual(TEXT("stat"), Sim.GetStat(TEXT("annihilated:carbon")), 100);
+
+	Request.Slot = 2;
+	TestTrue(TEXT("annihilate the box"), Sim.RequestAction(Request).bSuccess);
+	TestNull(TEXT("box instance gone too"), Sim.FindLootBox(BoxId));
+
+	Request.Slot = 0;
+	TestFalse(TEXT("empty slot refused"), Sim.RequestAction(Request).bSuccess);
 	return true;
 }
 

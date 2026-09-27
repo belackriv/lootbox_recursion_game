@@ -119,6 +119,7 @@ private:
 	FLRActionResult ExecuteSort();
 	FLRActionResult ExecuteLoad(const FLRActionRequest& Request);
 	FLRActionResult ExecuteUnload(const FLRActionRequest& Request);
+	FLRActionResult ExecuteAnnihilate(const FLRActionRequest& Request);
 	FName ValidateLoad(const FLRActionRequest& Request) const;
 
 	/** Irradiation: advance every loaded enclosure and apply exposures that completed. */

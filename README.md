@@ -86,6 +86,7 @@ In the editor, press **Play** (Alt+P).
 | Select an occupied cell, then **Recall** | Pick it back up |
 | Select an enclosure, select a loot box or radiation source in the inventory, then **Load** | Irradiate the box. Each exposure adds a modifier; X-rays reveal the contents. **Unload** when done. |
 | **Sort** (inventory title bar) | Compress and alphabetize stacks |
+| Select a slot, then **Annihilate** (inventory title bar) | Destroy that whole stack |
 | Hold `W`/`A`/`S`/`D` or arrow keys | Pan across the grid |
 | Mouse wheel | Zoom |
 | Hold right mouse and drag | Free look: orbit and tilt |

@@ -16,7 +16,7 @@ MODIFIER_KINDS = {"extra_rolls", "item_weight_mult", "item_count_mult", "add_ent
 KINDS_NEEDING_ITEM = {"item_weight_mult", "item_count_mult", "add_entry"}
 CONDITIONS = {"gt", "gte", "lt", "lte", "eq"}
 CHECKS = {"inventory", "placed", "stat", "unlocked"}
-REQUIRED_ACTIONS = {"inject", "craft", "use", "deploy", "recall", "sort_inventory", "load", "unload"}
+REQUIRED_ACTIONS = {"inject", "craft", "use", "deploy", "recall", "sort_inventory", "load", "unload", "annihilate"}
 
 
 def main() -> int:

@@ -27,6 +27,7 @@ namespace LRNames
 
 	inline const FName Load(TEXT("load"));
 	inline const FName Unload(TEXT("unload"));
+	inline const FName Annihilate(TEXT("annihilate"));
 
 	// Item categories (items.json "category")
 	inline const FName CategoryMaterial(TEXT("material"));

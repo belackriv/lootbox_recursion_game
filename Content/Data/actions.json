@@ -128,6 +128,13 @@
 			"tooltip": "Automatically sort and consolidate your inventory slots.",
 			"cooldown": 1,
 			"castTime": 0
+		},
+		{
+			"name": "annihilate",
+			"label": "Annihilate",
+			"tooltip": "Annihilate the whole stack in the selected inventory slot. It is gone for good.",
+			"cooldown": 0.5,
+			"castTime": 0
 		}
 	]
 }

@@ -376,20 +376,49 @@ TSharedRef<SWidget> SLRGameHud::BuildInventoryPanel()
 		];
 	}
 
-	// Sort lives in the inventory title bar, like SortButton.vue.
-	TSharedRef<SWidget> SortButton = SNew(SBox)
-		.WidthOverride(70.f)
+	// Annihilate and Sort live in the inventory title bar (Rails: SortButton.vue).
+	TSharedRef<SWidget> HeaderButtons = SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.Padding(FMargin(0.f, 0.f, 4.f, 0.f))
 		[
-			MakeActionButton(LRNames::SortInventory, [this]()
-			{
-				if (ULRGameSubsystem* Sub = GetSubsystem())
+			SNew(SBox)
+			.WidthOverride(100.f)
+			[
+				MakeActionButton(LRNames::Annihilate,
+					[this]()
+					{
+						if (ULRGameSubsystem* Sub = GetSubsystem())
+						{
+							Sub->RequestActionWithSelection(LRNames::Annihilate);
+						}
+					},
+					// Only with something selected in the inventory.
+					[this]()
+					{
+						const ULRGameSubsystem* Sub = GetSubsystem();
+						const FLRInventorySlot* Slot = Sub ? GetSlot(Sub->GetSelectedSlot()) : nullptr;
+						return Slot && !Slot->IsEmpty();
+					})
+			]
+		]
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		[
+			SNew(SBox)
+			.WidthOverride(70.f)
+			[
+				MakeActionButton(LRNames::SortInventory, [this]()
 				{
-					Sub->RequestSimpleAction(LRNames::SortInventory);
-				}
-			})
+					if (ULRGameSubsystem* Sub = GetSubsystem())
+					{
+						Sub->RequestSimpleAction(LRNames::SortInventory);
+					}
+				})
+			]
 		];
 
-	return MakePanel(LOCTEXT("Inventory", "INVENTORY"), Grid, SortButton);
+	return MakePanel(LOCTEXT("Inventory", "INVENTORY"), Grid, HeaderButtons);
 }
 
 TSharedRef<SWidget> SLRGameHud::BuildWorldPanel()
