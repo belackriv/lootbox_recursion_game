@@ -25,3 +25,7 @@ compile_commands.json
 .DS_Store
 Thumbs.db
 __pycache__/
+
+# Content/Data holds plain JSON read at runtime. If the editor offers to import it, decline;
+# any assets it creates here are strays.
+Content/Data/*.uasset
