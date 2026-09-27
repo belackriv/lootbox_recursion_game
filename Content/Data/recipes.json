@@ -1,5 +1,5 @@
 {
-	"_comment": "Craft action choices. Ported from User#get_craft_choices + the CRAFTING_COST constants (ItemCraftingCost). The Rails IrradiationEnclosure (100 wood + 100 iron) is split into carbon and iron variants; their costs are placeholder tuning.",
+	"_comment": "Craft action choices. Ported from User#get_craft_choices + the CRAFTING_COST constants (ItemCraftingCost). The Rails IrradiationEnclosure (100 wood + 100 iron) is split into carbon and iron variants; their costs are placeholder tuning. Radiation source costs are placeholder tuning too.",
 	"recipes": [
 		{
 			"id": "loot_box",
@@ -8,8 +8,14 @@
 			"output": "loot_box",
 			"outputCount": 1,
 			"cost": [
-				{ "item": "carbon", "count": 50 },
-				{ "item": "iron", "count": 50 }
+				{
+					"item": "carbon",
+					"count": 50
+				},
+				{
+					"item": "iron",
+					"count": 50
+				}
 			]
 		},
 		{
@@ -19,8 +25,14 @@
 			"output": "carbon_irradiation_enclosure",
 			"outputCount": 1,
 			"cost": [
-				{ "item": "carbon", "count": 150 },
-				{ "item": "iron", "count": 50 }
+				{
+					"item": "carbon",
+					"count": 150
+				},
+				{
+					"item": "iron",
+					"count": 50
+				}
 			]
 		},
 		{
@@ -30,8 +42,99 @@
 			"output": "iron_irradiation_enclosure",
 			"outputCount": 1,
 			"cost": [
-				{ "item": "carbon", "count": 50 },
-				{ "item": "iron", "count": 150 }
+				{
+					"item": "carbon",
+					"count": 50
+				},
+				{
+					"item": "iron",
+					"count": 150
+				}
+			]
+		},
+		{
+			"id": "grow_lamp",
+			"label": "Grow Lamp",
+			"tooltip": "A broad-spectrum lamp. Visible light drives photosynthesis: loot boxes yield more carbon.",
+			"output": "grow_lamp",
+			"outputCount": 1,
+			"cost": [
+				{
+					"item": "carbon",
+					"count": 40
+				},
+				{
+					"item": "iron",
+					"count": 20
+				}
+			]
+		},
+		{
+			"id": "infrared_emitter",
+			"label": "Infrared Emitter",
+			"tooltip": "Heats and cures what it shines on: loot boxes get extra rolls.",
+			"output": "infrared_emitter",
+			"outputCount": 1,
+			"cost": [
+				{
+					"item": "carbon",
+					"count": 40
+				},
+				{
+					"item": "iron",
+					"count": 40
+				}
+			]
+		},
+		{
+			"id": "microwave_emitter",
+			"label": "Microwave Emitter",
+			"tooltip": "Shakes ore loose: iron becomes more likely in loot boxes.",
+			"output": "microwave_emitter",
+			"outputCount": 1,
+			"cost": [
+				{
+					"item": "carbon",
+					"count": 30
+				},
+				{
+					"item": "iron",
+					"count": 80
+				}
+			]
+		},
+		{
+			"id": "xray_tube",
+			"label": "X-Ray Tube",
+			"tooltip": "Inspection: reveals a loot box's contents and locks them in. Nothing changes the box after that.",
+			"output": "xray_tube",
+			"outputCount": 1,
+			"cost": [
+				{
+					"item": "carbon",
+					"count": 60
+				},
+				{
+					"item": "iron",
+					"count": 120
+				}
+			]
+		},
+		{
+			"id": "gamma_source",
+			"label": "Gamma Source",
+			"tooltip": "Mutation: loot boxes may contain loot boxes. Needs an iron enclosure.",
+			"output": "gamma_source",
+			"outputCount": 1,
+			"cost": [
+				{
+					"item": "carbon",
+					"count": 100
+				},
+				{
+					"item": "iron",
+					"count": 200
+				}
 			]
 		}
 	]

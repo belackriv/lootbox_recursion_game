@@ -92,6 +92,10 @@ private:
 	UPROPERTY()
 	TArray<TObjectPtr<UTextRenderComponent>> EntityLabels;
 
+	/** Decorations that aren't hover targets (e.g. the radiation source on an enclosure). */
+	UPROPERTY()
+	TArray<TObjectPtr<UStaticMeshComponent>> EntityExtras;
+
 	TArray<FIntVector> EntityCells;
 
 	/** Where the tile patch is currently centred (a multiple of the ruler period in X/Y). */

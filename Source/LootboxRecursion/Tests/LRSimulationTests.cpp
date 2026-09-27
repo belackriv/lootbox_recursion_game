@@ -20,6 +20,9 @@ namespace LRTest
 	const FName Box(TEXT("loot_box"));
 	const FName MysteryBox(TEXT("mystery_box"));
 	const FName Enclosure(TEXT("enclosure"));
+	const FName Lamp(TEXT("lamp"));
+	const FName XRayTube(TEXT("xray_tube"));
+	const FName GammaSource(TEXT("gamma_source"));
 
 	void AddItemDef(FLRGameData& Data, FName Id, const TCHAR* Name, FName Category, int32 StackSize, FName LootTable = NAME_None)
 	{
@@ -67,6 +70,31 @@ namespace LRTest
 		AddItemDef(Data, Box, TEXT("Loot Box"), LRNames::CategoryLootBox, 1, TEXT("box"));
 		AddItemDef(Data, MysteryBox, TEXT("Mystery Box"), LRNames::CategoryLootBox, 1, TEXT("nested"));
 		AddItemDef(Data, Enclosure, TEXT("Enclosure"), LRNames::CategoryPlaceable, 1);
+		Data.Items[Enclosure].MaxRadiationTier = 5;
+		Data.Items[Enclosure].MaxExposureStacks = 2;
+		Data.Items[Enclosure].ExposureSeconds = 10.f;
+
+		// Radiation: light doubles carbon amounts, x-rays reveal, gamma is too strong for the enclosure.
+		auto AddRadiation = [&Data](FName Id, int32 Tier, FName Kind, FName Item, float Value)
+		{
+			FLRRadiationDef Radiation;
+			Radiation.Id = Id;
+			Radiation.Name = Id.ToString();
+			Radiation.Tier = Tier;
+			Radiation.Effect.Kind = Kind;
+			Radiation.Effect.Item = Item;
+			Radiation.Effect.Value = Value;
+			Data.Radiation.Add(Radiation);
+		};
+		AddRadiation(TEXT("light"), 1, LRNames::ModifierItemCountMult, Carbon, 2.f);
+		AddRadiation(TEXT("xray"), 5, LRNames::ModifierReveal, NAME_None, 0.f);
+		AddRadiation(TEXT("gamma"), 7, LRNames::ModifierAddEntry, Box, 10.f);
+		AddItemDef(Data, Lamp, TEXT("Lamp"), LRNames::CategorySource, 1);
+		Data.Items[Lamp].Radiation = TEXT("light");
+		AddItemDef(Data, XRayTube, TEXT("X-Ray Tube"), LRNames::CategorySource, 1);
+		Data.Items[XRayTube].Radiation = TEXT("xray");
+		AddItemDef(Data, GammaSource, TEXT("Gamma Source"), LRNames::CategorySource, 1);
+		Data.Items[GammaSource].Radiation = TEXT("gamma");
 
 		AddTable(Data, TEXT("box"), 2, Carbon, 10);       // always 2 x 10 carbon
 		AddTable(Data, TEXT("inject"), 1, Carbon, 30);    // always 30 carbon
@@ -102,6 +130,8 @@ namespace LRTest
 		Recall.Requirements.Add(HasPlaced);
 		Data.Actions.Add(Recall);
 		Data.Actions.Add(MakeAction(LRNames::SortInventory, 1.f, 0.f));
+		Data.Actions.Add(MakeAction(LRNames::Load, 0.f, 0.f));
+		Data.Actions.Add(MakeAction(LRNames::Unload, 0.f, 0.f));
 		return Data;
 	}
 
@@ -118,6 +148,28 @@ namespace LRTest
 		Request.Cell = Cell;
 		Request.bHasCell = true;
 		return Request;
+	}
+
+	int32 SlotOf(const FLRSimulation& Sim, FName Item)
+	{
+		return Sim.GetInventory().IndexOfByPredicate([Item](const FLRInventorySlot& Slot) { return Slot.Item == Item; });
+	}
+
+	/** Load the (first) given item from the inventory into the enclosure at Cell. */
+	FLRActionResult LoadInto(FLRSimulation& Sim, FName Item, const FIntVector& Cell)
+	{
+		FLRActionRequest Request = AtCell(LRNames::Load, Cell);
+		Request.Slot = SlotOf(Sim, Item);
+		return Sim.RequestAction(Request);
+	}
+
+	/** A deployed enclosure at (0, 0, 0). */
+	void DeployEnclosure(FLRSimulation& Sim)
+	{
+		Sim.GiveItem(Enclosure, 1);
+		FLRActionRequest Deploy = AtCell(LRNames::Deploy, FIntVector::ZeroValue);
+		Deploy.Slot = SlotOf(Sim, Enclosure);
+		Sim.RequestAction(Deploy);
 	}
 }
 
@@ -432,6 +484,149 @@ bool FLRGameDataValidationTest::RunTest(const FString& Parameters)
 	Broken.Output = TEXT("unobtainium");
 	Data.Recipes.Add(Broken);
 	TestTrue(TEXT("unknown output reported"), Data.Validate().Num() > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimIrradiateTest, "LootboxRecursion.Irradiation.StacksUpToCapThenOpens", LR_TEST_FLAGS)
+bool FLRSimIrradiateTest::RunTest(const FString& Parameters)
+{
+	FLRSimulation Sim(LRTest::MakeData(), 1);
+	LRTest::DeployEnclosure(Sim);
+	const FIntVector Cell = FIntVector::ZeroValue;
+
+	Sim.GiveItem(LRTest::Box, 1);
+	Sim.GiveItem(LRTest::Lamp, 1);
+	const int32 BoxId = Sim.GetInventory()[LRTest::SlotOf(Sim, LRTest::Box)].InstanceId;
+
+	TestFalse(TEXT("load needs a selected item"), Sim.RequestAction(LRTest::AtCell(LRNames::Load, Cell)).bSuccess);
+	TestTrue(TEXT("load box"), LRTest::LoadInto(Sim, LRTest::Box, Cell).bSuccess);
+	TestTrue(TEXT("load lamp"), LRTest::LoadInto(Sim, LRTest::Lamp, Cell).bSuccess);
+	TestEqual(TEXT("box left the inventory"), Sim.CountItem(LRTest::Box), 0);
+
+	Sim.Advance(9.9);
+	TestEqual(TEXT("no stack before the interval"), Sim.FindLootBox(BoxId) ? Sim.FindLootBox(BoxId)->Modifiers.Num() : -1, 0);
+	Sim.Advance(0.2);
+	TestEqual(TEXT("first stack"), Sim.FindLootBox(BoxId) ? Sim.FindLootBox(BoxId)->Modifiers.Num() : -1, 1);
+	Sim.Advance(100.0);
+	TestEqual(TEXT("capped at the enclosure's max stacks"), Sim.FindLootBox(BoxId) ? Sim.FindLootBox(BoxId)->Modifiers.Num() : -1, 2);
+
+	TestTrue(TEXT("unload"), Sim.RequestAction(LRTest::AtCell(LRNames::Unload, Cell)).bSuccess);
+	TestEqual(TEXT("box back"), Sim.CountItem(LRTest::Box), 1);
+	TestEqual(TEXT("lamp back"), Sim.CountItem(LRTest::Lamp), 1);
+
+	// 2 rolls x 10 carbon, amounts doubled twice = 2 x 40.
+	Sim.RequestAction(LRTest::UseSlot(LRTest::SlotOf(Sim, LRTest::Box)));
+	Sim.Advance(5.0);
+	TestEqual(TEXT("irradiated loot"), Sim.CountItem(LRTest::Carbon), 80);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimIrradiateRulesTest, "LootboxRecursion.Irradiation.LoadRules", LR_TEST_FLAGS)
+bool FLRSimIrradiateRulesTest::RunTest(const FString& Parameters)
+{
+	FLRSimulation Sim(LRTest::MakeData(), 1);
+	LRTest::DeployEnclosure(Sim);
+	const FIntVector Cell = FIntVector::ZeroValue;
+	Sim.GiveItem(LRTest::GammaSource, 1);
+	Sim.GiveItem(LRTest::Box, 2);
+
+	const FLRActionResult TooStrong = LRTest::LoadInto(Sim, LRTest::GammaSource, Cell);
+	TestFalse(TEXT("gamma is too strong for a tier-5 enclosure"), TooStrong.bSuccess);
+	TestTrue(TEXT("reason"), TooStrong.Reason == FName(TEXT("radiation_too_strong")));
+
+	TestFalse(TEXT("no enclosure at an empty cell"), LRTest::LoadInto(Sim, LRTest::Box, FIntVector(5, 5, 0)).bSuccess);
+	TestTrue(TEXT("first box"), LRTest::LoadInto(Sim, LRTest::Box, Cell).bSuccess);
+	TestFalse(TEXT("chamber holds one box"), LRTest::LoadInto(Sim, LRTest::Box, Cell).bSuccess);
+	Sim.Advance(60.0);
+	const FLRPlacedEntity* Loaded = Sim.FindPlaced(Cell);
+	const FLRLootBoxInstance* Inside = Loaded ? Sim.FindLootBox(Loaded->Chamber.InstanceId) : nullptr;
+	TestEqual(TEXT("no stacks without a source"), Inside ? Inside->Modifiers.Num() : -1, 0);
+
+	// Recall brings the enclosure and its contents home.
+	TestTrue(TEXT("recall"), Sim.RequestAction(LRTest::AtCell(LRNames::Recall, Cell)).bSuccess);
+	TestEqual(TEXT("enclosure back"), Sim.CountItem(LRTest::Enclosure), 1);
+	TestEqual(TEXT("both boxes back"), Sim.CountItem(LRTest::Box), 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimXRayTest, "LootboxRecursion.Irradiation.XRayRevealsAndLocks", LR_TEST_FLAGS)
+bool FLRSimXRayTest::RunTest(const FString& Parameters)
+{
+	FLRSimulation Sim(LRTest::MakeData(), 3);
+	LRTest::DeployEnclosure(Sim);
+	const FIntVector Cell = FIntVector::ZeroValue;
+	Sim.GiveItem(LRTest::Box, 1);
+	Sim.GiveItem(LRTest::XRayTube, 1);
+	const int32 BoxId = Sim.GetInventory()[LRTest::SlotOf(Sim, LRTest::Box)].InstanceId;
+	LRTest::LoadInto(Sim, LRTest::Box, Cell);
+	LRTest::LoadInto(Sim, LRTest::XRayTube, Cell);
+
+	Sim.Advance(10.0);
+	const FLRLootBoxInstance* BoxInstance = Sim.FindLootBox(BoxId);
+	TestTrue(TEXT("revealed"), BoxInstance && BoxInstance->bRevealed);
+	TestEqual(TEXT("contents known: 2 x 10 carbon"),
+		(BoxInstance && BoxInstance->RevealedContents.Num() == 1) ? BoxInstance->RevealedContents[0].Count : -1, 20);
+
+	Sim.Advance(100.0);
+	TestEqual(TEXT("locked: no further stacks"), Sim.FindLootBox(BoxId) ? Sim.FindLootBox(BoxId)->Modifiers.Num() : -1, 0);
+
+	Sim.RequestAction(LRTest::AtCell(LRNames::Unload, Cell));
+	Sim.RequestAction(LRTest::UseSlot(LRTest::SlotOf(Sim, LRTest::Box)));
+	Sim.Advance(5.0);
+	TestEqual(TEXT("opens to exactly what was revealed"), Sim.CountItem(LRTest::Carbon), 20);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimGammaTest, "LootboxRecursion.Irradiation.AddEntryModifier", LR_TEST_FLAGS)
+bool FLRSimGammaTest::RunTest(const FString& Parameters)
+{
+	FLRLootTableDef Table;
+	Table.RollsMin = 1;
+	Table.RollsMax = 1;
+	FLRLootEntry Entry;
+	Entry.Item = LRTest::Carbon;
+	Entry.Weight = 10;
+	Table.Entries.Add(Entry);
+
+	FLRLootModifier Mutation;
+	Mutation.Kind = LRNames::ModifierAddEntry;
+	Mutation.Item = LRTest::Box;
+	Mutation.Value = 5.f;
+
+	const FLRLootTableDef Once = FLRSimulation::ApplyModifiers(Table, { Mutation });
+	TestEqual(TEXT("entry added"), Once.Entries.Num(), 2);
+	TestEqual(TEXT("with weight 5"), Once.Entries.Num() == 2 ? Once.Entries[1].Weight : -1, 5);
+
+	const FLRLootTableDef Twice = FLRSimulation::ApplyModifiers(Table, { Mutation, Mutation });
+	TestEqual(TEXT("stacks by weight, not duplicate entries"), Twice.Entries.Num(), 2);
+	TestEqual(TEXT("weight 10"), Twice.Entries.Num() == 2 ? Twice.Entries[1].Weight : -1, 10);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimIrradiateSaveTest, "LootboxRecursion.Irradiation.SurvivesSaveLoad", LR_TEST_FLAGS)
+bool FLRSimIrradiateSaveTest::RunTest(const FString& Parameters)
+{
+	FLRSimulation Sim(LRTest::MakeData(), 1);
+	LRTest::DeployEnclosure(Sim);
+	const FIntVector Cell = FIntVector::ZeroValue;
+	Sim.GiveItem(LRTest::Box, 1);
+	Sim.GiveItem(LRTest::Lamp, 1);
+	const int32 BoxId = Sim.GetInventory()[LRTest::SlotOf(Sim, LRTest::Box)].InstanceId;
+	LRTest::LoadInto(Sim, LRTest::Box, Cell);
+	LRTest::LoadInto(Sim, LRTest::Lamp, Cell);
+	Sim.Advance(6.0);
+
+	FLRSimulation Loaded(LRTest::MakeData(), 0);
+	TestTrue(TEXT("load"), Loaded.Load(Sim.Save()));
+	const FLRPlacedEntity* Entity = Loaded.FindPlaced(Cell);
+	TestTrue(TEXT("chamber restored"), Entity && Entity->Chamber.InstanceId == BoxId);
+	Loaded.Advance(4.0);
+	TestEqual(TEXT("progress carried over"), Loaded.FindLootBox(BoxId) ? Loaded.FindLootBox(BoxId)->Modifiers.Num() : -1, 1);
+
+	// New unique items must not reuse the id of the box inside the enclosure.
+	Loaded.GiveItem(LRTest::Box, 1);
+	TestFalse(TEXT("no id collision"),
+		Loaded.GetInventory().ContainsByPredicate([BoxId](const FLRInventorySlot& Slot) { return Slot.InstanceId == BoxId; }));
 	return true;
 }
 

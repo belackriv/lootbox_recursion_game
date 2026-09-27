@@ -370,8 +370,16 @@ void ALRWorldGridActor::RebuildEntities()
 			Label->DestroyComponent();
 		}
 	}
+	for (const TObjectPtr<UStaticMeshComponent>& Extra : EntityExtras)
+	{
+		if (Extra)
+		{
+			Extra->DestroyComponent();
+		}
+	}
 	EntityMeshes.Reset();
 	EntityLabels.Reset();
+	EntityExtras.Reset();
 	EntityCells.Reset();
 
 	const ULRGameSubsystem* Subsystem = ULRGameSubsystem::Get(this);
@@ -397,6 +405,33 @@ void ALRWorldGridActor::RebuildEntities()
 			Material->SetVectorParameterValue(ColorParam, Def ? Def->GetLinearColor() : FLinearColor::Gray);
 		}
 
+		// Irradiation enclosures: a small cube in the radiation's colour on top when a source is
+		// loaded, and chamber progress in the label.
+		FString LabelText = Def ? Def->Abbrev : Entity.Item.ToString();
+		if (Def && Def->IsEnclosure())
+		{
+			const FLRItemDef* SourceDef = Entity.Source.IsEmpty() ? nullptr : Simulation->GetData().FindItem(Entity.Source.Item);
+			const FLRRadiationDef* Radiation = SourceDef ? Simulation->GetData().FindRadiation(SourceDef->Radiation) : nullptr;
+			if (SourceDef)
+			{
+				UMaterialInstanceDynamic* SourceMaterial = nullptr;
+				UStaticMeshComponent* SourceMesh = CreateMesh(CubeMesh, SourceMaterial, /*bTraceable*/ false);
+				SourceMesh->SetRelativeLocation(Floor + FVector(0.f, 0.f, 85.f * Scale));
+				SourceMesh->SetRelativeScale3D(FVector(0.2f * Scale));
+				if (SourceMaterial)
+				{
+					SourceMaterial->SetVectorParameterValue(ColorParam, Radiation ? Radiation->GetLinearColor() : SourceDef->GetLinearColor());
+				}
+				EntityExtras.Add(SourceMesh);
+			}
+			if (const FLRLootBoxInstance* Box = Entity.Chamber.IsEmpty() ? nullptr : Simulation->FindLootBox(Entity.Chamber.InstanceId))
+			{
+				LabelText += Box->bRevealed
+					? TEXT(" [box: x-rayed]")
+					: FString::Printf(TEXT(" [box %d/%d]"), Box->Modifiers.Num(), Def->MaxExposureStacks);
+			}
+		}
+
 		UTextRenderComponent* Label = NewObject<UTextRenderComponent>(this);
 		Label->SetupAttachment(RootComponent);
 		Label->SetHorizontalAlignment(EHTA_Center);
@@ -404,7 +439,7 @@ void ALRWorldGridActor::RebuildEntities()
 		Label->SetWorldSize(28.f * Scale);
 		Label->SetTextRenderColor(EntityLabelColor);
 		Label->SetRelativeLocation(Floor + FVector(0.f, 0.f, 100.f * Scale));
-		Label->SetText(FText::FromString(Def ? Def->Abbrev : Entity.Item.ToString()));
+		Label->SetText(FText::FromString(LabelText));
 		Label->RegisterComponent();
 
 		EntityMeshes.Add(Mesh);

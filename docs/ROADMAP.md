@@ -24,13 +24,22 @@ and play.
 
 ## M2: Irradiation (the core idea)
 
-See [DESIGN.md](DESIGN.md#irradiation-enclosures).
+See [DESIGN.md](DESIGN.md#irradiation-implemented-v1).
 
-- [ ] Give placed entities an inventory (one loot box slot plus a source slot).
-- [ ] Radiation source items, which draw from `radiation.json`.
-- [ ] Exposure over simulation time adds `FLRLootModifier`s, and enclosure material limits
-      the tier.
-- [ ] Show modifiers on the loot box tooltip (the HUD already lists them).
+- [x] Enclosures hold a loot box and a radiation source (Load / Unload; Recall returns
+      everything).
+- [x] Five source items driven by `radiation.json` effects; enclosure material caps the tier.
+- [x] Exposure over simulation time adds modifiers; X-rays reveal and lock the contents.
+- [x] Modifiers and revealed contents in the loot box tooltip.
+- [ ] Tuning pass, and a visual effect while an enclosure is active (Niagara glow).
+
+## M2.5: Game menu
+
+- [ ] Esc opens a pause menu: Resume, New Game, Save, Load, Settings, Quit.
+- [ ] Save slots (several named saves instead of the single autosave slot).
+- [ ] Settings: key rebinding (Enhanced Input user settings), mouse and free-look
+      sensitivity, invert Y, pan speed, UI scale, graphics quality.
+- [ ] Settings persist per user (`USaveGame` or `UGameUserSettings`).
 
 ## M3: Logistics on the grid
 
@@ -48,6 +57,5 @@ See [DESIGN.md](DESIGN.md#irradiation-enclosures).
 
 - [ ] Packaging profile (File → Package Project → Windows), and check that
       `Content/Data/*.json` is staged. `DirectoriesToAlwaysStageAsUFS` is already set.
-- [ ] Settings menu, key rebinding (Enhanced Input user settings), save slots.
 - [ ] CI build on a self-hosted Windows runner with the engine installed (GitHub-hosted
       runners can't fit the engine).

@@ -17,6 +17,7 @@ rules are ported:
 - loot tables with modifiers
 - opening boxes, including boxes inside boxes
 - deploying and recalling entities, now on a 3D grid
+- **new:** irradiating loot boxes in enclosures with radiation sources
 - inventory sort and compress
 
 It also adds save/load, a 3D view of the grid, and carbon and iron irradiation enclosures.
@@ -82,6 +83,7 @@ In the editor, press **Play** (Alt+P).
 | Click a loot box in the inventory, then **Use** | Open it |
 | Click a grid cell, then **Deploy** | Place the selected (or first) enclosure there. With an enclosure selected in the inventory, the cursor shows a preview. |
 | Select an occupied cell, then **Recall** | Pick it back up |
+| Select an enclosure, select a loot box or radiation source in the inventory, then **Load** | Irradiate the box. Each exposure adds a modifier; X-rays reveal the contents. **Unload** when done. |
 | **Sort** (inventory title bar) | Compress and alphabetize stacks |
 | Hold `W`/`A`/`S`/`D` or arrow keys | Pan across the grid |
 | Mouse wheel | Zoom |

@@ -23,7 +23,12 @@
 			"cooldown": 5,
 			"castTime": 5,
 			"requirements": [
-				{ "check": "inventory", "category": "lootbox", "condition": "gt", "value": 0 }
+				{
+					"check": "inventory",
+					"category": "lootbox",
+					"condition": "gt",
+					"value": 0
+				}
 			]
 		},
 		{
@@ -33,7 +38,12 @@
 			"cooldown": 1,
 			"castTime": 0,
 			"requirements": [
-				{ "check": "inventory", "category": "placeable", "condition": "gt", "value": 0 }
+				{
+					"check": "inventory",
+					"category": "placeable",
+					"condition": "gt",
+					"value": 0
+				}
 			]
 		},
 		{
@@ -43,8 +53,26 @@
 			"cooldown": 1,
 			"castTime": 0,
 			"requirements": [
-				{ "check": "placed", "condition": "gt", "value": 0 }
+				{
+					"check": "placed",
+					"condition": "gt",
+					"value": 0
+				}
 			]
+		},
+		{
+			"name": "load",
+			"label": "Load",
+			"tooltip": "Load the selected loot box or radiation source into the irradiation enclosure in the selected cell.",
+			"cooldown": 1,
+			"castTime": 0
+		},
+		{
+			"name": "unload",
+			"label": "Unload",
+			"tooltip": "Take the loot box and source out of the irradiation enclosure in the selected cell.",
+			"cooldown": 1,
+			"castTime": 0
 		},
 		{
 			"name": "sort_inventory",

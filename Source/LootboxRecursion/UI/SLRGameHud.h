@@ -70,6 +70,11 @@ private:
 	const FLRInventorySlot* GetSlot(int32 SlotIndex) const;
 	bool IsCellSelected(const FIntVector& Cell) const;
 	bool IsSelectedSlotUsable() const;
+	bool IsSelectedSlotLoadable() const;
+	/** The deployed irradiation enclosure in the selected cell, if any. */
+	const FLRPlacedEntity* GetSelectedEnclosure() const;
+	TOptional<float> GetSelectedExposureFraction() const;
+	FString DescribeEnclosure(const FLRPlacedEntity& Enclosure) const;
 	bool HasSelectedCell(bool bWantOccupied) const;
 
 	// Hover / info panel

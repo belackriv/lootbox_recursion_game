@@ -11,10 +11,12 @@ import sys
 from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "Content" / "Data"
-CATEGORIES = {"material", "lootbox", "placeable"}
+CATEGORIES = {"material", "lootbox", "placeable", "source"}
+MODIFIER_KINDS = {"extra_rolls", "item_weight_mult", "item_count_mult", "add_entry", "reveal"}
+KINDS_NEEDING_ITEM = {"item_weight_mult", "item_count_mult", "add_entry"}
 CONDITIONS = {"gt", "gte", "lt", "lte", "eq"}
 CHECKS = {"inventory", "placed"}
-REQUIRED_ACTIONS = {"inject", "craft", "use", "deploy", "recall", "sort_inventory"}
+REQUIRED_ACTIONS = {"inject", "craft", "use", "deploy", "recall", "sort_inventory", "load", "unload"}
 
 
 def main() -> int:
@@ -46,6 +48,8 @@ def main() -> int:
         elif item_id not in items:
             errors.append(f"{where}: unknown item '{item_id}'")
 
+    radiation_ids = {rad.get("id") for rad in radiation}
+
     for item_id, item in items.items():
         where = f"item '{item_id}'"
         stack = item.get("stackSize", 100)
@@ -60,8 +64,13 @@ def main() -> int:
             errors.append(f"{where}: unknown lootTable '{table}'")
         if item.get("category") == "lootbox" and not table:
             errors.append(f"{where}: lootbox items need a lootTable")
-        if (item.get("category") == "placeable" or table) and stack != 1:
-            errors.append(f"{where}: placeable and lootbox items must have stackSize 1")
+        if (item.get("category") in ("placeable", "source") or table) and stack != 1:
+            errors.append(f"{where}: placeable, lootbox and source items must have stackSize 1")
+        if item.get("category") == "source" and item.get("radiation") not in radiation_ids:
+            errors.append(f"{where}: unknown radiation '{item.get('radiation')}'")
+        stacks, tier = item.get("maxExposureStacks", 0), item.get("maxRadiationTier", 0)
+        if stacks < 0 or tier < 0 or (stacks > 0 and item.get("exposureSeconds", 10) <= 0):
+            errors.append(f"{where}: enclosure needs maxExposureStacks/maxRadiationTier >= 0 and exposureSeconds > 0")
 
     for recipe in recipes:
         where = f"recipe '{recipe.get('id')}'"
@@ -106,9 +115,20 @@ def main() -> int:
     for missing in sorted(REQUIRED_ACTIONS - names):
         errors.append(f"action '{missing}' is required by the code but not defined")
 
+    seen = set()
     for rad in radiation:
+        where = f"radiation '{rad.get('id')}'"
         if not rad.get("id") or not rad.get("family"):
             errors.append(f"radiation entry missing id/family: {rad}")
+        if rad.get("id") in seen:
+            errors.append(f"{where}: duplicate id")
+        seen.add(rad.get("id"))
+        effect = rad.get("effect")
+        if effect:
+            if effect.get("kind") not in MODIFIER_KINDS:
+                errors.append(f"{where}: unknown effect kind '{effect.get('kind')}'")
+            if effect.get("kind") in KINDS_NEEDING_ITEM:
+                check_item(effect.get("item"), f"{where} effect")
 
     if errors:
         print(f"{len(errors)} problem(s) in {DATA_DIR}:")

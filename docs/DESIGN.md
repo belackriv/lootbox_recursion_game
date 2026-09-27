@@ -37,7 +37,7 @@ Loot boxes carry **modifiers**, which rewrite their loot table before it's rolle
 - a multiplied weight for one item
 - multiplied counts for one item
 
-Nothing creates modifiers yet. Irradiation is meant to.
+Irradiation enclosures create them (see below).
 
 ## The grid (implemented)
 
@@ -55,27 +55,56 @@ Nothing creates modifiers yet. Irradiation is meant to.
   next to the enclosure. Vertical stacking could be a way to keep distances short.
 - **Multi-cell machines** (2x2x2 and so on), as the machines get more complex.
 
-## Irradiation enclosures
+## Irradiation (implemented, v1)
 
-There are two variants: a **Carbon Irradiation Enclosure** (graphite-lined; graphite is a
-real neutron moderator) and an **Iron Irradiation Enclosure** (implemented as craftable and deployable items, with placeholder
-costs).
+Irradiation is how loot boxes get better. Numbers are placeholder tuning in
+`Content/Data/items.json` and `radiation.json`.
 
-A proposed mechanic, not implemented:
+**Enclosures** are deployable. Each one has:
 
-- An enclosure deployed in the grid gets a small inventory: a loot box slot plus a
-  radiation source.
-- Over time, exposure adds `FLRLootModifier`s to the box, with `Source` set to the
-  radiation id.
-- The enclosure material limits which radiation tiers or energies it can contain. Carbon
-  (graphite) might suit neutron work and low-energy radiation (radio, microwaves, infrared). Iron could go
-  higher, and gamma would need something heavier (lead? concrete?).
-- Higher-energy radiation gives stronger but riskier modifiers. Gamma "mutation" could
-  swap an entry for a different item. That would be a new modifier kind.
+- a **chamber** (one loot box)
+- a **source slot** (one radiation source)
+- a **max radiation tier** it can safely contain
+- a **max number of stacks** it can add to a box
+- an **exposure interval** in seconds
 
-The code hooks for this already exist: `FLRSimulation::AddLootBoxModifier`,
-`FLRLootModifier.Source`, `FLRRadiationDef` data, and the enclosure's persistent
-`InstanceId`.
+| Enclosure | Max tier | Max stacks | Interval |
+|---|---|---|---|
+| Carbon (graphite-lined) | 4 (up to microwaves) | 3 | 10s |
+| Iron (steel-plated) | 7 (up to gamma) | 5 | 12s |
+
+**Sources** are craftable items that emit one radiation type. Each radiation's `effect` in
+`radiation.json` is the loot modifier one exposure adds:
+
+| Source | Radiation (tier) | Effect per stack | From the notes |
+|---|---|---|---|
+| Grow Lamp | Visible light (1) | Carbon amounts ×1.25 | photosynthesis |
+| Infrared Emitter | Infrared (2) | +1 roll | heating, curing |
+| Microwave Emitter | Microwaves (4) | Iron ×1.5 as likely | ore extraction |
+| X-Ray Tube | X-rays (5) | Reveals the contents and **locks** them | inspection |
+| Gamma Source | Gamma (7) | Box may contain Loot Boxes (+15 weight per stack) | mutation |
+
+**How it plays:**
+
+1. Deploy an enclosure, select it, then select a loot box in the inventory and press
+   **Load**. Do the same with a source.
+2. While both are loaded, the enclosure adds one modifier stack per interval until the
+   box reaches the enclosure's cap. The log reports each exposure.
+3. X-rays are special. They add no stack; they roll the box's (already modified) table
+   right away and lock the result. The box then shows exactly what's inside, and it can't
+   be changed any further. Irradiate first, then inspect.
+4. **Unload** returns the box and the source. **Recall** returns the enclosure with
+   everything in it. Stacks from different sources and enclosures add up on the same box,
+   so moving a box between enclosures is a strategy.
+
+**Ideas for later:**
+
+- Sources that decay, or that need power: alpha / Pu-238 RTGs are the natural power source.
+- Ultraviolet (lithography → chips), radio, beta and neutron sources once there are items
+  for them. Graphite moderating neutrons in the carbon enclosure is a natural fit.
+- Gamma's downside: a chance to destroy contents, or to need shielding around the enclosure
+  (lead or concrete blocks in neighbouring cells, which uses the 3D grid).
+- Enclosure upgrades, and multi-cell enclosures.
 
 ## Radiation catalogue (data in `Content/Data/radiation.json`)
 

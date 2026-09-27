@@ -20,7 +20,7 @@ class LOOTBOXRECURSION_API FLRSimulation
 {
 public:
 	static constexpr int32 PlayerInventorySlots = 50; // Rails: User::BASE_INVENTORY_SLOTS
-	static constexpr int32 SaveVersion = 2; // 2: 3D grid cells, wood -> carbon
+	static constexpr int32 SaveVersion = 3; // 2: 3D grid, wood -> carbon. 3: enclosure contents
 
 	DECLARE_MULTICAST_DELEGATE(FOnChanged);
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnActionCompleted, const FLRActionResult& /*Result*/);
@@ -106,6 +106,14 @@ private:
 	FLRActionResult ExecuteDeploy(const FLRActionRequest& Request);
 	FLRActionResult ExecuteRecall(const FLRActionRequest& Request);
 	FLRActionResult ExecuteSort();
+	FLRActionResult ExecuteLoad(const FLRActionRequest& Request);
+	FLRActionResult ExecuteUnload(const FLRActionRequest& Request);
+	FName ValidateLoad(const FLRActionRequest& Request) const;
+
+	/** Irradiation: advance every loaded enclosure and apply exposures that completed. */
+	void AdvanceIrradiation(double DeltaSeconds);
+	/** Apply one exposure of Radiation to Box; returns a log message. */
+	FString ApplyExposure(FLRLootBoxInstance& Box, const FLRRadiationDef& Radiation, const FLRItemDef& EnclosureDef);
 
 	/** Cheap pre-checks at request time so impossible requests don't burn a cooldown. */
 	FName ValidateRequest(const FLRActionRequest& Request) const;
@@ -133,6 +141,10 @@ private:
 public:
 	/** "(x, y, z)" */
 	static FString DescribeCell(const FIntVector& Cell);
+	/** Human-readable effect, e.g. "Carbon amounts x1.25". */
+	static FString DescribeModifier(const FLRLootModifier& Modifier, const FLRGameData& InData);
+	/** A box in an enclosure stops gaining stacks once revealed or at the enclosure's cap. */
+	static bool IsExposureComplete(const FLRLootBoxInstance& Box, const FLRItemDef& EnclosureDef);
 
 private:
 	static TArray<FLRItemAmount> MergeAmounts(const TArray<FLRItemAmount>& Amounts);

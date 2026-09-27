@@ -25,10 +25,21 @@ namespace LRNames
 	inline const FName Recall(TEXT("recall"));
 	inline const FName SortInventory(TEXT("sort_inventory"));
 
+	inline const FName Load(TEXT("load"));
+	inline const FName Unload(TEXT("unload"));
+
 	// Item categories (items.json "category")
 	inline const FName CategoryMaterial(TEXT("material"));
 	inline const FName CategoryLootBox(TEXT("lootbox"));
 	inline const FName CategoryPlaceable(TEXT("placeable"));
+	inline const FName CategorySource(TEXT("source"));
+
+	// Loot modifier kinds (see FLRLootModifier)
+	inline const FName ModifierExtraRolls(TEXT("extra_rolls"));
+	inline const FName ModifierItemWeightMult(TEXT("item_weight_mult"));
+	inline const FName ModifierItemCountMult(TEXT("item_count_mult"));
+	inline const FName ModifierAddEntry(TEXT("add_entry"));
+	inline const FName ModifierReveal(TEXT("reveal"));
 
 	// Requirement checks
 	inline const FName CheckInventory(TEXT("inventory"));
@@ -88,8 +99,26 @@ struct LOOTBOXRECURSION_API FLRItemDef
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FString Color;
 
+	/** Radiation sources: which radiation (radiation.json id) this item emits. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FName Radiation;
+
+	/** Irradiation enclosures: highest radiation tier the enclosure can contain. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	int32 MaxRadiationTier = 0;
+
+	/** Irradiation enclosures: most modifier stacks a loot box can pick up inside it. 0 = not an enclosure. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	int32 MaxExposureStacks = 0;
+
+	/** Irradiation enclosures: seconds of exposure per modifier stack. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float ExposureSeconds = 10.f;
+
 	bool IsLootBox() const { return !LootTable.IsNone(); }
 	bool IsPlaceable() const { return Category == LRNames::CategoryPlaceable; }
+	bool IsSource() const { return !Radiation.IsNone(); }
+	bool IsEnclosure() const { return IsPlaceable() && MaxExposureStacks > 0; }
 	bool IsUnique() const { return StackSize <= 1; }
 	FLinearColor GetLinearColor() const;
 };
@@ -219,7 +248,42 @@ struct LOOTBOXRECURSION_API FLRActionDef
 	TArray<FLRRequirement> RevealRequirements;
 };
 
-/** One kind of radiation from the design notes. Data only for now. */
+/**
+ * Alters a loot table before it is rolled. Rails: LootBoxModifier (which only had the
+ * no-op base class). Radiation effects (radiation.json "effect") are modifiers, added to a
+ * loot box each time an irradiation enclosure completes an exposure.
+ *
+ * Kind:
+ *   extra_rolls      - add Value to rollsMin and rollsMax
+ *   item_weight_mult - multiply the weight of Item's entries by Value
+ *   item_count_mult  - multiply minCount/maxCount of Item's entries by Value
+ *   add_entry        - add Item to the table with weight Value and count 1 (or boost its weight)
+ *   reveal           - no table change; the box's contents are rolled now and locked (X-rays)
+ */
+USTRUCT(BlueprintType)
+struct LOOTBOXRECURSION_API FLRLootModifier
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LR")
+	FName Kind;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LR")
+	FName Item;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LR")
+	float Value = 0.f;
+
+	/** Where it came from, for tooltips (e.g. "gamma_rays"). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LR")
+	FName Source;
+
+	bool IsNone() const { return Kind.IsNone(); }
+	static bool IsValidKind(FName InKind);
+	static bool KindNeedsItem(FName InKind);
+};
+
+/** One kind of radiation from the design notes, and what it does to a loot box. */
 USTRUCT(BlueprintType)
 struct LOOTBOXRECURSION_API FLRRadiationDef
 {
@@ -246,6 +310,16 @@ struct LOOTBOXRECURSION_API FLRRadiationDef
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FString Notes;
+
+	/** Hex colour for sources and effects in the world. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FString Color;
+
+	/** What one exposure stack does to a loot box. Kind None = no effect yet. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FLRLootModifier Effect;
+
+	FLinearColor GetLinearColor() const;
 };
 
 /**
@@ -286,6 +360,7 @@ struct LOOTBOXRECURSION_API FLRGameData
 	const FLRLootTableDef* FindLootTable(FName Id) const { return LootTables.Find(Id); }
 	const FLRRecipeDef* FindRecipe(FName Id) const;
 	const FLRActionDef* FindAction(FName Name) const;
+	const FLRRadiationDef* FindRadiation(FName Id) const;
 
 	/** Stack size for an item (1 if unknown, so unknown items never merge). */
 	int32 GetStackSize(FName Item) const;

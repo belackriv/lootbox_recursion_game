@@ -1,5 +1,5 @@
 {
-	"_comment": "Item definitions. Ported from the Rails InventoryItem STI subclasses (wood became carbon). category: material | lootbox | placeable. Items with a lootTable can be opened with the Use action. Items with stackSize 1 get a unique instance id.",
+	"_comment": "Item definitions. Ported from the Rails InventoryItem STI subclasses (wood became carbon). category: material | lootbox | placeable | source. Items with a lootTable can be opened with the Use action. Items with stackSize 1 get a unique instance id. Enclosures (placeable with maxExposureStacks > 0) hold one loot box and one radiation source; sources name a radiation id from radiation.json.",
 	"items": [
 		{
 			"id": "carbon",
@@ -33,19 +33,75 @@
 			"id": "carbon_irradiation_enclosure",
 			"displayName": "Carbon Irradiation Enclosure",
 			"abbrev": "CIE",
-			"tooltip": "A graphite-lined radiation chamber. Graphite moderates neutrons. Deploy it into the grid.",
+			"tooltip": "A light, graphite-lined radiation chamber. Contains radiation up to tier 4 (microwaves). Holds one loot box and one source.",
 			"category": "placeable",
 			"stackSize": 1,
-			"color": "#4F8FBF"
+			"color": "#4F8FBF",
+			"maxRadiationTier": 4,
+			"maxExposureStacks": 3,
+			"exposureSeconds": 10
 		},
 		{
 			"id": "iron_irradiation_enclosure",
 			"displayName": "Iron Irradiation Enclosure",
 			"abbrev": "FIE",
-			"tooltip": "A steel-plated radiation chamber. Deploy it into the grid.",
+			"tooltip": "A heavy steel-plated radiation chamber. Contains any radiation up to tier 7 (gamma). Holds one loot box and one source.",
 			"category": "placeable",
 			"stackSize": 1,
-			"color": "#BF6A4A"
+			"color": "#BF6A4A",
+			"maxRadiationTier": 7,
+			"maxExposureStacks": 5,
+			"exposureSeconds": 12
+		},
+		{
+			"id": "grow_lamp",
+			"displayName": "Grow Lamp",
+			"abbrev": "GL",
+			"tooltip": "A broad-spectrum lamp. Visible light drives photosynthesis: loot boxes yield more carbon.",
+			"category": "source",
+			"stackSize": 1,
+			"radiation": "visible_light",
+			"color": "#F2E6A0"
+		},
+		{
+			"id": "infrared_emitter",
+			"displayName": "Infrared Emitter",
+			"abbrev": "IR",
+			"tooltip": "Heats and cures what it shines on: loot boxes get extra rolls.",
+			"category": "source",
+			"stackSize": 1,
+			"radiation": "infrared",
+			"color": "#E0503A"
+		},
+		{
+			"id": "microwave_emitter",
+			"displayName": "Microwave Emitter",
+			"abbrev": "MW",
+			"tooltip": "Shakes ore loose: iron becomes more likely in loot boxes.",
+			"category": "source",
+			"stackSize": 1,
+			"radiation": "microwaves",
+			"color": "#4FC3A1"
+		},
+		{
+			"id": "xray_tube",
+			"displayName": "X-Ray Tube",
+			"abbrev": "XR",
+			"tooltip": "Inspection: reveals a loot box's contents and locks them in. Nothing changes the box after that.",
+			"category": "source",
+			"stackSize": 1,
+			"radiation": "x_rays",
+			"color": "#7FD4FF"
+		},
+		{
+			"id": "gamma_source",
+			"displayName": "Gamma Source",
+			"abbrev": "GS",
+			"tooltip": "Mutation: loot boxes may contain loot boxes. Needs an iron enclosure.",
+			"category": "source",
+			"stackSize": 1,
+			"radiation": "gamma_rays",
+			"color": "#6CFF4F"
 		}
 	]
 }

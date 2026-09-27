@@ -18,10 +18,14 @@ namespace
 	const FName ReasonNoPlaceable(TEXT("no_placeable_item"));
 	const FName ReasonNothingPlaced(TEXT("no_placed_entity"));
 	const FName ReasonAlreadySorted(TEXT("already_sorted"));
+	const FName ReasonNoEnclosure(TEXT("no_enclosure"));
+	const FName ReasonNothingToLoad(TEXT("nothing_to_load"));
+	const FName ReasonChamberFull(TEXT("chamber_full"));
+	const FName ReasonSourceFull(TEXT("source_full"));
+	const FName ReasonTooStrong(TEXT("radiation_too_strong"));
+	const FName ReasonEnclosureEmpty(TEXT("enclosure_empty"));
 
-	const FName ModifierExtraRolls(TEXT("extra_rolls"));
-	const FName ModifierItemWeightMult(TEXT("item_weight_mult"));
-	const FName ModifierItemCountMult(TEXT("item_count_mult"));
+	const FName IrradiateEvent(TEXT("irradiate"));
 
 	FString DescribeReason(FName Reason)
 	{
@@ -37,6 +41,12 @@ namespace
 		if (Reason == ReasonNothingPlaced) { return TEXT("nothing deployed in that cell"); }
 		if (Reason == ReasonAlreadySorted) { return TEXT("already sorted"); }
 		if (Reason == ReasonUnknownRecipe) { return TEXT("pick something to craft"); }
+		if (Reason == ReasonNoEnclosure) { return TEXT("select a cell with an irradiation enclosure"); }
+		if (Reason == ReasonNothingToLoad) { return TEXT("select a loot box or radiation source in the inventory"); }
+		if (Reason == ReasonChamberFull) { return TEXT("the enclosure already holds a loot box"); }
+		if (Reason == ReasonSourceFull) { return TEXT("the enclosure already holds a source"); }
+		if (Reason == ReasonTooStrong) { return TEXT("this enclosure can't contain radiation that strong"); }
+		if (Reason == ReasonEnclosureEmpty) { return TEXT("the enclosure is empty"); }
 		return Reason.ToString();
 	}
 }
@@ -146,6 +156,8 @@ bool FLRSimulation::Load(const FLRSaveData& SaveData)
 	for (const TPair<FIntVector, FLRPlacedEntity>& Pair : Placed)
 	{
 		NextInstanceId = FMath::Max(NextInstanceId, Pair.Value.InstanceId + 1);
+		NextInstanceId = FMath::Max(NextInstanceId, Pair.Value.Chamber.InstanceId + 1);
+		NextInstanceId = FMath::Max(NextInstanceId, Pair.Value.Source.InstanceId + 1);
 	}
 
 	OnInventoryChanged.Broadcast();
@@ -188,6 +200,86 @@ void FLRSimulation::Advance(double DeltaSeconds)
 	{
 		Complete(Execute(Request));
 	}
+
+	AdvanceIrradiation(DeltaSeconds);
+}
+
+void FLRSimulation::AdvanceIrradiation(double DeltaSeconds)
+{
+	TArray<FString> Messages;
+	for (TPair<FIntVector, FLRPlacedEntity>& Pair : Placed)
+	{
+		FLRPlacedEntity& Entity = Pair.Value;
+		const FLRItemDef* EnclosureDef = Data.FindItem(Entity.Item);
+		if (!EnclosureDef || !EnclosureDef->IsEnclosure() || Entity.Chamber.IsEmpty() || Entity.Source.IsEmpty())
+		{
+			continue;
+		}
+		FLRLootBoxInstance* Box = LootBoxes.Find(Entity.Chamber.InstanceId);
+		const FLRItemDef* SourceDef = Data.FindItem(Entity.Source.Item);
+		const FLRRadiationDef* Radiation = SourceDef ? Data.FindRadiation(SourceDef->Radiation) : nullptr;
+		if (!Box || !Radiation || Radiation->Effect.IsNone() || IsExposureComplete(*Box, *EnclosureDef))
+		{
+			Entity.ExposureProgress = 0.0;
+			continue;
+		}
+
+		Entity.ExposureProgress += DeltaSeconds;
+		const double Interval = FMath::Max(0.1, static_cast<double>(EnclosureDef->ExposureSeconds));
+		while (Entity.ExposureProgress >= Interval && !IsExposureComplete(*Box, *EnclosureDef))
+		{
+			Entity.ExposureProgress -= Interval;
+			Messages.Add(FString::Printf(TEXT("%s at %s: %s"),
+				*Data.GetDisplayName(Entity.Chamber.Item), *DescribeCell(Entity.Cell), *ApplyExposure(*Box, *Radiation, *EnclosureDef)));
+		}
+		if (IsExposureComplete(*Box, *EnclosureDef))
+		{
+			Entity.ExposureProgress = 0.0;
+		}
+	}
+
+	if (Messages.IsEmpty())
+	{
+		return;
+	}
+	OnInventoryChanged.Broadcast();
+	OnWorldChanged.Broadcast();
+	for (const FString& Message : Messages)
+	{
+		FLRActionResult Result;
+		Result.Action = IrradiateEvent;
+		Result.bSuccess = true;
+		Result.Message = Message;
+		OnActionCompleted.Broadcast(Result);
+	}
+}
+
+bool FLRSimulation::IsExposureComplete(const FLRLootBoxInstance& Box, const FLRItemDef& EnclosureDef)
+{
+	return Box.bRevealed || Box.Modifiers.Num() >= EnclosureDef.MaxExposureStacks;
+}
+
+FString FLRSimulation::ApplyExposure(FLRLootBoxInstance& Box, const FLRRadiationDef& Radiation, const FLRItemDef& EnclosureDef)
+{
+	if (Radiation.Effect.Kind == LRNames::ModifierReveal)
+	{
+		// X-ray inspection: roll the (modified) table now and lock the result in.
+		const FLRLootTableDef* Table = Data.FindLootTable(Box.LootTable);
+		if (!Table)
+		{
+			Table = Data.FindLootTable(LRNames::DefaultLootTable);
+		}
+		Box.RevealedContents = Table ? MergeAmounts(RollLootTable(ApplyModifiers(*Table, Box.Modifiers))) : TArray<FLRItemAmount>();
+		Box.bRevealed = true;
+		return FString::Printf(TEXT("%s revealed the contents: %s (locked)"), *Radiation.Name,
+			Box.RevealedContents.IsEmpty() ? TEXT("nothing!") : *DescribeAmounts(Box.RevealedContents));
+	}
+
+	FLRLootModifier Modifier = Radiation.Effect;
+	Modifier.Source = Radiation.Id;
+	Box.Modifiers.Add(Modifier);
+	return FString::Printf(TEXT("absorbed %s, %s (%d/%d)"), *Radiation.Name, *DescribeModifier(Modifier, Data),
+		Box.Modifiers.Num(), EnclosureDef.MaxExposureStacks);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -440,6 +532,39 @@ FName FLRSimulation::ValidateRequest(const FLRActionRequest& Request) const
 		if (!Request.bHasCell) { return ReasonNoCell; }
 		if (!Placed.Contains(Request.Cell)) { return ReasonNothingPlaced; }
 	}
+	else if (Request.Action == LRNames::Load)
+	{
+		return ValidateLoad(Request);
+	}
+	else if (Request.Action == LRNames::Unload)
+	{
+		if (!Request.bHasCell) { return ReasonNoCell; }
+		const FLRPlacedEntity* Entity = Placed.Find(Request.Cell);
+		const FLRItemDef* Def = Entity ? Data.FindItem(Entity->Item) : nullptr;
+		if (!Def || !Def->IsEnclosure()) { return ReasonNoEnclosure; }
+		if (Entity->Chamber.IsEmpty() && Entity->Source.IsEmpty()) { return ReasonEnclosureEmpty; }
+	}
+	return NAME_None;
+}
+
+FName FLRSimulation::ValidateLoad(const FLRActionRequest& Request) const
+{
+	if (!Request.bHasCell) { return ReasonNoCell; }
+	const FLRPlacedEntity* Entity = Placed.Find(Request.Cell);
+	const FLRItemDef* EnclosureDef = Entity ? Data.FindItem(Entity->Item) : nullptr;
+	if (!EnclosureDef || !EnclosureDef->IsEnclosure()) { return ReasonNoEnclosure; }
+
+	const FLRInventorySlot* Slot = Inventory.IsValidIndex(Request.Slot) ? &Inventory[Request.Slot] : nullptr;
+	const FLRItemDef* ItemDef = (Slot && !Slot->IsEmpty()) ? Data.FindItem(Slot->Item) : nullptr;
+	if (!ItemDef || (!ItemDef->IsLootBox() && !ItemDef->IsSource())) { return ReasonNothingToLoad; }
+
+	if (ItemDef->IsLootBox())
+	{
+		return Entity->Chamber.IsEmpty() ? NAME_None : ReasonChamberFull;
+	}
+	if (!Entity->Source.IsEmpty()) { return ReasonSourceFull; }
+	const FLRRadiationDef* Radiation = Data.FindRadiation(ItemDef->Radiation);
+	if (!Radiation || Radiation->Tier > EnclosureDef->MaxRadiationTier) { return ReasonTooStrong; }
 	return NAME_None;
 }
 
@@ -455,6 +580,8 @@ FLRActionResult FLRSimulation::Execute(const FLRActionRequest& Request)
 	if (Request.Action == LRNames::Use)           { return ExecuteUse(Request); }
 	if (Request.Action == LRNames::Deploy)        { return ExecuteDeploy(Request); }
 	if (Request.Action == LRNames::Recall)        { return ExecuteRecall(Request); }
+	if (Request.Action == LRNames::Load)          { return ExecuteLoad(Request); }
+	if (Request.Action == LRNames::Unload)        { return ExecuteUnload(Request); }
 	if (Request.Action == LRNames::SortInventory) { return ExecuteSort(); }
 	if (!Def->LootTable.IsNone())                 { return ExecuteLootAction(*Def); }
 
@@ -568,7 +695,10 @@ FLRActionResult FLRSimulation::ExecuteUse(const FLRActionRequest& Request)
 		return MakeFailure(Request.Action, ReasonNoLootTable, TEXT("Can't open: loot table missing"));
 	}
 
-	const TArray<FLRItemAmount> Rolled = MergeAmounts(RollLootTable(ApplyModifiers(*Table, Instance.Modifiers)));
+	// X-rayed boxes open to exactly what was revealed.
+	const TArray<FLRItemAmount> Rolled = Instance.bRevealed
+		? Instance.RevealedContents
+		: MergeAmounts(RollLootTable(ApplyModifiers(*Table, Instance.Modifiers)));
 
 	FTransaction Txn(*this);
 
@@ -646,17 +776,98 @@ FLRActionResult FLRSimulation::ExecuteRecall(const FLRActionRequest& Request)
 	}
 	const FLRPlacedEntity Entity = *Found;
 
-	if (!AddUnique(Entity.Item, Entity.InstanceId))
+	// The entity comes back with whatever it was holding, all or nothing.
+	FLRInventorySlot EntityItem;
+	EntityItem.Item = Entity.Item;
+	EntityItem.Count = 1;
+	EntityItem.InstanceId = Entity.InstanceId;
+
+	FTransaction Txn(*this);
+	FLRActionResult Result;
+	for (const FLRInventorySlot& Returned : { EntityItem, Entity.Chamber, Entity.Source })
 	{
-		return MakeFailure(Request.Action, ReasonNoInventorySpace, TEXT("Can't recall: inventory is full"));
+		if (Returned.IsEmpty())
+		{
+			continue;
+		}
+		if (!AddUnique(Returned.Item, Returned.InstanceId))
+		{
+			return MakeFailure(Request.Action, ReasonNoInventorySpace, TEXT("Can't recall: inventory is full"));
+		}
+		Result.Gained.Emplace(Returned.Item, 1);
 	}
 	Placed.Remove(Request.Cell);
+	Txn.Commit();
+
+	Result.Action = Request.Action;
+	Result.bSuccess = true;
+	Result.Message = FString::Printf(TEXT("Recalled %s from %s"), *Data.GetDisplayName(Entity.Item), *DescribeCell(Entity.Cell));
+	return Result;
+}
+
+FLRActionResult FLRSimulation::ExecuteLoad(const FLRActionRequest& Request)
+{
+	const FName Invalid = ValidateLoad(Request);
+	if (!Invalid.IsNone())
+	{
+		return MakeFailure(Request.Action, Invalid, FString::Printf(TEXT("Can't load: %s"), *DescribeReason(Invalid)));
+	}
+
+	FLRPlacedEntity& Entity = Placed.FindChecked(Request.Cell);
+	const FLRInventorySlot Slot = Inventory[Request.Slot];
+	const FLRItemDef* ItemDef = Data.FindItem(Slot.Item);
+	if (ItemDef && ItemDef->IsLootBox())
+	{
+		Entity.Chamber = Slot;
+		Entity.ExposureProgress = 0.0;
+	}
+	else
+	{
+		Entity.Source = Slot;
+	}
+	Inventory[Request.Slot].Clear();
 
 	FLRActionResult Result;
 	Result.Action = Request.Action;
 	Result.bSuccess = true;
-	Result.Gained.Emplace(Entity.Item, 1);
-	Result.Message = FString::Printf(TEXT("Recalled %s from %s"), *Data.GetDisplayName(Entity.Item), *DescribeCell(Entity.Cell));
+	Result.Spent.Emplace(Slot.Item, 1);
+	Result.Message = FString::Printf(TEXT("Loaded %s into the %s at %s"), *Data.GetDisplayName(Slot.Item),
+		*Data.GetDisplayName(Entity.Item), *DescribeCell(Entity.Cell));
+	return Result;
+}
+
+FLRActionResult FLRSimulation::ExecuteUnload(const FLRActionRequest& Request)
+{
+	const FName Invalid = ValidateRequest(Request);
+	if (!Invalid.IsNone())
+	{
+		return MakeFailure(Request.Action, Invalid, FString::Printf(TEXT("Can't unload: %s"), *DescribeReason(Invalid)));
+	}
+
+	FLRPlacedEntity& Entity = Placed.FindChecked(Request.Cell);
+	FTransaction Txn(*this);
+	FLRActionResult Result;
+	for (const FLRInventorySlot& Returned : { Entity.Chamber, Entity.Source })
+	{
+		if (Returned.IsEmpty())
+		{
+			continue;
+		}
+		if (!AddUnique(Returned.Item, Returned.InstanceId))
+		{
+			return MakeFailure(Request.Action, ReasonNoInventorySpace, TEXT("Can't unload: inventory is full"));
+		}
+		Result.Gained.Emplace(Returned.Item, 1);
+	}
+	// Entity still points into the live Placed map: AddUnique only touches the inventory.
+	Entity.Chamber.Clear();
+	Entity.Source.Clear();
+	Entity.ExposureProgress = 0.0;
+	Txn.Commit();
+
+	Result.Action = Request.Action;
+	Result.bSuccess = true;
+	Result.Message = FString::Printf(TEXT("Unloaded the %s at %s"), *Data.GetDisplayName(Entity.Item), *DescribeCell(Entity.Cell));
 	return Result;
 }
 
@@ -761,13 +972,13 @@ FLRLootTableDef FLRSimulation::ApplyModifiers(const FLRLootTableDef& Table, cons
 	FLRLootTableDef Out = Table;
 	for (const FLRLootModifier& Modifier : Modifiers)
 	{
-		if (Modifier.Kind == ModifierExtraRolls)
+		if (Modifier.Kind == LRNames::ModifierExtraRolls)
 		{
 			const int32 Extra = FMath::RoundToInt(Modifier.Value);
 			Out.RollsMin = FMath::Max(0, Out.RollsMin + Extra);
 			Out.RollsMax = FMath::Max(Out.RollsMin, Out.RollsMax + Extra);
 		}
-		else if (Modifier.Kind == ModifierItemWeightMult)
+		else if (Modifier.Kind == LRNames::ModifierItemWeightMult)
 		{
 			for (FLRLootEntry& Entry : Out.Entries)
 			{
@@ -777,7 +988,25 @@ FLRLootTableDef FLRSimulation::ApplyModifiers(const FLRLootTableDef& Table, cons
 				}
 			}
 		}
-		else if (Modifier.Kind == ModifierItemCountMult)
+		else if (Modifier.Kind == LRNames::ModifierAddEntry)
+		{
+			const int32 Weight = FMath::Max(1, FMath::RoundToInt(Modifier.Value));
+			if (FLRLootEntry* Existing = Out.Entries.FindByPredicate([&Modifier](const FLRLootEntry& E) { return E.Item == Modifier.Item; }))
+			{
+				Existing->Weight += Weight;
+			}
+			else
+			{
+				FLRLootEntry Added;
+				Added.Item = Modifier.Item;
+				Added.Weight = Weight;
+				Added.MinCount = 1;
+				Added.MaxCount = 1;
+				Out.Entries.Add(Added);
+			}
+		}
+		// ModifierReveal changes nothing here: it locks contents instead (see ApplyExposure).
+		else if (Modifier.Kind == LRNames::ModifierItemCountMult)
 		{
 			for (FLRLootEntry& Entry : Out.Entries)
 			{
@@ -1054,6 +1283,17 @@ TArray<FLRItemAmount> FLRSimulation::MergeAmounts(const TArray<FLRItemAmount>& A
 		}
 	}
 	return Out;
+}
+
+FString FLRSimulation::DescribeModifier(const FLRLootModifier& Modifier, const FLRGameData& InData)
+{
+	const FString ItemName = InData.GetDisplayName(Modifier.Item);
+	if (Modifier.Kind == LRNames::ModifierExtraRolls)     { return FString::Printf(TEXT("%+d roll(s)"), FMath::RoundToInt(Modifier.Value)); }
+	if (Modifier.Kind == LRNames::ModifierItemWeightMult) { return FString::Printf(TEXT("%s x%.2f as likely"), *ItemName, Modifier.Value); }
+	if (Modifier.Kind == LRNames::ModifierItemCountMult)  { return FString::Printf(TEXT("%s amounts x%.2f"), *ItemName, Modifier.Value); }
+	if (Modifier.Kind == LRNames::ModifierAddEntry)       { return FString::Printf(TEXT("may contain %s"), *ItemName); }
+	if (Modifier.Kind == LRNames::ModifierReveal)         { return TEXT("reveals and locks the contents"); }
+	return Modifier.Kind.ToString();
 }
 
 FString FLRSimulation::DescribeCell(const FIntVector& Cell)

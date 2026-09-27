@@ -483,6 +483,79 @@ TSharedRef<SWidget> SLRGameHud::BuildWorldPanel()
 		]
 	];
 
+	// Irradiation: shown only when the selected cell holds an enclosure.
+	Box->AddSlot()
+	.AutoHeight()
+	.Padding(FMargin(0.f, 0.f, 0.f, 6.f))
+	[
+		SNew(SBorder)
+		.BorderImage(&Style.WhiteBrush)
+		.BorderBackgroundColor(Style.PanelInner)
+		.Padding(FMargin(6.f))
+		.Visibility_Lambda([this]() { return GetSelectedEnclosure() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			[
+				SNew(STextBlock)
+				.Font(Style.SmallFont)
+				.ColorAndOpacity(Style.Text)
+				.AutoWrapText(true)
+				.Text_Lambda([this]()
+				{
+					const FLRPlacedEntity* Enclosure = GetSelectedEnclosure();
+					return Enclosure ? AsText(DescribeEnclosure(*Enclosure)) : FText::GetEmpty();
+				})
+			]
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(FMargin(0.f, 4.f))
+			[
+				SNew(SBox)
+				.HeightOverride(4.f)
+				[
+					SNew(SProgressBar)
+					.Style(&Style.ProgressStyle)
+					.FillColorAndOpacity(Style.Orange)
+					.Percent_Lambda([this]() -> TOptional<float> { return GetSelectedExposureFraction(); })
+				]
+			]
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.f)
+				.Padding(FMargin(0.f, 0.f, 3.f, 0.f))
+				[
+					MakeActionButton(LRNames::Load,
+						[this]()
+						{
+							if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->RequestActionWithSelection(LRNames::Load); }
+						},
+						// A loot box or a radiation source must be selected in the inventory.
+						[this]() { return IsSelectedSlotLoadable(); })
+				]
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.f)
+				.Padding(FMargin(3.f, 0.f, 0.f, 0.f))
+				[
+					MakeActionButton(LRNames::Unload,
+						[this]()
+						{
+							if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->RequestActionWithSelection(LRNames::Unload); }
+						},
+						[this]()
+						{
+							const FLRPlacedEntity* Enclosure = GetSelectedEnclosure();
+							return Enclosure && (!Enclosure->Chamber.IsEmpty() || !Enclosure->Source.IsEmpty());
+						})
+				]
+			]
+		]
+	];
+
 	// Everything deployed, on every layer. Rebuilt when the world changes (RebuildDeployedList).
 	Box->AddSlot()
 	.AutoHeight()
@@ -911,6 +984,91 @@ const FLRInventorySlot* SLRGameHud::GetSlot(int32 SlotIndex) const
 	return (Sim && Sim->GetInventory().IsValidIndex(SlotIndex)) ? &Sim->GetInventory()[SlotIndex] : nullptr;
 }
 
+bool SLRGameHud::IsSelectedSlotLoadable() const
+{
+	const ULRGameSubsystem* Sub = GetSubsystem();
+	const FLRSimulation* Sim = GetSimulation();
+	const FLRInventorySlot* Slot = Sub ? GetSlot(Sub->GetSelectedSlot()) : nullptr;
+	const FLRItemDef* Def = (Slot && !Slot->IsEmpty() && Sim) ? Sim->GetData().FindItem(Slot->Item) : nullptr;
+	return Def && (Def->IsLootBox() || Def->IsSource());
+}
+
+const FLRPlacedEntity* SLRGameHud::GetSelectedEnclosure() const
+{
+	const ULRGameSubsystem* Sub = GetSubsystem();
+	const FLRSimulation* Sim = GetSimulation();
+	FIntVector Cell;
+	if (!Sub || !Sim || !Sub->GetSelectedCell(Cell))
+	{
+		return nullptr;
+	}
+	const FLRPlacedEntity* Entity = Sim->FindPlaced(Cell);
+	const FLRItemDef* Def = Entity ? Sim->GetData().FindItem(Entity->Item) : nullptr;
+	return (Def && Def->IsEnclosure()) ? Entity : nullptr;
+}
+
+TOptional<float> SLRGameHud::GetSelectedExposureFraction() const
+{
+	const FLRSimulation* Sim = GetSimulation();
+	const FLRPlacedEntity* Enclosure = GetSelectedEnclosure();
+	const FLRItemDef* Def = (Sim && Enclosure) ? Sim->GetData().FindItem(Enclosure->Item) : nullptr;
+	if (!Def || Def->ExposureSeconds <= 0.f)
+	{
+		return 0.f;
+	}
+	return FMath::Clamp(static_cast<float>(Enclosure->ExposureProgress / Def->ExposureSeconds), 0.f, 1.f);
+}
+
+FString SLRGameHud::DescribeEnclosure(const FLRPlacedEntity& Enclosure) const
+{
+	const FLRSimulation* Sim = GetSimulation();
+	if (!Sim)
+	{
+		return FString();
+	}
+	const FLRGameData& Data = Sim->GetData();
+	const FLRItemDef* Def = Data.FindItem(Enclosure.Item);
+	FString Text = FString::Printf(TEXT("%s: tier <= %d, up to %d stacks, %.0fs per exposure"),
+		*Data.GetDisplayName(Enclosure.Item), Def ? Def->MaxRadiationTier : 0, Def ? Def->MaxExposureStacks : 0, Def ? Def->ExposureSeconds : 0.f);
+
+	const FLRLootBoxInstance* Box = Enclosure.Chamber.IsEmpty() ? nullptr : Sim->FindLootBox(Enclosure.Chamber.InstanceId);
+	if (Enclosure.Chamber.IsEmpty())
+	{
+		Text += TEXT("\nChamber: empty");
+	}
+	else if (Box && Box->bRevealed)
+	{
+		Text += FString::Printf(TEXT("\nChamber: %s, contents revealed (locked)"), *Data.GetDisplayName(Enclosure.Chamber.Item));
+	}
+	else
+	{
+		Text += FString::Printf(TEXT("\nChamber: %s, %d/%d stacks"), *Data.GetDisplayName(Enclosure.Chamber.Item),
+			Box ? Box->Modifiers.Num() : 0, Def ? Def->MaxExposureStacks : 0);
+	}
+
+	if (Enclosure.Source.IsEmpty())
+	{
+		Text += TEXT("\nSource: empty");
+	}
+	else
+	{
+		const FLRItemDef* SourceDef = Data.FindItem(Enclosure.Source.Item);
+		const FLRRadiationDef* Radiation = SourceDef ? Data.FindRadiation(SourceDef->Radiation) : nullptr;
+		Text += FString::Printf(TEXT("\nSource: %s (%s, tier %d)"), *Data.GetDisplayName(Enclosure.Source.Item),
+			Radiation ? *Radiation->Name : TEXT("?"), Radiation ? Radiation->Tier : 0);
+	}
+
+	if (Box && Def && FLRSimulation::IsExposureComplete(*Box, *Def))
+	{
+		Text += TEXT("\nDone. Unload the box to open it.");
+	}
+	else if (Enclosure.Chamber.IsEmpty() || Enclosure.Source.IsEmpty())
+	{
+		Text += TEXT("\nIdle: needs a loot box and a source.");
+	}
+	return Text;
+}
+
 bool SLRGameHud::IsSelectedSlotUsable() const
 {
 	const ULRGameSubsystem* Sub = GetSubsystem();
@@ -1077,8 +1235,32 @@ FText SLRGameHud::GetHoverBody() const
 			{
 				for (const FLRLootModifier& Modifier : Box->Modifiers)
 				{
-					Body += FString::Printf(TEXT("\nModifier: %s %s x%.2f"), *Modifier.Kind.ToString(), *Modifier.Item.ToString(), Modifier.Value);
+					const FLRRadiationDef* From = Sim->GetData().FindRadiation(Modifier.Source);
+					Body += FString::Printf(TEXT("\nIrradiated: %s%s"), *FLRSimulation::DescribeModifier(Modifier, Sim->GetData()),
+						From ? *FString::Printf(TEXT(" (%s)"), *From->Name) : TEXT(""));
 				}
+				if (Box->bRevealed)
+				{
+					TArray<FString> Parts;
+					for (const FLRItemAmount& Amount : Box->RevealedContents)
+					{
+						Parts.Add(FString::Printf(TEXT("%d %s"), Amount.Count, *Sim->GetData().GetDisplayName(Amount.Item)));
+					}
+					Body += FString::Printf(TEXT("\nX-rayed contents: %s"), Parts.IsEmpty() ? TEXT("nothing") : *FString::Join(Parts, TEXT(", ")));
+				}
+			}
+			if (Def && Def->IsSource())
+			{
+				if (const FLRRadiationDef* Radiation = Sim->GetData().FindRadiation(Def->Radiation))
+				{
+					Body += FString::Printf(TEXT("\nRadiation: %s (tier %d, energy %d)\nEach exposure: %s"), *Radiation->Name,
+						Radiation->Tier, Radiation->Energy, *FLRSimulation::DescribeModifier(Radiation->Effect, Sim->GetData()));
+				}
+			}
+			if (Def && Def->IsEnclosure())
+			{
+				Body += FString::Printf(TEXT("\nContains radiation up to tier %d, adds up to %d stacks, one every %.0fs."),
+					Def->MaxRadiationTier, Def->MaxExposureStacks, Def->ExposureSeconds);
 			}
 			Body += TEXT("\n\nClick to select.");
 			return AsText(Body);
@@ -1095,6 +1277,10 @@ FText SLRGameHud::GetHoverBody() const
 		if (const FLRPlacedEntity* Entity = Sim->FindPlaced(Cell))
 		{
 			const FLRItemDef* Def = Sim->GetData().FindItem(Entity->Item);
+			if (Def && Def->IsEnclosure())
+			{
+				return AsText(FString::Printf(TEXT("%s\n\n%s"), Def ? *Def->Tooltip : TEXT(""), *DescribeEnclosure(*Entity)));
+			}
 			return AsText(FString::Printf(TEXT("%s\n%s\n\nDeployed at t=%.0fs. Select it, then Recall to pick it up."),
 				*Sim->GetData().GetDisplayName(Entity->Item), Def ? *Def->Tooltip : TEXT(""), Entity->PlacedAt));
 		}

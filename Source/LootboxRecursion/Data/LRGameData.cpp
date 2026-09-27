@@ -15,6 +15,24 @@ FLinearColor FLRItemDef::GetLinearColor() const
 	return FLinearColor(FColor::FromHex(Color));
 }
 
+FLinearColor FLRRadiationDef::GetLinearColor() const
+{
+	return Color.IsEmpty() ? FLinearColor::White : FLinearColor(FColor::FromHex(Color));
+}
+
+bool FLRLootModifier::IsValidKind(FName InKind)
+{
+	return InKind == LRNames::ModifierExtraRolls || InKind == LRNames::ModifierItemWeightMult
+		|| InKind == LRNames::ModifierItemCountMult || InKind == LRNames::ModifierAddEntry
+		|| InKind == LRNames::ModifierReveal;
+}
+
+bool FLRLootModifier::KindNeedsItem(FName InKind)
+{
+	return InKind == LRNames::ModifierItemWeightMult || InKind == LRNames::ModifierItemCountMult
+		|| InKind == LRNames::ModifierAddEntry;
+}
+
 bool FLRRequirement::EvaluateCondition(int32 Actual, FName InCondition, int32 Expected)
 {
 	if (InCondition == TEXT("gt"))  { return Actual > Expected; }
@@ -39,6 +57,11 @@ const FLRRecipeDef* FLRGameData::FindRecipe(FName Id) const
 const FLRActionDef* FLRGameData::FindAction(FName Name) const
 {
 	return Actions.FindByPredicate([Name](const FLRActionDef& Action) { return Action.Name == Name; });
+}
+
+const FLRRadiationDef* FLRGameData::FindRadiation(FName Id) const
+{
+	return Radiation.FindByPredicate([Id](const FLRRadiationDef& Def) { return Def.Id == Id; });
 }
 
 int32 FLRGameData::GetStackSize(FName Item) const
@@ -105,7 +128,7 @@ TArray<FString> FLRGameData::Validate() const
 			Errors.Add(FString::Printf(TEXT("%s: stackSize must be >= 1"), *Where));
 		}
 		if (Item.Category != LRNames::CategoryMaterial && Item.Category != LRNames::CategoryLootBox
-			&& Item.Category != LRNames::CategoryPlaceable)
+			&& Item.Category != LRNames::CategoryPlaceable && Item.Category != LRNames::CategorySource)
 		{
 			Errors.Add(FString::Printf(TEXT("%s: unknown category '%s'"), *Where, *Item.Category.ToString()));
 		}
@@ -117,9 +140,17 @@ TArray<FString> FLRGameData::Validate() const
 		{
 			Errors.Add(FString::Printf(TEXT("%s: lootbox items need a lootTable"), *Where));
 		}
-		if ((Item.IsPlaceable() || Item.IsLootBox()) && Item.StackSize != 1)
+		if ((Item.IsPlaceable() || Item.IsLootBox() || Item.IsSource()) && Item.StackSize != 1)
 		{
-			Errors.Add(FString::Printf(TEXT("%s: placeable and lootbox items must have stackSize 1"), *Where));
+			Errors.Add(FString::Printf(TEXT("%s: placeable, lootbox and source items must have stackSize 1"), *Where));
+		}
+		if (Item.Category == LRNames::CategorySource && !FindRadiation(Item.Radiation))
+		{
+			Errors.Add(FString::Printf(TEXT("%s: unknown radiation '%s'"), *Where, *Item.Radiation.ToString()));
+		}
+		if (Item.MaxExposureStacks < 0 || Item.MaxRadiationTier < 0 || (Item.MaxExposureStacks > 0 && Item.ExposureSeconds <= 0.f))
+		{
+			Errors.Add(FString::Printf(TEXT("%s: enclosure needs maxExposureStacks/maxRadiationTier >= 0 and exposureSeconds > 0"), *Where));
 		}
 	}
 
@@ -193,6 +224,32 @@ TArray<FString> FLRGameData::Validate() const
 			if (!Req.Item.IsNone())
 			{
 				CheckItemRef(Req.Item, Where + TEXT(" requirement"));
+			}
+		}
+	}
+
+	TSet<FName> RadiationIds;
+	for (const FLRRadiationDef& Def : Radiation)
+	{
+		const FString Where = FString::Printf(TEXT("radiation '%s'"), *Def.Id.ToString());
+		if (Def.Id.IsNone())
+		{
+			Errors.Add(TEXT("radiation entry with no id"));
+		}
+		else if (RadiationIds.Contains(Def.Id))
+		{
+			Errors.Add(FString::Printf(TEXT("%s: duplicate id"), *Where));
+		}
+		RadiationIds.Add(Def.Id);
+		if (!Def.Effect.IsNone())
+		{
+			if (!FLRLootModifier::IsValidKind(Def.Effect.Kind))
+			{
+				Errors.Add(FString::Printf(TEXT("%s: unknown effect kind '%s'"), *Where, *Def.Effect.Kind.ToString()));
+			}
+			if (FLRLootModifier::KindNeedsItem(Def.Effect.Kind))
+			{
+				CheckItemRef(Def.Effect.Item, Where + TEXT(" effect"));
 			}
 		}
 	}

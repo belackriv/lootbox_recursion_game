@@ -44,34 +44,6 @@ struct LOOTBOXRECURSION_API FLRInventorySlot
 	bool operator!=(const FLRInventorySlot& Other) const { return !(*this == Other); }
 };
 
-/**
- * Alters a loot table before it is rolled. Rails: LootBoxModifier (which only had the
- * no-op base class). Irradiating a loot box is the intended source of these - see docs/DESIGN.md.
- *
- * Kind:
- *   extra_rolls      - add Value to rollsMin and rollsMax
- *   item_weight_mult - multiply the weight of Item's entries by Value
- *   item_count_mult  - multiply minCount/maxCount of Item's entries by Value
- */
-USTRUCT(BlueprintType)
-struct LOOTBOXRECURSION_API FLRLootModifier
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LR")
-	FName Kind;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LR")
-	FName Item;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LR")
-	float Value = 0.f;
-
-	/** Where it came from, for tooltips (e.g. "gamma_rays"). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LR")
-	FName Source;
-};
-
 /** Rails: a LootBox row (+ its loot_box_modifiers). */
 USTRUCT(BlueprintType)
 struct LOOTBOXRECURSION_API FLRLootBoxInstance
@@ -86,6 +58,13 @@ struct LOOTBOXRECURSION_API FLRLootBoxInstance
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	TArray<FLRLootModifier> Modifiers;
+
+	/** Set by X-ray inspection: the contents were rolled early and are now fixed. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	bool bRevealed = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	TArray<FLRItemAmount> RevealedContents;
 };
 
 /** Rails: a PlaceableEntity row with placed_at / world_coordinate set (now a 3D grid cell). */
@@ -107,6 +86,18 @@ struct LOOTBOXRECURSION_API FLRPlacedEntity
 	/** Simulation time it was placed. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	double PlacedAt = 0.0;
+
+	/** Irradiation enclosures: the loot box being irradiated (empty if none). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FLRInventorySlot Chamber;
+
+	/** Irradiation enclosures: the radiation source (empty if none). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FLRInventorySlot Source;
+
+	/** Seconds of exposure accumulated toward the next modifier stack. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	double ExposureProgress = 0.0;
 };
 
 /**
