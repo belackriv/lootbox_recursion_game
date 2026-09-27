@@ -30,11 +30,14 @@ from the design notes.
 ### 1. Install the toolchain (one time)
 
 1. **Epic Games Launcher**, then Unreal Engine → Library → install **5.8** (5.7+ should also work).
-2. **Visual Studio 2022 or newer** (Community is fine; use whichever version Epic lists for 5.8). In the installer, select the
-   *Game development with C++* workload, and under it the *Unreal Engine installer*
-   component and a Windows 10/11 SDK. Epic's page lists the exact versions for your engine:
+2. **Microsoft's C++ compiler.** Unreal compiles with MSVC on Windows. Pick one:
+   - **Build Tools for Visual Studio** (free, compiler only, no IDE). This is enough if
+     you edit in Zed; see [Using Zed](#using-zed-instead-of-visual-studio).
+   - **Visual Studio Community**, if you want the full IDE and debugger.
+
+   Either way, select the *Desktop development with C++* workload plus a Windows 10/11 SDK,
+   and use the version Epic lists for your engine:
    [Setting up Visual Studio](https://dev.epicgames.com/documentation/en-us/unreal-engine/setting-up-visual-studio-development-environment-for-cplusplus-projects-in-unreal-engine).
-   JetBrains Rider is a great alternative and is free for non-commercial use.
 3. **Git LFS**: run `git lfs install` once. It's needed as soon as you commit maps or
    assets.
 
@@ -47,7 +50,9 @@ cd lootbox_recursion_game
 
 - **Easiest:** double-click `LootboxRecursion.uproject`. It will say the
   *LootboxRecursion module is missing* and ask to rebuild. Click **Yes**. If the build fails,
-  use the IDE route below to see the errors.
+  run `Tools\build.bat` (or use the IDE route) to see the errors.
+- **Zed / command line:** run `Tools\build.bat`, then `Tools\editor.bat`. See
+  [Using Zed](#using-zed-instead-of-visual-studio).
 - **IDE route:**
   1. Right-click `LootboxRecursion.uproject` → *Generate Visual Studio project files*.
   2. Open `LootboxRecursion.sln` and choose the **Development Editor / Win64** configuration.
@@ -74,6 +79,42 @@ In the editor, press **Play** (Alt+P).
 
 The game autosaves every 30s and on exit to `Saved/SaveGames/LootboxRecursion.sav`. Use
 `LRReset` to start over.
+
+---
+
+## Using Zed instead of Visual Studio
+
+You only need the compiler (Build Tools for Visual Studio), not the VS IDE.
+
+1. Build once. Either run the task **UE: Build** (Zed → `task: spawn`) or run
+   `Tools\build.bat`.
+2. Run **UE: Generate compile_commands.json**. It writes the file to the project root, and
+   Zed's clangd picks it up for completion, go-to-definition and errors. The first index of
+   Unreal's headers takes a while. Re-run it after adding new source files.
+3. In Unreal, open Editor Preferences → Source Code and set **Source Code Editor** to
+   *Null*, so the editor stops trying to launch Visual Studio.
+
+The Zed tasks (`.zed/tasks.json`) call the scripts in `Tools/`, which work from any terminal:
+
+| Task | Script | Does |
+|---|---|---|
+| UE: Build | `Tools\build.bat` | Compile the editor module |
+| UE: Generate compile_commands.json | `Tools\gen_compile_commands.bat` | clangd database |
+| UE: Open editor | `Tools\editor.bat` | Launch Unreal Editor with the project |
+| UE: Play standalone | `Tools\play.bat` | Run the game windowed, without the editor |
+| UE: Run automation tests | `Tools\test.bat` | Headless test run |
+| Data: Validate JSON | `Tools/validate_data.py` | Check `Content/Data` |
+
+If Unreal isn't installed at `C:\Program Files\Epic Games\UE_5.8`, set a `UE_ROOT`
+environment variable pointing at your install.
+
+**Iterating:** with the editor open, **Live Coding** (Ctrl+Alt+F11 in the editor)
+recompiles `.cpp` edits in place. After header changes, close the editor and run
+**UE: Build**.
+
+**Debugging:** Zed's debugger doesn't handle MSVC-built Windows binaries well yet. For
+stepping through C++, attach Visual Studio Community or Rider to `UnrealEditor.exe` when
+you need it. Most day-to-day debugging is `UE_LOG` plus the Output Log.
 
 ---
 
@@ -109,6 +150,7 @@ Source/LootboxRecursion/
   UI/                       Slate HUD and its style (the "Vue components")
   Tests/                    Automation tests (the "Minitest suite")
 Tools/validate_data.py      Validate the JSON without launching Unreal (also runs in CI)
+Tools/*.bat                 Build / editor / play / test / clangd helpers (used by .zed/tasks.json)
 docs/                       Porting notes, Unreal primer, design notes, roadmap
 ```
 

@@ -1,0 +1,56 @@
+[
+  {
+    "label": "UE: Build (Development Editor)",
+    "command": "cmd",
+    "args": ["/c", "Tools\\build.bat"],
+    "cwd": "${ZED_WORKTREE_ROOT}",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
+  {
+    "label": "UE: Generate compile_commands.json (clangd)",
+    "command": "cmd",
+    "args": ["/c", "Tools\\gen_compile_commands.bat"],
+    "cwd": "${ZED_WORKTREE_ROOT}",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
+  {
+    "label": "UE: Open editor",
+    "command": "cmd",
+    "args": ["/c", "Tools\\editor.bat"],
+    "cwd": "${ZED_WORKTREE_ROOT}",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "never"
+  },
+  {
+    "label": "UE: Play standalone",
+    "command": "cmd",
+    "args": ["/c", "Tools\\play.bat"],
+    "cwd": "${ZED_WORKTREE_ROOT}",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "never"
+  },
+  {
+    "label": "UE: Run automation tests",
+    "command": "cmd",
+    "args": ["/c", "Tools\\test.bat"],
+    "cwd": "${ZED_WORKTREE_ROOT}",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
+  {
+    "label": "Data: Validate JSON",
+    "command": "python",
+    "args": ["Tools/validate_data.py"],
+    "cwd": "${ZED_WORKTREE_ROOT}",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  }
+]

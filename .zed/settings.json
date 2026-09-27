@@ -1,0 +1,22 @@
+{
+  "languages": {
+    "C++": {
+      "hard_tabs": true,
+      "tab_size": 4,
+      "format_on_save": "off"
+    },
+    "C#": {
+      "hard_tabs": true,
+      "tab_size": 4
+    }
+  },
+  "file_scan_exclusions": [
+    "**/.git",
+    "**/.DS_Store",
+    "**/Thumbs.db",
+    "**/Binaries",
+    "**/Intermediate",
+    "**/DerivedDataCache",
+    "**/Saved"
+  ]
+}
