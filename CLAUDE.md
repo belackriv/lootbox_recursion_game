@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This is an Unreal Engine 5.7 C++ project (module `LootboxRecursion`). It's a port of the
+This is an Unreal Engine 5.8 C++ project (module `LootboxRecursion`). It's a port of the
 Rails app `belackriv/lootbox_recursion`.
 
 ## Layout and architecture

@@ -1,7 +1,7 @@
 # Loot Box Recursion
 
 A crafting, loot box and radiation-processing game on a one-dimensional world, built with
-**Unreal Engine 5.7** and C++.
+**Unreal Engine 5.8** and C++.
 
 It's a port of the Rails/Vue prototype
 [`belackriv/lootbox_recursion`](https://github.com/belackriv/lootbox_recursion). All the game
@@ -29,8 +29,8 @@ from the design notes.
 
 ### 1. Install the toolchain (one time)
 
-1. **Epic Games Launcher**, then Unreal Engine → Library → install **5.7**.
-2. **Visual Studio 2022** (Community is fine). In the installer, select the
+1. **Epic Games Launcher**, then Unreal Engine → Library → install **5.8** (5.7+ should also work).
+2. **Visual Studio 2022 or newer** (Community is fine; use whichever version Epic lists for 5.8). In the installer, select the
    *Game development with C++* workload, and under it the *Unreal Engine installer*
    component and a Windows 10/11 SDK. Epic's page lists the exact versions for your engine:
    [Setting up Visual Studio](https://dev.epicgames.com/documentation/en-us/unreal-engine/setting-up-visual-studio-development-environment-for-cplusplus-projects-in-unreal-engine).
@@ -56,7 +56,7 @@ cd lootbox_recursion_game
 In the editor, press **Play** (Alt+P).
 
 > If you have a different 5.x engine installed, right-click the `.uproject` → *Switch Unreal
-> Engine version...*. Nothing here is specific to 5.7.
+> Engine version...*. Nothing here is specific to 5.8.
 
 ### 3. Playing
 
@@ -148,7 +148,7 @@ In the editor: Tools → **Session Frontend** → *Automation* tab → filter `L
 Headless:
 
 ```bat
-"C:\Program Files\Epic Games\UE_5.7\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
+"C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
   "%CD%\LootboxRecursion.uproject" ^
   -ExecCmds="Automation RunTests LootboxRecursion;Quit" -unattended -nopause -nullrhi -log
 ```
@@ -156,6 +156,6 @@ Headless:
 To build without the editor:
 
 ```bat
-"C:\Program Files\Epic Games\UE_5.7\Engine\Build\BatchFiles\Build.bat" ^
+"C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" ^
   LootboxRecursionEditor Win64 Development -Project="%CD%\LootboxRecursion.uproject" -WaitMutex
 ```

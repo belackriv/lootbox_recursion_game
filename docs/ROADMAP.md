@@ -5,7 +5,7 @@ and play.
 
 ## M0: Build it, see it (first session)
 
-- [ ] Install UE 5.7 and Visual Studio, build, and press Play (see README).
+- [ ] Install UE 5.8 and Visual Studio, build, and press Play (see README).
 - [ ] Fix any first-compile errors. The code has never been compiled against the real engine.
 - [ ] Run the automation tests. They should all pass.
 - [ ] Create `Content/Maps/Main` from the Basic template, set it as the default map, and
