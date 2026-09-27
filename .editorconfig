@@ -1,0 +1,21 @@
+root = true
+
+[*]
+charset = utf-8
+insert_final_newline = true
+
+# Unreal's coding standard: tabs in C++/C#
+[*.{h,cpp,cs}]
+indent_style = tab
+indent_size = 4
+
+[*.{json,ini,uproject}]
+indent_style = tab
+indent_size = 4
+
+[*.{md,yml,py}]
+indent_style = space
+indent_size = 4
+
+[*.yml]
+indent_size = 2

@@ -1,0 +1,57 @@
+{
+	"_comment": "Ported from app/data/player_actions.yml. cooldown and castTime are in simulation seconds. Requirement: check = inventory | placed, filtered by item or category, condition = gt | gte | lt | lte | eq. 'craft' is enabled when any recipe is affordable and 'sort_inventory' when the inventory is unsorted (special-cased in code, like PlayerAction#update_disabled).",
+	"actions": [
+		{
+			"name": "scavenge",
+			"label": "Scavenge",
+			"tooltip": "Search the area for raw materials. Takes time but yields wood and iron.",
+			"cooldown": 5,
+			"castTime": 5,
+			"lootTable": "scavenge"
+		},
+		{
+			"name": "craft",
+			"label": "Craft",
+			"tooltip": "Craft items from your gathered materials.",
+			"cooldown": 5,
+			"castTime": 5
+		},
+		{
+			"name": "use",
+			"label": "Use",
+			"tooltip": "Use the selected item. Select a loot box from your inventory to open it.",
+			"cooldown": 5,
+			"castTime": 5,
+			"requirements": [
+				{ "check": "inventory", "category": "lootbox", "condition": "gt", "value": 0 }
+			]
+		},
+		{
+			"name": "deploy",
+			"label": "Deploy",
+			"tooltip": "Deploy the selected item into the selected world cell.",
+			"cooldown": 1,
+			"castTime": 0,
+			"requirements": [
+				{ "check": "inventory", "category": "placeable", "condition": "gt", "value": 0 }
+			]
+		},
+		{
+			"name": "recall",
+			"label": "Recall",
+			"tooltip": "Recall a deployed entity from the selected world cell back into your inventory.",
+			"cooldown": 1,
+			"castTime": 0,
+			"requirements": [
+				{ "check": "placed", "condition": "gt", "value": 0 }
+			]
+		},
+		{
+			"name": "sort_inventory",
+			"label": "Sort",
+			"tooltip": "Automatically sort and consolidate your inventory slots.",
+			"cooldown": 1,
+			"castTime": 0
+		}
+	]
+}

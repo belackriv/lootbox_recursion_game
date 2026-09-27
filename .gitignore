@@ -1,0 +1,27 @@
+# Unreal build output and caches (regenerated on build)
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+Build/
+Plugins/**/Binaries/
+Plugins/**/Intermediate/
+
+# IDE / generated project files (regenerate via "Generate Visual Studio project files")
+.vs/
+.vscode/
+.idea/
+*.sln
+*.suo
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+*.xcworkspace
+*.xcodeproj
+compile_commands.json
+
+# OS / misc
+.DS_Store
+Thumbs.db
+__pycache__/

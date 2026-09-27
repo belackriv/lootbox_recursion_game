@@ -1,0 +1,15 @@
+{
+	"_comment": "Radiation catalogue from the design notes. Loaded and validated but not yet used by any mechanic - see docs/DESIGN.md. Acoustic (needs a medium) and gravitational radiation are listed in the design doc without tiers.",
+	"radiation": [
+		{ "id": "visible_light", "family": "electromagnetic", "name": "Visible Light", "tier": 1, "energy": 4, "effects": "Photoelectric, photosynthesis" },
+		{ "id": "infrared", "family": "electromagnetic", "name": "Infrared", "tier": 2, "energy": 3, "effects": "Heating, curing" },
+		{ "id": "ultraviolet", "family": "electromagnetic", "name": "Ultraviolet", "tier": 3, "energy": 5, "effects": "Disinfection, lithography (chips)" },
+		{ "id": "microwaves", "family": "electromagnetic", "name": "Microwaves", "tier": 4, "energy": 2, "effects": "Ore extraction, ceramics" },
+		{ "id": "x_rays", "family": "electromagnetic", "name": "X-Rays", "tier": 5, "energy": 6, "effects": "Inspection, high-tech lithography (chips)", "notes": "Generated outside the nucleus" },
+		{ "id": "radio_waves", "family": "electromagnetic", "name": "Radio Waves", "tier": 6, "energy": 1, "effects": "Long-range comms" },
+		{ "id": "gamma_rays", "family": "electromagnetic", "name": "Gamma Rays", "tier": 7, "energy": 7, "effects": "Mutation, sterilization, huge penetration", "notes": "Generated inside the nucleus" },
+		{ "id": "alpha", "family": "particle", "name": "Alpha", "tier": 1, "energy": 1, "effects": "Plutonium-238 energy (radioisotope thermoelectric generators), anti-static", "notes": "Helium nucleus" },
+		{ "id": "beta", "family": "particle", "name": "Beta", "tier": 2, "energy": 2, "effects": "Gauging the thickness of materials", "notes": "Fast electrons" },
+		{ "id": "neutron", "family": "particle", "name": "Neutron", "tier": 3, "energy": 3, "effects": "TBD" }
+	]
+}

@@ -1,0 +1,51 @@
+{
+	"_comment": "Item definitions. Ported from the InventoryItem STI subclasses (WoodInventoryItem, IronInventoryItem, LootBoxInventoryItem, IrradiationEnclosureInventoryItem). category: material | lootbox | placeable. Items with a lootTable can be opened with the Use action. Items with stackSize 1 get a unique instance id.",
+	"items": [
+		{
+			"id": "wood",
+			"displayName": "Wood",
+			"abbrev": "WD",
+			"tooltip": "A sturdy building material gathered from the forest. Used in crafting.",
+			"category": "material",
+			"stackSize": 100,
+			"color": "#9C6B3C"
+		},
+		{
+			"id": "iron",
+			"displayName": "Iron",
+			"abbrev": "FE",
+			"tooltip": "A dense metal ore mined from rocky outcroppings. Used in crafting.",
+			"category": "material",
+			"stackSize": 100,
+			"color": "#9AA3AD"
+		},
+		{
+			"id": "loot_box",
+			"displayName": "Loot Box",
+			"abbrev": "LB",
+			"tooltip": "A mysterious box containing unknown rewards. Use it from your inventory to reveal its contents.",
+			"category": "lootbox",
+			"stackSize": 1,
+			"lootTable": "default",
+			"color": "#E8A020"
+		},
+		{
+			"id": "wood_irradiation_enclosure",
+			"displayName": "Wood Irradiation Enclosure",
+			"abbrev": "WIE",
+			"tooltip": "A timber-framed radiation chamber. Deploy it into the world.",
+			"category": "placeable",
+			"stackSize": 1,
+			"color": "#6FAF4A"
+		},
+		{
+			"id": "iron_irradiation_enclosure",
+			"displayName": "Iron Irradiation Enclosure",
+			"abbrev": "FIE",
+			"tooltip": "A steel-plated radiation chamber. Deploy it into the world.",
+			"category": "placeable",
+			"stackSize": 1,
+			"color": "#4AA3BF"
+		}
+	]
+}
