@@ -105,8 +105,14 @@ The Zed tasks (`.zed/tasks.json`) call the scripts in `Tools/`, which work from 
 | UE: Run automation tests | `Tools\test.bat` | Headless test run |
 | Data: Validate JSON | `Tools/validate_data.py` | Check `Content/Data` |
 
-If Unreal isn't installed at `C:\Program Files\Epic Games\UE_5.8`, set a `UE_ROOT`
-environment variable pointing at your install.
+The scripts find Unreal through the Epic Launcher's registry entry, or fall back to
+`C:\Program Files\Epic Games\UE_5.8`. If that fails, find your install with:
+
+```powershell
+(Get-Content "$env:ProgramData\Epic\UnrealEngineLauncher\LauncherInstalled.dat" | ConvertFrom-Json).InstallationList | Where-Object AppName -like 'UE_*' | Select-Object AppName, InstallLocation
+```
+
+Then run `setx UE_ROOT "<that InstallLocation>"` and restart Zed.
 
 **Iterating:** with the editor open, **Live Coding** (Ctrl+Alt+F11 in the editor)
 recompiles `.cpp` edits in place. After header changes, close the editor and run
