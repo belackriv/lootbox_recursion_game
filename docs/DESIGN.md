@@ -133,9 +133,16 @@ Irradiation is how loot boxes get better. Numbers are placeholder tuning in
 |---|---|---|---|
 | Grow Lamp | Visible light (1) | Carbon amounts ×1.25 | photosynthesis |
 | Infrared Emitter | Infrared (2) | +1 roll | heating, curing |
-| Microwave Emitter | Microwaves (4) | Iron ×1.5 as likely | ore extraction |
+| Microwave Emitter | Microwaves (4) | Iron amounts ×1.35 | ore extraction |
 | X-Ray Tube | X-rays (5) | Reveals the contents and **locks** them | inspection |
 | Gamma Source | Gamma (7) | Box may contain Loot Boxes (+15 weight per stack) | mutation |
+
+**Balance target** (check with `python Tools/balance.py`):
+
+- A plain cache returns about 90% of its cost: a small gamble, not a farm.
+- Each exposure stack adds roughly 15–25% value, so a full carbon enclosure is +40–60% and
+  a full iron enclosure roughly doubles a cache.
+- Enclosures are the scaling: many of them work in parallel, while Inject is manual.
 
 **How it plays:**
 

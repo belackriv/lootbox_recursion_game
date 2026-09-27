@@ -121,7 +121,7 @@
 		{
 			"id": "microwave_emitter",
 			"label": "Microwave Emitter",
-			"tooltip": "Shakes ore loose: iron becomes more likely in caches.",
+			"tooltip": "Ore extraction: caches yield more iron.",
 			"output": "microwave_emitter",
 			"outputCount": 1,
 			"cost": [

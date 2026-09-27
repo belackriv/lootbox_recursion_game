@@ -46,9 +46,9 @@
 			"effects": "Ore extraction, ceramics",
 			"color": "#4FC3A1",
 			"effect": {
-				"kind": "item_weight_mult",
+				"kind": "item_count_mult",
 				"item": "iron",
-				"value": 1.5
+				"value": 1.35
 			}
 		},
 		{
