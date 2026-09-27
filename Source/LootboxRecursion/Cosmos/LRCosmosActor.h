@@ -8,6 +8,7 @@
 class UInstancedStaticMeshComponent;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
+class UPrimitiveComponent;
 class UStaticMesh;
 class UStaticMeshComponent;
 class UTexture2D;
@@ -54,6 +55,10 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Cosmos")
 	float Brightness = 2.5f;
 
+	/** Fixed exposure compensation in EV (auto exposure is off while the cosmos is up). */
+	UPROPERTY(Config, EditAnywhere, Category = "Cosmos")
+	float ExposureBias = 0.f;
+
 	/** How often the disk animation is re-rendered. */
 	UPROPERTY(Config, EditAnywhere, Category = "Cosmos")
 	float FramesPerSecond = 30.f;
@@ -72,6 +77,7 @@ protected:
 	virtual void BeginPlay() override;
 
 private:
+	static void ExcludeFromLighting(UPrimitiveComponent* Component);
 	UMaterialInstanceDynamic* MakeUnlitMaterial(UMaterialInterface* Parent, UTexture2D* Texture, const FLinearColor& Tint);
 	UInstancedStaticMeshComponent* MakeStarLayer(const FLinearColor& Tint);
 	void BuildStars();

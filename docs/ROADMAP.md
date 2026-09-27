@@ -23,6 +23,9 @@ and play.
 - [x] Cosmic look: grey/amber HUD, line grid in the void, starfield, and an animated,
       ray-traced black hole backdrop.
 - [ ] Higher-resolution black hole bake (1024²), lensed stars near the shadow, nebula haze.
+- [ ] Verify the black hole's blend: if `Widget3DPassThrough_Translucent` turns out to be
+      premultiplied (AlphaComposite), drop the `1/Alpha` scale in `FLRBlackHoleRenderer::RenderRow`
+      (symptom: a bright halo or box around the disk).
 - [ ] Optional: rebuild one HUD panel in UMG to learn the Widget Blueprint workflow.
 
 ## M2: Irradiation (the core idea)
@@ -65,6 +68,9 @@ See [DESIGN.md](DESIGN.md#irradiation-implemented-v1).
 
 ## M5: Ship it
 
+- [ ] Check stars and grid lines in a packaged build: engine materials on instanced meshes
+      need `bUsedWithInstancedStaticMeshes`. The editor sets it automatically in PIE; a
+      packaged game may show the default checker material instead.
 - [ ] Packaging profile (File → Package Project → Windows), and check that
       `Content/Data/*.json` is staged. `DirectoriesToAlwaysStageAsUFS` is already set.
 - [ ] CI build on a self-hosted Windows runner with the engine installed (GitHub-hosted

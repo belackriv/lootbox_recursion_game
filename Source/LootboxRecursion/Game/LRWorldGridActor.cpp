@@ -25,6 +25,9 @@ namespace
 	const FLinearColor SelectedColor = FLinearColor(FColor::FromHex(TEXT("F2A93B")));
 	const FColor EntityLabelColor = FColor::FromHex(TEXT("D6DCE8"));
 
+	/** Major ruler line spacing; the grid patch moves in steps of this so the pattern lines up. */
+	constexpr int32 RulerPeriod = 16;
+
 	/** Positive modulo, so ruler lines stay regular across negative cells. */
 	int32 Mod(int32 Value, int32 Divisor)
 	{

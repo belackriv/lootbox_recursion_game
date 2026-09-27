@@ -44,6 +44,14 @@ namespace
 	const FRgb OuterColor{ 0.55f, 0.07f, 0.02f };
 	const FRgb BeamedColor{ 1.0f, 0.95f, 0.85f };
 	const FRgb RingColor{ 1.0f, 0.8f, 0.55f };
+
+	/** Linear 0..1 -> sRGB byte (the texture is sampled as sRGB, so encode to match). */
+	uint8 ToSrgbByte(float Linear)
+	{
+		const float Clamped = FMath::Clamp(Linear, 0.f, 1.f);
+		const float Encoded = Clamped <= 0.0031308f ? Clamped * 12.92f : 1.055f * FMath::Pow(Clamped, 1.f / 2.4f) - 0.055f;
+		return static_cast<uint8>(FMath::Clamp(Encoded, 0.f, 1.f) * 255.f + 0.5f);
+	}
 }
 
 bool FLRBlackHoleRenderer::LoadFromFile(const FString& Path, FString& OutError)
@@ -164,12 +172,10 @@ void FLRBlackHoleRenderer::RenderRow(int32 Y, double TimeSeconds, FColor* OutRow
 		const float Luminance = FMath::Max3(Color.R, Color.G, Color.B);
 		const float Alpha = FMath::Clamp(FMath::Max(Shadow, Luminance * 3.f), 0.f, 1.f);
 
-		// Straight alpha: RGB * A ~= radiance (clamped to what 8 bits can hold).
+		// Straight alpha: RGB * A ~= radiance (clamped to what 8 bits can hold). RGB is sRGB
+		// encoded because the texture is sampled as sRGB; alpha stays linear.
 		const float Scale = Alpha > UE_KINDA_SMALL_NUMBER ? 1.f / Alpha : 0.f;
-		OutRow[X] = FColor(
-			static_cast<uint8>(FMath::Clamp(Color.R * Scale, 0.f, 1.f) * 255.f),
-			static_cast<uint8>(FMath::Clamp(Color.G * Scale, 0.f, 1.f) * 255.f),
-			static_cast<uint8>(FMath::Clamp(Color.B * Scale, 0.f, 1.f) * 255.f),
-			static_cast<uint8>(Alpha * 255.f));
+		OutRow[X] = FColor(ToSrgbByte(Color.R * Scale), ToSrgbByte(Color.G * Scale), ToSrgbByte(Color.B * Scale),
+			static_cast<uint8>(Alpha * 255.f + 0.5f));
 	}
 }

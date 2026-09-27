@@ -26,8 +26,8 @@ public:
 
 	/**
 	 * Render one frame into OutPixels (Width * Height, row-major, straight alpha).
-	 * RGB is the colour normalised so that RGB * A approximates the HDR radiance; the shadow
-	 * is opaque black and empty space is fully transparent.
+	 * RGB is the colour normalised so that RGB * A approximates the HDR radiance, sRGB-encoded
+	 * (alpha stays linear); the shadow is opaque black and empty space is fully transparent.
 	 */
 	void Render(double TimeSeconds, TArray<FColor>& OutPixels) const;
 

@@ -3,6 +3,7 @@
 #include "Camera/PlayerCameraManager.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
+#include "Components/PostProcessComponent.h"
 #include "Components/SkyAtmosphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/VolumetricCloudComponent.h"
@@ -15,6 +16,8 @@
 #include "LootboxRecursion.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/Paths.h"
+#include "RHI.h"
+#include "TextureResource.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace
@@ -70,6 +73,19 @@ void ALRCosmosActor::BeginPlay()
 
 	WhiteTexture = MakeSolidTexture(FColor::White);
 
+	// Fixed exposure: auto exposure would brighten the black void until it turns grey, blow out
+	// the disk, and pump as the grid or UI fill the view.
+	UPostProcessComponent* PostProcess = NewObject<UPostProcessComponent>(this);
+	PostProcess->bUnbound = true;
+	PostProcess->Settings.bOverride_AutoExposureMethod = true;
+	PostProcess->Settings.AutoExposureMethod = AEM_Manual;
+	PostProcess->Settings.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
+	PostProcess->Settings.AutoExposureApplyPhysicalCameraExposure = false;
+	PostProcess->Settings.bOverride_AutoExposureBias = true;
+	PostProcess->Settings.AutoExposureBias = ExposureBias;
+	PostProcess->SetupAttachment(RootComponent);
+	PostProcess->RegisterComponent();
+
 	// The void: a huge two-sided black sphere that hides whatever sky the level has.
 	if (SphereMesh && UnlitOpaqueMaterial)
 	{
@@ -78,6 +94,7 @@ void ALRCosmosActor::BeginPlay()
 		Backdrop->SetupAttachment(RootComponent);
 		Backdrop->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		Backdrop->SetCastShadow(false);
+		ExcludeFromLighting(Backdrop);
 		Backdrop->SetRelativeScale3D(FVector(SkyRadius / 50.f)); // engine sphere radius is 50
 		Backdrop->RegisterComponent();
 		Backdrop->SetMaterial(0, MakeUnlitMaterial(UnlitOpaqueMaterial, WhiteTexture, FLinearColor(0.002f, 0.002f, 0.004f, 1.f)));
@@ -85,6 +102,15 @@ void ALRCosmosActor::BeginPlay()
 
 	BuildStars();
 	BuildBlackHole();
+}
+
+void ALRCosmosActor::ExcludeFromLighting(UPrimitiveComponent* Component)
+{
+	// The sky is scenery at infinity: keep it out of Lumen, distance fields and ray tracing,
+	// which would otherwise see a solid sphere enclosing the whole scene.
+	Component->bAffectDistanceFieldLighting = false;
+	Component->bAffectDynamicIndirectLighting = false;
+	Component->bVisibleInRayTracing = false;
 }
 
 UMaterialInstanceDynamic* ALRCosmosActor::MakeUnlitMaterial(UMaterialInterface* Parent, UTexture2D* Texture, const FLinearColor& Tint)
@@ -107,6 +133,7 @@ UInstancedStaticMeshComponent* ALRCosmosActor::MakeStarLayer(const FLinearColor&
 	Layer->SetupAttachment(RootComponent);
 	Layer->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Layer->SetCastShadow(false);
+	ExcludeFromLighting(Layer);
 	Layer->RegisterComponent();
 	if (UMaterialInstanceDynamic* Material = MakeUnlitMaterial(UnlitOpaqueMaterial, WhiteTexture, Tint))
 	{
@@ -125,7 +152,7 @@ void ALRCosmosActor::BuildStars()
 
 	// Three tints (one draw call each): blue-white, warm, and a dim dusty band.
 	const float B = Brightness;
-	UInstancedStaticMeshComponent* Layers[] = {
+	UInstancedStaticMeshComponent* StarLayerComps[] = {
 		MakeStarLayer(FLinearColor(0.75f * B, 0.85f * B, 1.0f * B, 1.f)),
 		MakeStarLayer(FLinearColor(1.0f * B, 0.8f * B, 0.6f * B, 1.f)),
 		MakeStarLayer(FLinearColor(0.25f, 0.28f, 0.4f, 1.f)),
@@ -147,15 +174,15 @@ void ALRCosmosActor::BuildStars()
 			Direction -= BandNormal * FVector::DotProduct(Direction, BandNormal) * 0.85f;
 			Direction.Normalize();
 		}
-		// Angular size ~ 0.02 - 0.06 degrees: a few pixels, bright ones a bit bigger.
-		const float Size = StarDistance * FMath::DegreesToRadians(Random.FRandRange(0.02f, Layer == 2 ? 0.035f : 0.06f)) / 100.f;
+		// Angular size ~0.1 - 0.25 degrees (a few pixels at 1080p), the dusty band smaller.
+		const float Size = StarDistance * FMath::DegreesToRadians(Layer == 2 ? Random.FRandRange(0.08f, 0.15f) : Random.FRandRange(0.1f, 0.25f)) / 100.f;
 		PerLayer[Layer].Add(FTransform(FRotator(Random.FRandRange(0.f, 90.f), Random.FRandRange(0.f, 90.f), 0.f), Direction * StarDistance, FVector(Size)));
 	}
 	for (int32 Layer = 0; Layer < 3; ++Layer)
 	{
-		if (Layers[Layer])
+		if (StarLayerComps[Layer])
 		{
-			Layers[Layer]->AddInstances(PerLayer[Layer], /*bShouldReturnIndices*/ false);
+			StarLayerComps[Layer]->AddInstances(PerLayer[Layer], /*bShouldReturnIndices*/ false);
 		}
 	}
 }
@@ -188,7 +215,8 @@ void ALRCosmosActor::BuildBlackHole()
 	// A camera-facing square far away in BlackHoleDirection, sized to the requested angle.
 	const FVector Direction = BlackHoleDirection.GetSafeNormal();
 	const float Distance = SkyRadius * 0.8f;
-	const float Width = 2.f * Distance * FMath::Tan(FMath::DegreesToRadians(BlackHoleAngularSize * 0.5f));
+	// Past ~55 degrees the quad's corners would poke through the sky sphere.
+	const float Width = 2.f * Distance * FMath::Tan(FMath::DegreesToRadians(FMath::Clamp(BlackHoleAngularSize, 5.f, 55.f) * 0.5f));
 	FVector Right = FVector::CrossProduct(FVector::UpVector, Direction).GetSafeNormal();
 	if (Right.IsNearlyZero())
 	{
@@ -203,6 +231,7 @@ void ALRCosmosActor::BuildBlackHole()
 	BlackHole->SetupAttachment(RootComponent);
 	BlackHole->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	BlackHole->SetCastShadow(false);
+	ExcludeFromLighting(BlackHole);
 	BlackHole->SetRelativeLocation(Direction * Distance);
 	BlackHole->SetRelativeRotation(Rotation);
 	BlackHole->SetRelativeScale3D(FVector(Width / 100.f, Width / 100.f, 1.f)); // engine plane is 100cm
@@ -233,10 +262,15 @@ void ALRCosmosActor::Tick(float DeltaSeconds)
 
 void ALRCosmosActor::UploadFrame()
 {
+	// No render resource (e.g. -nullrhi): the cleanup callback would never run, so don't allocate.
+	if (!BlackHoleTexture || !BlackHoleTexture->GetResource())
+	{
+		return;
+	}
 	Renderer.Render(AnimationTime, FramePixels);
 
 	// UpdateTextureRegions copies on the render thread later, so hand it its own buffer.
-	const int32 Pitch = Renderer.GetWidth() * sizeof(FColor);
+	const int32 Pitch = Renderer.GetWidth() * static_cast<int32>(sizeof(FColor));
 	const int32 Bytes = Pitch * Renderer.GetHeight();
 	uint8* Copy = new uint8[Bytes];
 	FMemory::Memcpy(Copy, FramePixels.GetData(), Bytes);
