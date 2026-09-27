@@ -3,8 +3,8 @@
 	"recipes": [
 		{
 			"id": "loot_box",
-			"label": "Loot Box",
-			"tooltip": "Compress raw matter into a sealed loot box.",
+			"label": "Quantum Cache",
+			"tooltip": "Compress raw matter into a sealed quantum cache.",
 			"output": "loot_box",
 			"outputCount": 1,
 			"cost": [
@@ -21,7 +21,7 @@
 		{
 			"id": "carbon_irradiation_enclosure",
 			"label": "Carbon Irradiation Enclosure",
-			"tooltip": "A light, graphite-lined radiation chamber.",
+			"tooltip": "A light, graphite-lined radiation chamber. Contains radiation up to tier 4 (microwaves). Holds one quantum cache and one source.",
 			"output": "carbon_irradiation_enclosure",
 			"outputCount": 1,
 			"cost": [
@@ -46,7 +46,7 @@
 		{
 			"id": "iron_irradiation_enclosure",
 			"label": "Iron Irradiation Enclosure",
-			"tooltip": "A heavier, steel-plated radiation chamber.",
+			"tooltip": "A heavy steel-plated radiation chamber. Contains any radiation up to tier 7 (gamma). Holds one quantum cache and one source.",
 			"output": "iron_irradiation_enclosure",
 			"outputCount": 1,
 			"cost": [
@@ -71,7 +71,7 @@
 		{
 			"id": "grow_lamp",
 			"label": "Grow Lamp",
-			"tooltip": "A broad-spectrum lamp. Visible light drives photosynthesis: loot boxes yield more carbon.",
+			"tooltip": "A broad-spectrum lamp. Visible light drives photosynthesis: caches yield more carbon.",
 			"output": "grow_lamp",
 			"outputCount": 1,
 			"cost": [
@@ -96,7 +96,7 @@
 		{
 			"id": "infrared_emitter",
 			"label": "Infrared Emitter",
-			"tooltip": "Heats and cures what it shines on: loot boxes get extra rolls.",
+			"tooltip": "Heats and cures what it shines on: caches get extra rolls.",
 			"output": "infrared_emitter",
 			"outputCount": 1,
 			"cost": [
@@ -121,7 +121,7 @@
 		{
 			"id": "microwave_emitter",
 			"label": "Microwave Emitter",
-			"tooltip": "Shakes ore loose: iron becomes more likely in loot boxes.",
+			"tooltip": "Shakes ore loose: iron becomes more likely in caches.",
 			"output": "microwave_emitter",
 			"outputCount": 1,
 			"cost": [
@@ -146,7 +146,7 @@
 		{
 			"id": "xray_tube",
 			"label": "X-Ray Tube",
-			"tooltip": "Inspection: reveals a loot box's contents and locks them in. Nothing changes the box after that.",
+			"tooltip": "Observation: collapses a cache early. Its contents are revealed and fixed, and nothing changes it after that.",
 			"output": "xray_tube",
 			"outputCount": 1,
 			"cost": [
@@ -171,7 +171,7 @@
 		{
 			"id": "gamma_source",
 			"label": "Gamma Source",
-			"tooltip": "Mutation: loot boxes may contain loot boxes. Needs an iron enclosure.",
+			"tooltip": "Mutation: caches may collapse into more caches. Needs an iron enclosure.",
 			"output": "gamma_source",
 			"outputCount": 1,
 			"cost": [

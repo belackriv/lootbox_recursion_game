@@ -16,3 +16,7 @@
 
 # Windows batch files need CRLF line endings
 *.bat text eol=crlf
+
+# Small documentation images and the baked black hole table stay in plain git
+docs/images/** !filter !diff !merge -text
+*.lrbh binary

@@ -38,7 +38,7 @@ namespace
 		if (Reason == ReasonRequirements) { return TEXT("requirements not met"); }
 		if (Reason == ReasonInsufficientMaterials) { return TEXT("not enough materials"); }
 		if (Reason == ReasonNoSlot || Reason == ReasonNoInventorySpace) { return TEXT("inventory is full"); }
-		if (Reason == ReasonNoLootBox) { return TEXT("no loot box to open"); }
+		if (Reason == ReasonNoLootBox) { return TEXT("nothing to open"); }
 		if (Reason == ReasonNoCell) { return TEXT("select a grid cell first"); }
 		if (Reason == ReasonOccupied) { return TEXT("that cell is occupied"); }
 		if (Reason == ReasonNoPlaceable) { return TEXT("nothing deployable selected"); }
@@ -48,8 +48,8 @@ namespace
 		if (Reason == ReasonRecipeLocked) { return TEXT("that recipe isn't unlocked yet"); }
 		if (Reason == ReasonNothingSelected) { return TEXT("select an inventory slot first"); }
 		if (Reason == ReasonNoEnclosure) { return TEXT("select a cell with an irradiation enclosure"); }
-		if (Reason == ReasonNothingToLoad) { return TEXT("select a loot box or radiation source in the inventory"); }
-		if (Reason == ReasonChamberFull) { return TEXT("the enclosure already holds a loot box"); }
+		if (Reason == ReasonNothingToLoad) { return TEXT("select a cache or radiation source in the inventory"); }
+		if (Reason == ReasonChamberFull) { return TEXT("the enclosure already holds a cache"); }
 		if (Reason == ReasonSourceFull) { return TEXT("the enclosure already holds a source"); }
 		if (Reason == ReasonTooStrong) { return TEXT("this enclosure can't contain radiation that strong"); }
 		if (Reason == ReasonEnclosureEmpty) { return TEXT("the enclosure is empty"); }
@@ -289,7 +289,7 @@ FString FLRSimulation::ApplyExposure(FLRLootBoxInstance& Box, const FLRRadiation
 		Box.RevealedContents = Table ? MergeAmounts(RollLootTable(ApplyModifiers(*Table, Box.Modifiers))) : TArray<FLRItemAmount>();
 		Box.bRevealed = true;
 		AddStat(StatKey(TEXT("exposed"), Radiation.Id));
-		return FString::Printf(TEXT("%s revealed the contents: %s (locked)"), *Radiation.Name,
+		return FString::Printf(TEXT("%s observed it and collapsed its contents: %s (fixed)"), *Radiation.Name,
 			Box.RevealedContents.IsEmpty() ? TEXT("nothing!") : *DescribeAmounts(Box.RevealedContents));
 	}
 
@@ -791,7 +791,7 @@ FLRActionResult FLRSimulation::ExecuteUse(const FLRActionRequest& Request)
 	const int32 SlotIndex = ResolveLootBoxSlot(Request.Slot);
 	if (SlotIndex == INDEX_NONE)
 	{
-		return MakeFailure(Request.Action, ReasonNoLootBox, TEXT("Can't use: no loot box to open"));
+		return MakeFailure(Request.Action, ReasonNoLootBox, TEXT("Can't use: nothing to open"));
 	}
 
 	const FLRInventorySlot BoxSlot = Inventory[SlotIndex];
@@ -1440,7 +1440,7 @@ FString FLRSimulation::DescribeModifier(const FLRLootModifier& Modifier, const F
 	if (Modifier.Kind == LRNames::ModifierItemWeightMult) { return FString::Printf(TEXT("%s x%.2f as likely"), *ItemName, Modifier.Value); }
 	if (Modifier.Kind == LRNames::ModifierItemCountMult)  { return FString::Printf(TEXT("%s amounts x%.2f"), *ItemName, Modifier.Value); }
 	if (Modifier.Kind == LRNames::ModifierAddEntry)       { return FString::Printf(TEXT("may contain %s"), *ItemName); }
-	if (Modifier.Kind == LRNames::ModifierReveal)         { return TEXT("reveals and locks the contents"); }
+	if (Modifier.Kind == LRNames::ModifierReveal)         { return TEXT("observes the cache: contents revealed and fixed"); }
 	return Modifier.Kind.ToString();
 }
 

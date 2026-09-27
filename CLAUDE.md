@@ -14,6 +14,12 @@ Rails app `belackriv/lootbox_recursion`.
   - `ULRGameSubsystem` owns the sim, ticks it, and saves and loads it.
   - The GameMode, PlayerController, CameraPawn, WorldGridActor and HUD live here too.
 - `UI/` is the Slate HUD (`SLRGameHud`) with its style.
+- `Cosmos/` is the backdrop. `FLRBlackHoleRenderer` (plain C++, tested) composites frames from
+  `Content/Cosmos/BlackHole.lrbh`, which is baked by `Tools/cosmos/generate_black_hole.py`.
+  The Python `composite()` mirrors the C++, so keep them in sync. `ALRCosmosActor` draws it
+  with engine-only content.
+- Players see "Quantum Cache" for the `loot_box` item. Keep ids and code names as `LootBox`,
+  and keep player-facing strings generic ("cache").
 - Includes are relative to the module root (`#include "Simulation/LRSimulation.h"`).
   `Build.cs` adds `ModuleDirectory` to the include paths.
 

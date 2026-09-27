@@ -4,6 +4,7 @@
 #include "Engine/DirectionalLight.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "Cosmos/LRCosmosActor.h"
 #include "Game/LRCameraPawn.h"
 #include "Game/LRHud.h"
 #include "Game/LRPlayerController.h"
@@ -19,6 +20,7 @@ ALRGameMode::ALRGameMode()
 void ALRGameMode::StartPlay()
 {
 	EnsureWorldView();
+	EnsureCosmos();
 	EnsureLighting();
 	Super::StartPlay();
 }
@@ -34,6 +36,17 @@ void ALRGameMode::EnsureWorldView()
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	// Slightly above the origin so layer 0 doesn't z-fight with a template level's floor.
 	GetWorld()->SpawnActor<ALRWorldGridActor>(FVector(0.f, 0.f, 5.f), FRotator::ZeroRotator, Params);
+}
+
+void ALRGameMode::EnsureCosmos()
+{
+	if (TActorIterator<ALRCosmosActor>(GetWorld()))
+	{
+		return;
+	}
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	GetWorld()->SpawnActor<ALRCosmosActor>(FVector::ZeroVector, FRotator::ZeroRotator, Params);
 }
 
 void ALRGameMode::EnsureLighting()

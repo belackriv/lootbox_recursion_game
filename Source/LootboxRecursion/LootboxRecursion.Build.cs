@@ -20,6 +20,8 @@ public class LootboxRecursion : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
+			"RHI",
+			"RenderCore",
 			"Slate",
 			"SlateCore",
 			"Json",

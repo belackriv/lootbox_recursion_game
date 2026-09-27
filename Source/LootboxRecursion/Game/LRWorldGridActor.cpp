@@ -17,16 +17,13 @@ namespace
 	// BasicShapeMaterial exposes a "Color" vector parameter.
 	const FName ColorParam(TEXT("Color"));
 
-	// Palette from the Rails app's application.css (--color-fac-*).
-	const FLinearColor TileColor = FLinearColor(FColor::FromHex(TEXT("2D2719")));
-	const FLinearColor TileMinorColor = FLinearColor(FColor::FromHex(TEXT("4A3F2F")));
-	const FLinearColor TileMajorColor = FLinearColor(FColor::FromHex(TEXT("8B7355")));
-	const FLinearColor HoverColor = FLinearColor(FColor::FromHex(TEXT("D4C5A0")));
-	const FLinearColor SelectedColor = FLinearColor(FColor::FromHex(TEXT("E8A020")));
-	const FColor EntityLabelColor = FColor::FromHex(TEXT("D4C5A0"));
-
-	/** Major ruler line spacing; the tile patch moves in steps of this so the pattern lines up. */
-	constexpr int32 RulerPeriod = 16;
+	// Cosmic palette: faint blue-grey grid lines in the void, amber (accretion disk) selection.
+	const FLinearColor TileColor = FLinearColor(FColor::FromHex(TEXT("1A2030")));
+	const FLinearColor TileMinorColor = FLinearColor(FColor::FromHex(TEXT("2C3550")));
+	const FLinearColor TileMajorColor = FLinearColor(FColor::FromHex(TEXT("56648C")));
+	const FLinearColor HoverColor = FLinearColor(FColor::FromHex(TEXT("9FB3D9")));
+	const FLinearColor SelectedColor = FLinearColor(FColor::FromHex(TEXT("F2A93B")));
+	const FColor EntityLabelColor = FColor::FromHex(TEXT("D6DCE8"));
 
 	/** Positive modulo, so ruler lines stay regular across negative cells. */
 	int32 Mod(int32 Value, int32 Divisor)
@@ -182,24 +179,24 @@ FIntVector ALRWorldGridActor::GetFocusCell() const
 
 void ALRWorldGridActor::BuildTilePattern()
 {
-	const float TileScale = CellSize / 100.f; // the engine cube is 100cm
-	const FVector Scale(0.94f * TileScale, 0.94f * TileScale, 0.04f * TileScale);
+	// Grid lines on the cell boundaries rather than solid tiles, so the cosmos shows through.
+	const float Scale = CellSize / 100.f; // the engine cube is 100cm
+	const float Length = (2 * TileRadius + 1) * CellSize;
+	const float Thickness = 0.03f * Scale;
 
 	TArray<FTransform> PerKind[3];
-	for (int32 X = -TileRadius; X <= TileRadius; ++X)
+	for (int32 Index = -TileRadius; Index <= TileRadius + 1; ++Index)
 	{
-		for (int32 Y = -TileRadius; Y <= TileRadius; ++Y)
-		{
-			// Ruler rhythm from WorldGrid.vue, now on both axes: major every 16, minor every 4.
-			// The patch only ever moves by whole periods, so local and world ruler lines agree.
-			int32 Kind = 0;
-			if (Mod(X, RulerPeriod) == 0 || Mod(Y, RulerPeriod) == 0) { Kind = 2; }
-			else if (Mod(X, 4) == 0 || Mod(Y, 4) == 0)                { Kind = 1; }
+		// Ruler rhythm from WorldGrid.vue: brighter every 4 lines, brightest every 16.
+		int32 Kind = 0;
+		if (Mod(Index, RulerPeriod) == 0)  { Kind = 2; }
+		else if (Mod(Index, 4) == 0)       { Kind = 1; }
 
-			// Tile top sits exactly on the layer's floor.
-			const FVector Location(X * CellSize, Y * CellSize, -2.f * TileScale);
-			PerKind[Kind].Add(FTransform(FRotator::ZeroRotator, Location, Scale));
-		}
+		const float Offset = (Index - 0.5f) * CellSize;
+		const FVector AlongX(Length / 100.f, Thickness, 0.01f * Scale);
+		const FVector AlongY(Thickness, Length / 100.f, 0.01f * Scale);
+		PerKind[Kind].Add(FTransform(FRotator::ZeroRotator, FVector(0.f, Offset, -0.5f * Scale), AlongX));
+		PerKind[Kind].Add(FTransform(FRotator::ZeroRotator, FVector(Offset, 0.f, -0.5f * Scale), AlongY));
 	}
 
 	for (int32 Kind = 0; Kind < TileLayers.Num() && Kind < 3; ++Kind)
@@ -304,9 +301,9 @@ void ALRWorldGridActor::UpdateMarkers()
 	SelectionMarker->SetVisibility(bHasSelection);
 	if (bHasSelection)
 	{
-		// A slab a little wider than the cell, so it shows around a deployed entity too.
-		SelectionMarker->SetRelativeLocation(CellToLocal(Selected) + FVector(0.f, 0.f, 1.5f * Scale));
-		SelectionMarker->SetRelativeScale3D(FVector(1.04f * Scale, 1.04f * Scale, 0.03f * Scale));
+		// A thin slab filling the cell (grid lines are the only floor now).
+		SelectionMarker->SetRelativeLocation(CellToLocal(Selected) - FVector(0.f, 0.f, 1.f * Scale));
+		SelectionMarker->SetRelativeScale3D(FVector(0.96f * Scale, 0.96f * Scale, 0.02f * Scale));
 	}
 
 	FIntVector Hovered;
@@ -338,8 +335,8 @@ void ALRWorldGridActor::UpdateMarkers()
 	}
 	else
 	{
-		HoverMarker->SetRelativeLocation(CellToLocal(Hovered) + FVector(0.f, 0.f, 3.f * Scale));
-		HoverMarker->SetRelativeScale3D(FVector(0.98f * Scale, 0.98f * Scale, 0.02f * Scale));
+		HoverMarker->SetRelativeLocation(CellToLocal(Hovered) + FVector(0.f, 0.f, 0.5f * Scale));
+		HoverMarker->SetRelativeScale3D(FVector(0.9f * Scale, 0.9f * Scale, 0.01f * Scale));
 		if (HoverMaterial)
 		{
 			HoverMaterial->SetVectorParameterValue(ColorParam, HoverColor);
@@ -427,8 +424,8 @@ void ALRWorldGridActor::RebuildEntities()
 			if (const FLRLootBoxInstance* Box = Entity.Chamber.IsEmpty() ? nullptr : Simulation->FindLootBox(Entity.Chamber.InstanceId))
 			{
 				LabelText += Box->bRevealed
-					? TEXT(" [box: x-rayed]")
-					: FString::Printf(TEXT(" [box %d/%d]"), Box->Modifiers.Num(), Def->MaxExposureStacks);
+					? TEXT(" [cache: observed]")
+					: FString::Printf(TEXT(" [cache %d/%d]"), Box->Modifiers.Num(), Def->MaxExposureStacks);
 			}
 		}
 

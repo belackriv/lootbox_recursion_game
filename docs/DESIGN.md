@@ -8,13 +8,17 @@ else is design notes and proposals.
 Humanity has learned to harness a black hole as a **universe inside a universe**. The
 pocket universe behind the event horizon has its own space, so it can be built in.
 
-You are the **operator**, working from a facility outside the horizon. You can't go in, so
+You are the **operator**, working from a facility outside the horizon. The horizon itself
+hangs in the sky of the pocket universe: the animated black hole backdrop. You can't go in, so
 there is no player character and the camera is a free "god view". What you *can* do:
 
 - **Inject** elementary matter (carbon, iron) through the horizon. The link has limited
   bandwidth, which is what the cast time and cooldown represent.
-- **Compress** matter into loot boxes. The pocket universe decides what comes back when you
-  open one, and sometimes that's another box.
+- **Compress** matter into **Quantum Caches** (the Rails "loot boxes"; code and data ids
+  still say `loot_box`). A cache's contents are in superposition: nothing is decided until
+  it's observed. Opening it collapses it. X-rays observe it early, so you see the result and
+  it stays fixed. Gamma mutation means a cache can collapse into more caches, which is the
+  recursion.
 - **Assemble and place** machines on the pocket universe's grid, starting with irradiation
   enclosures.
 

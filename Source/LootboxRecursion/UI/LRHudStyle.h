@@ -6,8 +6,8 @@
 #include "Styling/SlateTypes.h"
 
 /**
- * Colours, brushes and fonts for the HUD - the Slate equivalent of the Rails app's
- * application.css (--color-fac-* "Factorio" palette). Slate keeps pointers to brushes and
+ * Colours, brushes and fonts for the HUD: cool greys and an amber accent, matching the
+ * pocket-universe theme (the Rails app used a brown "Factorio" palette). Slate keeps pointers to brushes and
  * styles, so they live in this long-lived singleton.
  */
 struct FLRHudStyle
@@ -19,6 +19,7 @@ struct FLRHudStyle
 	FLinearColor PanelInner;
 	FLinearColor Border;
 	FLinearColor BorderLight;
+	/** The accent colour (accretion-disk amber). */
 	FLinearColor Orange;
 	FLinearColor Text;
 	FLinearColor TextDim;

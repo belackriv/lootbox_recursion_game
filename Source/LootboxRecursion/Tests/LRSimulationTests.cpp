@@ -8,6 +8,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Data/LRGameData.h"
+#include "Cosmos/LRBlackHoleRenderer.h"
+#include "Misc/Paths.h"
 #include "Simulation/LRSimulation.h"
 
 #define LR_TEST_FLAGS (EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
@@ -851,6 +853,45 @@ bool FLRSimAnnihilateTest::RunTest(const FString& Parameters)
 
 	Request.Slot = 0;
 	TestFalse(TEXT("empty slot refused"), Sim.RequestAction(Request).bSuccess);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRBlackHoleRenderTest, "LootboxRecursion.Cosmos.BlackHoleRendersAndAnimates", LR_TEST_FLAGS)
+bool FLRBlackHoleRenderTest::RunTest(const FString& Parameters)
+{
+	FLRBlackHoleRenderer Renderer;
+	FString Error;
+	if (!Renderer.LoadFromFile(FPaths::ProjectContentDir() / TEXT("Cosmos/BlackHole.lrbh"), Error))
+	{
+		AddError(Error);
+		return false;
+	}
+	const int32 W = Renderer.GetWidth();
+	const int32 H = Renderer.GetHeight();
+
+	TArray<FColor> First;
+	TArray<FColor> Later;
+	Renderer.Render(0.0, First);
+	Renderer.Render(1.5, Later);
+	TestEqual(TEXT("pixel count"), First.Num(), W * H);
+
+	const FColor Centre = First[(H / 2) * W + W / 2];
+	TestTrue(TEXT("the shadow is opaque black"), Centre.A == 255 && Centre.R < 8 && Centre.G < 8 && Centre.B < 8);
+	TestEqual(TEXT("empty space in the corner is transparent"), static_cast<int32>(First[0].A), 0);
+
+	int32 Changed = 0;
+	int32 Lit = 0;
+	for (int32 Index = 0; Index < First.Num(); ++Index)
+	{
+		Changed += First[Index] != Later[Index] ? 1 : 0;
+		Lit += (First[Index].R > 60 && First[Index].A > 100) ? 1 : 0; // warm, mostly opaque
+	}
+	TestTrue(TEXT("the disk is visible"), Lit > W * H / 50);
+	TestTrue(TEXT("the disk animates"), Changed > W * H / 50);
+
+	TArray<uint8> Garbage = { 'N', 'O', 'P', 'E' };
+	FLRBlackHoleRenderer Bad;
+	TestFalse(TEXT("rejects a bad file"), Bad.LoadFromBytes(Garbage, Error));
 	return true;
 }
 

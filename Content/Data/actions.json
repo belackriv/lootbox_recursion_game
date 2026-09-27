@@ -27,7 +27,7 @@
 		{
 			"name": "use",
 			"label": "Use",
-			"tooltip": "Use the selected item. Select a loot box in your inventory first, then Use to open it.",
+			"tooltip": "Use the selected item. Select a quantum cache in your inventory, then Use to open it.",
 			"cooldown": 5,
 			"castTime": 5,
 			"requirements": [
@@ -95,7 +95,7 @@
 		{
 			"name": "load",
 			"label": "Load",
-			"tooltip": "Load the selected loot box or radiation source into the irradiation enclosure in the selected cell.",
+			"tooltip": "Load the selected quantum cache or radiation source into the irradiation enclosure in the selected cell.",
 			"cooldown": 1,
 			"castTime": 0,
 			"revealRequirements": [
@@ -110,7 +110,7 @@
 		{
 			"name": "unload",
 			"label": "Unload",
-			"tooltip": "Take the loot box and source out of the irradiation enclosure in the selected cell.",
+			"tooltip": "Take the cache and source out of the irradiation enclosure in the selected cell.",
 			"cooldown": 1,
 			"castTime": 0,
 			"revealRequirements": [

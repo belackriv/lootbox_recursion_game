@@ -19,7 +19,10 @@ and play.
       box, and a sound. `OnActionCompleted` already carries `Gained`.
 - [ ] Real meshes for the enclosures in the world (a Blueprint subclass of
       `ALRWorldGridActor`, or per-item mesh paths in data).
-- [ ] Hover highlight on 3D cells, and a selection outline.
+- [x] Hover highlight and selection on grid cells.
+- [x] Cosmic look: grey/amber HUD, line grid in the void, starfield, and an animated,
+      ray-traced black hole backdrop.
+- [ ] Higher-resolution black hole bake (1024²), lensed stars near the shadow, nebula haze.
 - [ ] Optional: rebuild one HUD panel in UMG to learn the Widget Blueprint workflow.
 
 ## M2: Irradiation (the core idea)

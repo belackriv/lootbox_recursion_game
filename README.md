@@ -5,8 +5,11 @@ A sci-fi crafting, loot box and radiation-processing game on a 3D grid, built wi
 
 Humanity has learned to harness a black hole as a *universe inside a universe*. From a
 facility outside the event horizon, you inject elementary matter (carbon, iron) into the
-pocket universe, then compress it into loot boxes and build machines on its grid. There's
-no character: you are the operator, looking in from outside.
+pocket universe. There you compress it into **Quantum Caches**, sealed packages whose
+contents stay undecided until they're observed, and build machines on its grid. There's no
+character: you are the operator, looking in from outside.
+
+![The black hole backdrop, ray-traced with gravitational lensing and animated in game](docs/images/black_hole_preview.gif)
 
 It's a port of the Rails/Vue prototype
 [`belackriv/lootbox_recursion`](https://github.com/belackriv/lootbox_recursion). All the game
@@ -80,11 +83,11 @@ In the editor, press **Play** (Alt+P).
 | Input | Does |
 |---|---|
 | Click **Inject Matter** | Receive 25–34 carbon or iron (5s cast) |
-| Click a **Craft** recipe | Loot Box (50/50), Carbon or Iron Irradiation Enclosure |
-| Click a loot box in the inventory, then **Use** | Open it |
+| Click a **Craft** recipe | Quantum Cache (50/50), enclosures, radiation sources (as they unlock) |
+| Click a Quantum Cache in the inventory, then **Use** | Open it (collapse it) |
 | Click a grid cell, then **Deploy** | Place the selected (or first) enclosure there. With an enclosure selected in the inventory, the cursor shows a preview. |
 | Select an occupied cell, then **Recall** | Pick it back up |
-| Select an enclosure, select a loot box or radiation source in the inventory, then **Load** | Irradiate the box. Each exposure adds a modifier; X-rays reveal the contents. **Unload** when done. |
+| Select an enclosure, select a cache or radiation source in the inventory, then **Load** | Irradiate the cache. Each exposure adds a modifier; X-rays observe it (revealing and fixing the contents). **Unload** when done. |
 | **Sort** (inventory title bar) | Compress and alphabetize stacks |
 | Select a slot, then **Annihilate** (inventory title bar) | Destroy that whole stack |
 | Hold `W`/`A`/`S`/`D` or arrow keys | Pan across the grid |
@@ -176,9 +179,12 @@ Source/LootboxRecursion/
   Simulation/               FLRSimulation: the rules, as plain C++ with no world or actors (the "models")
   Game/                     Engine glue: subsystem, save game, game mode, controller, camera, world view, HUD actor
   UI/                       Slate HUD and its style (the "Vue components")
+  Cosmos/                   The animated backdrop: starfield, void, black hole compositor
   Tests/                    Automation tests (the "Minitest suite")
 Tools/validate_data.py      Validate the JSON without launching Unreal (also runs in CI)
 Tools/*.bat                 Build / editor / play / test / clangd helpers (used by .zed/tasks.json)
+Tools/cosmos/               Black hole ray tracer that bakes Content/Cosmos/BlackHole.lrbh
+Content/Cosmos/             The baked black hole lookup table (plain binary, read at runtime)
 docs/                       Porting notes, Unreal primer, design notes, roadmap
 ```
 
@@ -197,6 +203,32 @@ The architecture in one breath:
 - [docs/DESIGN.md](docs/DESIGN.md): game design, radiation tables, 3D grid and logistics
   ideas.
 - [docs/ROADMAP.md](docs/ROADMAP.md): suggested next milestones.
+
+## The backdrop
+
+`ALRCosmosActor` puts the pocket universe in space:
+
+- a black void and ~3000 stars with a faint galactic band
+- the black hole
+
+The black hole was **ray-traced offline**: real Schwarzschild light bending, a lensed
+accretion disk, and the photon ring. `Tools/cosmos/generate_black_hole.py` does the tracing
+and bakes the result into `Content/Cosmos/BlackHole.lrbh`. At runtime,
+`FLRBlackHoleRenderer` composites 30 frames a second from that table:
+
+- the disk turns at Keplerian speed, so inner orbits are faster and its turbulence shears into spirals
+- relativistic beaming brightens the side orbiting toward you
+- the photon ring pulses
+
+It uses only engine content, so no art assets are needed.
+
+- **Settings:** position, size, roll and brightness are under
+  `[/Script/LootboxRecursion.LRCosmosActor]` in `Config/DefaultGame.ini`.
+- **Hidden during play:** the level's sky atmosphere, clouds, fog and a `Floor` mesh. A level
+  made from the Basic template has all of them; the level file itself isn't changed.
+- **Changing the physics** (inclination, disk radii, resolution): edit the constants at the
+  top of the script and re-run it (`pip install numpy pillow`; a full bake takes ~7 minutes).
+  Use `--preview-only` to re-render `docs/images` without re-tracing.
 
 ## Tweaking game data
 

@@ -1099,7 +1099,7 @@ FString SLRGameHud::DescribeEnclosure(const FLRPlacedEntity& Enclosure) const
 	}
 	else if (Box && Box->bRevealed)
 	{
-		Text += FString::Printf(TEXT("\nChamber: %s, contents revealed (locked)"), *Data.GetDisplayName(Enclosure.Chamber.Item));
+		Text += FString::Printf(TEXT("\nChamber: %s, observed (contents fixed)"), *Data.GetDisplayName(Enclosure.Chamber.Item));
 	}
 	else
 	{
@@ -1121,11 +1121,11 @@ FString SLRGameHud::DescribeEnclosure(const FLRPlacedEntity& Enclosure) const
 
 	if (Box && Def && FLRSimulation::IsExposureComplete(*Box, *Def))
 	{
-		Text += TEXT("\nDone. Unload the box to open it.");
+		Text += TEXT("\nDone. Unload the cache to open it.");
 	}
 	else if (Enclosure.Chamber.IsEmpty() || Enclosure.Source.IsEmpty())
 	{
-		Text += TEXT("\nIdle: needs a loot box and a source.");
+		Text += TEXT("\nIdle: needs a cache and a source.");
 	}
 	return Text;
 }
@@ -1307,7 +1307,7 @@ FText SLRGameHud::GetHoverBody() const
 					{
 						Parts.Add(FString::Printf(TEXT("%d %s"), Amount.Count, *Sim->GetData().GetDisplayName(Amount.Item)));
 					}
-					Body += FString::Printf(TEXT("\nX-rayed contents: %s"), Parts.IsEmpty() ? TEXT("nothing") : *FString::Join(Parts, TEXT(", ")));
+					Body += FString::Printf(TEXT("\nObserved contents: %s"), Parts.IsEmpty() ? TEXT("nothing") : *FString::Join(Parts, TEXT(", ")));
 				}
 			}
 			if (Def && Def->IsSource())

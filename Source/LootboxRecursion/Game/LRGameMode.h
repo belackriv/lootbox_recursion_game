@@ -23,5 +23,6 @@ public:
 
 private:
 	void EnsureWorldView();
+	void EnsureCosmos();
 	void EnsureLighting();
 };
