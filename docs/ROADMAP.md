@@ -8,7 +8,7 @@ and play.
 - [ ] Install UE 5.8 and Visual Studio, build, and press Play (see README).
 - [ ] Fix any first-compile errors. The code has never been compiled against the real engine.
 - [ ] Run the automation tests. They should all pass.
-- [ ] Create `Content/Maps/Main` from the Basic template, set it as the default map, and
+- [ ] Create `Content/Maps/Main` as an Empty Level, set it as the default map, and
       commit it via LFS.
 
 ## M1: Make it feel like a game
@@ -20,8 +20,10 @@ and play.
 - [ ] Real meshes for the enclosures in the world (a Blueprint subclass of
       `ALRWorldGridActor`, or per-item mesh paths in data).
 - [x] Hover highlight and selection on grid cells.
-- [x] Cosmic look: grey/amber HUD, line grid in the void, starfield, and an animated,
-      ray-traced black hole backdrop.
+- [x] Cosmic look: grey/amber HUD, a grid of glowing light beams in the void, starfield, and
+      an animated, ray-traced black hole backdrop.
+- [ ] Grid beams in a real emissive material (they borrow the engine's widget material for
+      now), with a smooth distance fade instead of stepped brightness layers.
 - [ ] Higher-resolution black hole bake (1024²), lensed stars near the shadow, nebula haze.
 - [ ] Verify the black hole's blend: if `Widget3DPassThrough_Translucent` turns out to be
       premultiplied (AlphaComposite), drop the `1/Alpha` scale in `FLRBlackHoleRenderer::RenderRow`

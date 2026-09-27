@@ -57,12 +57,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
 	float Pitch = -50.f;
 
-	/** Tilt limits for free look, in degrees (negative = looking down). */
+	/**
+	 * Tilt limits for free look, in degrees. Negative looks down on the focus point from above;
+	 * positive swings the camera below the build layer to look up through it at the sky.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-	float MinPitch = -85.f;
+	float MinPitch = -88.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-	float MaxPitch = -10.f;
+	float MaxPitch = 80.f;
 
 	/** Degrees per unit of mouse movement while free looking. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")

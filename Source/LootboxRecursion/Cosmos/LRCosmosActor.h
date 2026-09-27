@@ -6,12 +6,14 @@
 #include "LRCosmosActor.generated.h"
 
 class UInstancedStaticMeshComponent;
+class ULevel;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UPrimitiveComponent;
 class UStaticMesh;
 class UStaticMeshComponent;
 class UTexture2D;
+class UWorld;
 
 /**
  * The view out of the pocket universe: a black void, a starfield with a faint galactic band,
@@ -67,23 +69,28 @@ public:
 	int32 StarCount = 3000;
 
 	/**
-	 * Hide sky atmosphere, clouds, height fog and a mesh named "Floor" from the level while
-	 * playing (a level made from the Basic template has all of them). The level itself is untouched.
+	 * While playing, hide everything visible the level brings: sky atmosphere, clouds, fog,
+	 * floors, landscapes and props (template levels have all of them). The game happens in the
+	 * void; lights keep working and the level asset itself is untouched. Turn this off to build
+	 * scenery in a level.
 	 */
 	UPROPERTY(Config, EditAnywhere, Category = "Cosmos")
 	bool bHideLevelEnvironment = true;
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
-	static void ExcludeFromLighting(UPrimitiveComponent* Component);
-	UMaterialInstanceDynamic* MakeUnlitMaterial(UMaterialInterface* Parent, UTexture2D* Texture, const FLinearColor& Tint);
 	UInstancedStaticMeshComponent* MakeStarLayer(const FLinearColor& Tint);
 	void BuildStars();
 	void BuildBlackHole();
 	void UploadFrame();
 	void HideLevelEnvironment();
+	void HandleLevelAdded(ULevel* Level, UWorld* World);
+	void HideLevelContent(ULevel* Level);
+
+	FDelegateHandle LevelAddedHandle;
 
 	UPROPERTY()
 	TObjectPtr<UStaticMesh> CubeMesh;

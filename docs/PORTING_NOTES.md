@@ -26,7 +26,7 @@ because an online multi-user web app became a local single-player desktop game.
 | Action Cable `PlayerInventoryChannel` / `PlayerActionsChannel` | Delegates: `OnInventoryChanged`, `OnWorldChanged`, `OnActionCompleted` | Native delegates on the sim, re-broadcast as Blueprint-assignable delegates on the subsystem. |
 | Pinia `store/player.ts` (selection, world window) | `ULRGameSubsystem` selection + focus | |
 | `MainLayout.vue`, `Index.vue`, `ActionBar.vue`, `InventoryGrid.vue`, ... | `SLRGameHud` (Slate) | `*_Lambda` attributes act like Vue computed properties. |
-| `WorldGrid.vue` (virtualized 1D list) | `ALRWorldGridActor` (3D grid) + the Grid panel's deployed list | The grid draws floor tiles only around the camera focus. |
+| `WorldGrid.vue` (virtualized 1D list) | `ALRWorldGridActor` (3D grid) + the Grid panel's deployed list | The grid draws glowing lines only around the camera focus. |
 | `TrimButton.vue` | "Home" button / `H` key → `ULRGameSubsystem::FocusHome` | |
 | Postgres | `USaveGame` in `Saved/SaveGames/LootboxRecursion.sav` | |
 | Users, sessions, auth, mailers | *(dropped)* | Single-player. The save file takes the place of the user. |

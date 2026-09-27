@@ -9,7 +9,9 @@
 #include "Game/LRGameSubsystem.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "GameFramework/Pawn.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Rendering/LRUnlit.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace
@@ -17,12 +19,51 @@ namespace
 	// BasicShapeMaterial exposes a "Color" vector parameter.
 	const FName ColorParam(TEXT("Color"));
 
-	// Cosmic palette: faint blue-grey grid lines in the void, amber (accretion disk) selection.
-	const FLinearColor TileColor = FLinearColor(FColor::FromHex(TEXT("1A2030")));
-	const FLinearColor TileMinorColor = FLinearColor(FColor::FromHex(TEXT("2C3550")));
-	const FLinearColor TileMajorColor = FLinearColor(FColor::FromHex(TEXT("56648C")));
-	const FLinearColor HoverColor = FLinearColor(FColor::FromHex(TEXT("9FB3D9")));
-	const FLinearColor SelectedColor = FLinearColor(FColor::FromHex(TEXT("F2A93B")));
+	// The grid is thin beams of light in the void. Tints above 1 are HDR and glow through bloom.
+	const FLinearColor LineColor(0.85f, 0.92f, 1.f);
+	const FLinearColor SelectedColor(FColor::FromHex(TEXT("F2A93B"))); // accretion-disk amber
+
+	FLinearColor Glow(const FLinearColor& Color, float Intensity)
+	{
+		return FLinearColor(Color.R * Intensity, Color.G * Intensity, Color.B * Intensity, 1.f);
+	}
+
+	/** Plain line, every 4th, every 16th (the ruler rhythm from WorldGrid.vue). */
+	constexpr float LineKindBrightness[] = { 0.3f, 0.7f, 2.2f };
+	/** Beam widths as a fraction of a cell, before scaling up with camera distance. */
+	constexpr float LineKindWidth[] = { 0.015f, 0.02f, 0.03f };
+	constexpr float HoverWidth = 0.04f;
+	constexpr float SelectionWidth = 0.05f;
+
+	/** Lines are cut into segments this many cells long, so they can fade towards the patch edge. */
+	constexpr float SegmentCells = 4.f;
+	/** Fraction of the patch radius where the fade-out starts. */
+	constexpr float FadeStart = 0.45f;
+
+	/** Brightness steps of the beam layers (one instanced component, one draw call each). */
+	constexpr int32 BrightnessSteps = 8;
+	constexpr float DimmestStep = 0.08f;
+	constexpr float StepRatio = 1.6f;
+
+	float StepBrightness(int32 Step)
+	{
+		return DimmestStep * FMath::Pow(StepRatio, static_cast<float>(Step));
+	}
+
+	/** The beam layer closest to a brightness, or INDEX_NONE if it's too dim to draw. */
+	int32 StepForBrightness(float Brightness)
+	{
+		if (Brightness < DimmestStep * 0.7f)
+		{
+			return INDEX_NONE;
+		}
+		const int32 Step = FMath::RoundToInt(FMath::Loge(Brightness / DimmestStep) / FMath::Loge(StepRatio));
+		return FMath::Clamp(Step, 0, BrightnessSteps - 1);
+	}
+
+	/** Camera distance (cm) at which beams have their base width; they widen beyond it. */
+	constexpr float LineWidthReferenceDistance = 1500.f;
+	constexpr float LineWidthStep = 1.3f;
 	const FColor EntityLabelColor = FColor::FromHex(TEXT("D6DCE8"));
 
 	/** Major ruler line spacing; the grid patch moves in steps of this so the pattern lines up. */
@@ -45,8 +86,10 @@ ALRWorldGridActor::ALRWorldGridActor()
 	// ship with every Unreal install, so the project needs no art to run.
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeFinder(TEXT("/Engine/BasicShapes/Cube.Cube"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MaterialFinder(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> UnlitFinder(LRUnlit::OpaqueMaterialPath);
 	CubeMesh = CubeFinder.Object;
 	BaseMaterial = MaterialFinder.Object;
+	UnlitMaterial = UnlitFinder.Object;
 }
 
 FVector ALRWorldGridActor::CellToLocal(const FIntVector& Cell) const
@@ -58,18 +101,16 @@ void ALRWorldGridActor::BeginPlay()
 {
 	Super::BeginPlay();
 
-	TileLayers.Add(CreateTileLayer(TileColor));
-	TileLayers.Add(CreateTileLayer(TileMinorColor));
-	TileLayers.Add(CreateTileLayer(TileMajorColor));
-	BuildTilePattern();
-
-	UMaterialInstanceDynamic* SelectionMaterial = nullptr;
-	SelectionMarker = CreateMesh(CubeMesh, SelectionMaterial, /*bTraceable*/ false);
-	if (SelectionMaterial)
+	WhiteTexture = LRUnlit::MakeSolidTexture(FColor::White);
+	for (int32 Step = 0; Step < BrightnessSteps; ++Step)
 	{
-		SelectionMaterial->SetVectorParameterValue(ColorParam, SelectedColor);
+		TileLayers.Add(CreateBeamLayer(Glow(LineColor, StepBrightness(Step))));
 	}
-	SelectionMarker->SetVisibility(false);
+	HoverOutline = CreateBeamLayer(Glow(LineColor, 1.4f));
+	HoverOutline->SetVisibility(false);
+	SelectionOutline = CreateBeamLayer(Glow(SelectedColor, 3.f));
+	SelectionOutline->SetVisibility(false);
+	RebuildLines();
 
 	UMaterialInstanceDynamic* HoverMat = nullptr;
 	HoverMarker = CreateMesh(CubeMesh, HoverMat, /*bTraceable*/ false);
@@ -95,6 +136,8 @@ void ALRWorldGridActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void ALRWorldGridActor::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	UpdateLineWidth();
 
 	// Snap the patch to whole ruler periods: moving 3 components now and then is cheap,
 	// rebuilding ~2500 instances every time the camera crosses a cell is not.
@@ -141,29 +184,25 @@ UStaticMeshComponent* ALRWorldGridActor::CreateMesh(UStaticMesh* Mesh, UMaterial
 	return Component;
 }
 
-UInstancedStaticMeshComponent* ALRWorldGridActor::CreateTileLayer(const FLinearColor& Color)
+UInstancedStaticMeshComponent* ALRWorldGridActor::CreateBeamLayer(const FLinearColor& Tint)
 {
-	// One instanced component per colour: thousands of tiles, one draw call each. No collision:
-	// the hovered cell is found by intersecting the cursor ray with the layer's plane.
-	UInstancedStaticMeshComponent* Tiles = NewObject<UInstancedStaticMeshComponent>(this);
-	Tiles->SetStaticMesh(CubeMesh);
-	Tiles->SetupAttachment(RootComponent);
-	Tiles->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	Tiles->SetCastShadow(false);
-	Tiles->RegisterComponent();
-
-	if (BaseMaterial)
+	// Instanced, so thousands of beams are one draw call. Unlit, so they glow in the dark
+	// instead of being shaded by the lights. No collision: the hovered cell is found by
+	// intersecting the cursor ray with the layer's plane.
+	UInstancedStaticMeshComponent* Beams = NewObject<UInstancedStaticMeshComponent>(this);
+	Beams->SetStaticMesh(CubeMesh);
+	Beams->SetupAttachment(RootComponent);
+	Beams->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	LRUnlit::ExcludeFromLighting(Beams);
+	Beams->RegisterComponent();
+	if (UMaterialInstanceDynamic* Material = LRUnlit::MakeMaterial(UnlitMaterial, this, WhiteTexture, Tint))
 	{
-		if (UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(BaseMaterial, this))
-		{
-			Material->SetVectorParameterValue(ColorParam, Color);
-			Tiles->SetMaterial(0, Material);
-		}
+		Beams->SetMaterial(0, Material);
 	}
-	return Tiles;
+	return Beams;
 }
 
-// ---- Floor tiles ----------------------------------------------------------------------
+// ---- Grid lines -----------------------------------------------------------------------
 
 FIntVector ALRWorldGridActor::GetFocusCell() const
 {
@@ -182,30 +221,88 @@ FIntVector ALRWorldGridActor::GetFocusCell() const
 
 void ALRWorldGridActor::BuildTilePattern()
 {
-	// Grid lines on the cell boundaries rather than solid tiles, so the cosmos shows through.
+	// Beams on the cell boundaries; the cells themselves are empty, so the cosmos shows through.
+	// Each line is cut into short segments that fade out towards the edge of the patch, and each
+	// segment goes into the beam layer closest to its brightness.
 	const float Scale = CellSize / 100.f; // the engine cube is 100cm
-	const float Length = (2 * TileRadius + 1) * CellSize;
-	const float Thickness = 0.03f * Scale;
+	const float Start = -(TileRadius + 0.5f); // in cells, relative to the patch centre
+	const float End = TileRadius + 0.5f;
 
-	TArray<FTransform> PerKind[3];
+	TArray<TArray<FTransform>> PerLayer;
+	PerLayer.SetNum(TileLayers.Num());
 	for (int32 Index = -TileRadius; Index <= TileRadius + 1; ++Index)
 	{
-		// Ruler rhythm from WorldGrid.vue: brighter every 4 lines, brightest every 16.
 		int32 Kind = 0;
 		if (Mod(Index, RulerPeriod) == 0)  { Kind = 2; }
 		else if (Mod(Index, 4) == 0)       { Kind = 1; }
 
-		const float Offset = (Index - 0.5f) * CellSize;
-		const FVector AlongX(Length / 100.f, Thickness, 0.01f * Scale);
-		const FVector AlongY(Thickness, Length / 100.f, 0.01f * Scale);
-		PerKind[Kind].Add(FTransform(FRotator::ZeroRotator, FVector(0.f, Offset, -0.5f * Scale), AlongX));
-		PerKind[Kind].Add(FTransform(FRotator::ZeroRotator, FVector(Offset, 0.f, -0.5f * Scale), AlongY));
+		const float Width = LineKindWidth[Kind] * Scale * LineWidthScale;
+		const float Across = Index - 0.5f;
+		for (float From = Start; From < End - 0.01f; From += SegmentCells)
+		{
+			const float To = FMath::Min(From + SegmentCells, End);
+			const float Along = 0.5f * (From + To);
+			const float Distance = FMath::Sqrt(Along * Along + Across * Across) / FMath::Max(TileRadius, 1);
+			const float Brightness = LineKindBrightness[Kind] * (1.f - FMath::SmoothStep(FadeStart, 1.f, Distance));
+			const int32 Layer = StepForBrightness(Brightness);
+			if (!PerLayer.IsValidIndex(Layer))
+			{
+				continue;
+			}
+			const float Length = (To - From) * Scale;
+			PerLayer[Layer].Add(FTransform(FRotator::ZeroRotator, FVector(Along, Across, 0.f) * CellSize, FVector(Length, Width, Width)));
+			PerLayer[Layer].Add(FTransform(FRotator::ZeroRotator, FVector(Across, Along, 0.f) * CellSize, FVector(Width, Length, Width)));
+		}
 	}
 
-	for (int32 Kind = 0; Kind < TileLayers.Num() && Kind < 3; ++Kind)
+	for (int32 Layer = 0; Layer < TileLayers.Num(); ++Layer)
 	{
-		TileLayers[Kind]->ClearInstances();
-		TileLayers[Kind]->AddInstances(PerKind[Kind], /*bShouldReturnIndices*/ false);
+		TileLayers[Layer]->ClearInstances();
+		TileLayers[Layer]->AddInstances(PerLayer[Layer], /*bShouldReturnIndices*/ false);
+	}
+}
+
+void ALRWorldGridActor::BuildOutline(UInstancedStaticMeshComponent* Outline, float Width)
+{
+	// Four beams around one cell, centred on the component (which sits on the cell's floor).
+	const float Scale = CellSize / 100.f;
+	const float Thickness = Width * Scale * LineWidthScale;
+	const float Length = Scale + Thickness; // overlap at the corners
+	const float Half = 0.5f * CellSize;
+	const TArray<FTransform> Beams = {
+		FTransform(FRotator::ZeroRotator, FVector(0.f, -Half, 0.f), FVector(Length, Thickness, Thickness)),
+		FTransform(FRotator::ZeroRotator, FVector(0.f, Half, 0.f), FVector(Length, Thickness, Thickness)),
+		FTransform(FRotator::ZeroRotator, FVector(-Half, 0.f, 0.f), FVector(Thickness, Length, Thickness)),
+		FTransform(FRotator::ZeroRotator, FVector(Half, 0.f, 0.f), FVector(Thickness, Length, Thickness)),
+	};
+	Outline->ClearInstances();
+	Outline->AddInstances(Beams, /*bShouldReturnIndices*/ false);
+}
+
+void ALRWorldGridActor::RebuildLines()
+{
+	BuildTilePattern();
+	BuildOutline(HoverOutline, HoverWidth);
+	BuildOutline(SelectionOutline, SelectionWidth);
+}
+
+void ALRWorldGridActor::UpdateLineWidth()
+{
+	// Keep beams a pixel or two wide at any zoom: widen them as the camera pulls back, in
+	// coarse steps so zooming only rebuilds the pattern now and then.
+	const APlayerCameraManager* CameraManager = UGameplayStatics::GetPlayerCameraManager(this, 0);
+	const APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+	if (!CameraManager || !Pawn)
+	{
+		return;
+	}
+	const float Distance = FVector::Dist(CameraManager->GetCameraLocation(), Pawn->GetActorLocation());
+	const float Wanted = FMath::Max(1.f, Distance / LineWidthReferenceDistance);
+	const float Stepped = FMath::Pow(LineWidthStep, FMath::RoundToFloat(FMath::Loge(Wanted) / FMath::Loge(LineWidthStep)));
+	if (!FMath::IsNearlyEqual(Stepped, LineWidthScale, 0.01f))
+	{
+		LineWidthScale = Stepped;
+		RebuildLines();
 	}
 }
 
@@ -301,24 +398,24 @@ void ALRWorldGridActor::UpdateMarkers()
 
 	FIntVector Selected;
 	const bool bHasSelection = Subsystem->GetSelectedCell(Selected);
-	SelectionMarker->SetVisibility(bHasSelection);
+	SelectionOutline->SetVisibility(bHasSelection);
 	if (bHasSelection)
 	{
-		// A thin slab filling the cell (grid lines are the only floor now).
-		SelectionMarker->SetRelativeLocation(CellToLocal(Selected) - FVector(0.f, 0.f, 1.f * Scale));
-		SelectionMarker->SetRelativeScale3D(FVector(0.96f * Scale, 0.96f * Scale, 0.02f * Scale));
+		SelectionOutline->SetRelativeLocation(CellToLocal(Selected));
 	}
 
 	FIntVector Hovered;
 	const bool bHasHover = Subsystem->GetHoveredCell(Hovered);
-	HoverMarker->SetVisibility(bHasHover);
+	HoverOutline->SetVisibility(bHasHover);
+	HoverMarker->SetVisibility(false);
 	if (!bHasHover)
 	{
 		return;
 	}
+	HoverOutline->SetRelativeLocation(CellToLocal(Hovered));
 
-	// If a deployable item is selected in the inventory and the cell is free, show a
-	// small "ghost" of it; otherwise just a flat highlight.
+	// If a deployable item is selected in the inventory and the cell is free, also show a
+	// small "ghost" of it.
 	const FLRItemDef* Preview = nullptr;
 	const int32 SlotIndex = Subsystem->GetSelectedSlot();
 	if (Simulation->GetInventory().IsValidIndex(SlotIndex) && !Simulation->GetInventory()[SlotIndex].IsEmpty())
@@ -329,20 +426,12 @@ void ALRWorldGridActor::UpdateMarkers()
 
 	if (Preview && !Simulation->FindPlaced(Hovered))
 	{
+		HoverMarker->SetVisibility(true);
 		HoverMarker->SetRelativeLocation(CellToLocal(Hovered) + FVector(0.f, 0.f, 25.f * Scale));
 		HoverMarker->SetRelativeScale3D(FVector(0.5f * Scale));
 		if (HoverMaterial)
 		{
 			HoverMaterial->SetVectorParameterValue(ColorParam, Preview->GetLinearColor());
-		}
-	}
-	else
-	{
-		HoverMarker->SetRelativeLocation(CellToLocal(Hovered) + FVector(0.f, 0.f, 0.5f * Scale));
-		HoverMarker->SetRelativeScale3D(FVector(0.9f * Scale, 0.9f * Scale, 0.01f * Scale));
-		if (HoverMaterial)
-		{
-			HoverMaterial->SetVectorParameterValue(ColorParam, HoverColor);
 		}
 	}
 }

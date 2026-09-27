@@ -7,41 +7,20 @@
 #include "Components/SkyAtmosphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/VolumetricCloudComponent.h"
+#include "Engine/Level.h"
 #include "Engine/StaticMesh.h"
-#include "Engine/StaticMeshActor.h"
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
-#include "EngineUtils.h"
+#include "Game/LRWorldGridActor.h"
+#include "GameFramework/Pawn.h"
 #include "Kismet/GameplayStatics.h"
 #include "LootboxRecursion.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/Paths.h"
 #include "RHI.h"
+#include "Rendering/LRUnlit.h"
 #include "TextureResource.h"
 #include "UObject/ConstructorHelpers.h"
-
-namespace
-{
-	// Parameter names of the engine's Widget3DPassThrough materials (see UWidgetComponent).
-	const FName TextureParam(TEXT("SlateUI"));
-	const FName TintParam(TEXT("TintColorAndOpacity"));
-	const FName OpacityFromTextureParam(TEXT("OpacityFromTexture"));
-	const FName BackColorParam(TEXT("BackColor"));
-
-	UTexture2D* MakeSolidTexture(const FColor& Color)
-	{
-		UTexture2D* Texture = UTexture2D::CreateTransient(1, 1, PF_B8G8R8A8);
-		if (!Texture)
-		{
-			return nullptr;
-		}
-		void* Data = Texture->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE);
-		FMemory::Memcpy(Data, &Color, sizeof(FColor));
-		Texture->GetPlatformData()->Mips[0].BulkData.Unlock();
-		Texture->UpdateResource();
-		return Texture;
-	}
-}
 
 ALRCosmosActor::ALRCosmosActor()
 {
@@ -53,8 +32,8 @@ ALRCosmosActor::ALRCosmosActor()
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeFinder(TEXT("/Engine/BasicShapes/Cube.Cube"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> SphereFinder(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> PlaneFinder(TEXT("/Engine/BasicShapes/Plane.Plane"));
-	static ConstructorHelpers::FObjectFinder<UMaterialInterface> OpaqueFinder(TEXT("/Engine/EngineMaterials/Widget3DPassThrough_Opaque"));
-	static ConstructorHelpers::FObjectFinder<UMaterialInterface> TranslucentFinder(TEXT("/Engine/EngineMaterials/Widget3DPassThrough_Translucent"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> OpaqueFinder(LRUnlit::OpaqueMaterialPath);
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> TranslucentFinder(LRUnlit::TranslucentMaterialPath);
 	CubeMesh = CubeFinder.Object;
 	SphereMesh = SphereFinder.Object;
 	PlaneMesh = PlaneFinder.Object;
@@ -71,7 +50,7 @@ void ALRCosmosActor::BeginPlay()
 		HideLevelEnvironment();
 	}
 
-	WhiteTexture = MakeSolidTexture(FColor::White);
+	WhiteTexture = LRUnlit::MakeSolidTexture(FColor::White);
 
 	// Fixed exposure: auto exposure would brighten the black void until it turns grey, blow out
 	// the disk, and pump as the grid or UI fill the view.
@@ -94,36 +73,14 @@ void ALRCosmosActor::BeginPlay()
 		Backdrop->SetupAttachment(RootComponent);
 		Backdrop->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		Backdrop->SetCastShadow(false);
-		ExcludeFromLighting(Backdrop);
+		LRUnlit::ExcludeFromLighting(Backdrop);
 		Backdrop->SetRelativeScale3D(FVector(SkyRadius / 50.f)); // engine sphere radius is 50
 		Backdrop->RegisterComponent();
-		Backdrop->SetMaterial(0, MakeUnlitMaterial(UnlitOpaqueMaterial, WhiteTexture, FLinearColor(0.002f, 0.002f, 0.004f, 1.f)));
+		Backdrop->SetMaterial(0, LRUnlit::MakeMaterial(UnlitOpaqueMaterial, this, WhiteTexture, FLinearColor(0.002f, 0.002f, 0.004f, 1.f)));
 	}
 
 	BuildStars();
 	BuildBlackHole();
-}
-
-void ALRCosmosActor::ExcludeFromLighting(UPrimitiveComponent* Component)
-{
-	// The sky is scenery at infinity: keep it out of Lumen, distance fields and ray tracing,
-	// which would otherwise see a solid sphere enclosing the whole scene.
-	Component->bAffectDistanceFieldLighting = false;
-	Component->bAffectDynamicIndirectLighting = false;
-	Component->bVisibleInRayTracing = false;
-}
-
-UMaterialInstanceDynamic* ALRCosmosActor::MakeUnlitMaterial(UMaterialInterface* Parent, UTexture2D* Texture, const FLinearColor& Tint)
-{
-	UMaterialInstanceDynamic* Material = Parent ? UMaterialInstanceDynamic::Create(Parent, this) : nullptr;
-	if (Material)
-	{
-		Material->SetTextureParameterValue(TextureParam, Texture);
-		Material->SetVectorParameterValue(TintParam, Tint);
-		Material->SetVectorParameterValue(BackColorParam, FLinearColor::Black);
-		Material->SetScalarParameterValue(OpacityFromTextureParam, 1.f);
-	}
-	return Material;
 }
 
 UInstancedStaticMeshComponent* ALRCosmosActor::MakeStarLayer(const FLinearColor& Tint)
@@ -133,9 +90,9 @@ UInstancedStaticMeshComponent* ALRCosmosActor::MakeStarLayer(const FLinearColor&
 	Layer->SetupAttachment(RootComponent);
 	Layer->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Layer->SetCastShadow(false);
-	ExcludeFromLighting(Layer);
+	LRUnlit::ExcludeFromLighting(Layer);
 	Layer->RegisterComponent();
-	if (UMaterialInstanceDynamic* Material = MakeUnlitMaterial(UnlitOpaqueMaterial, WhiteTexture, Tint))
+	if (UMaterialInstanceDynamic* Material = LRUnlit::MakeMaterial(UnlitOpaqueMaterial, this, WhiteTexture, Tint))
 	{
 		Layer->SetMaterial(0, Material);
 	}
@@ -231,12 +188,12 @@ void ALRCosmosActor::BuildBlackHole()
 	BlackHole->SetupAttachment(RootComponent);
 	BlackHole->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	BlackHole->SetCastShadow(false);
-	ExcludeFromLighting(BlackHole);
+	LRUnlit::ExcludeFromLighting(BlackHole);
 	BlackHole->SetRelativeLocation(Direction * Distance);
 	BlackHole->SetRelativeRotation(Rotation);
 	BlackHole->SetRelativeScale3D(FVector(Width / 100.f, Width / 100.f, 1.f)); // engine plane is 100cm
 	BlackHole->RegisterComponent();
-	BlackHole->SetMaterial(0, MakeUnlitMaterial(UnlitTranslucentMaterial, BlackHoleTexture, FLinearColor(Brightness, Brightness, Brightness, 1.f)));
+	BlackHole->SetMaterial(0, LRUnlit::MakeMaterial(UnlitTranslucentMaterial, this, BlackHoleTexture, FLinearColor(Brightness, Brightness, Brightness, 1.f)));
 
 	UploadFrame();
 }
@@ -283,12 +240,40 @@ void ALRCosmosActor::UploadFrame()
 		});
 }
 
+void ALRCosmosActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	FWorldDelegates::LevelAddedToWorld.Remove(LevelAddedHandle);
+	Super::EndPlay(EndPlayReason);
+}
+
 void ALRCosmosActor::HideLevelEnvironment()
 {
-	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+	for (ULevel* Level : GetWorld()->GetLevels())
 	{
-		AActor* Actor = *It;
-		if (Actor == this)
+		HideLevelContent(Level);
+	}
+	// World Partition and level streaming load terrain in pieces after BeginPlay.
+	LevelAddedHandle = FWorldDelegates::LevelAddedToWorld.AddUObject(this, &ALRCosmosActor::HandleLevelAdded);
+}
+
+void ALRCosmosActor::HandleLevelAdded(ULevel* Level, UWorld* World)
+{
+	if (World == GetWorld())
+	{
+		HideLevelContent(Level);
+	}
+}
+
+void ALRCosmosActor::HideLevelContent(ULevel* Level)
+{
+	if (!Level)
+	{
+		return;
+	}
+	for (AActor* Actor : Level->Actors)
+	{
+		// Keep the game's own actors. Lights are not primitives, so they keep lighting the entities.
+		if (!IsValid(Actor) || Actor == this || Actor->IsA<APawn>() || Actor->IsA<ALRWorldGridActor>())
 		{
 			continue;
 		}
@@ -301,12 +286,12 @@ void ALRCosmosActor::HideLevelEnvironment()
 			{
 				Component->SetVisibility(false);
 			}
-		}
-		// The Basic level template's ground plane.
-		if (Actor->IsA<AStaticMeshActor>() && Actor->GetName().StartsWith(TEXT("Floor")))
-		{
-			Actor->SetActorHiddenInGame(true);
-			Actor->SetActorEnableCollision(false);
+			// Floors, landscapes, template props: the void has no ground.
+			else if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Component))
+			{
+				Primitive->SetHiddenInGame(true);
+				Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			}
 		}
 	}
 }

@@ -94,7 +94,7 @@ In the editor, press **Play** (Alt+P).
 | Select a slot, then **Annihilate** (inventory title bar) | Destroy that whole stack |
 | Hold `W`/`A`/`S`/`D` or arrow keys | Pan across the grid |
 | Mouse wheel | Zoom |
-| Hold right mouse and drag | Free look: orbit and tilt |
+| Hold right mouse and drag | Free look: orbit and tilt (tilt up swings below the layer to look up at the sky) |
 | Hold `Q`/`E` | Orbit the camera |
 | `PageUp`/`PageDown` or `]`/`[` | Build layer up / down (Z) |
 | Click a row in the **Grid** panel's list | Select that entity and fly the camera to it |
@@ -156,13 +156,13 @@ you need it. Most day-to-day debugging is `UE_LOG` plus the Output Log.
 The repo deliberately contains **no binary assets**, so it's fully reviewable in a diff.
 Your first commits should add some:
 
-1. **Make a real level.** Go to File → New Level → **Basic** (it has a sky, sun and floor).
-   Save it as `Content/Maps/Main`.
+1. **Make a real level.** Go to File → New Level → **Empty Level**. The game spawns its own
+   lights, grid, stars and black hole, so the level needs nothing in it. Save it as
+   `Content/Maps/Main`.
 2. **Make it the default.** In Edit → Project Settings → *Maps & Modes*, set
    **Editor Startup Map** and **Game Default Map** to `Main`. That updates
    `Config/DefaultEngine.ini`.
-3. Press Play. `LRGameMode` sees the level already has a sun, so it only adds the grid
-   and HUD.
+3. Press Play. `LRGameMode` adds the lights, grid, cosmos and HUD.
 4. Commit the level with Git LFS. Check with `git lfs ls-files`.
 
 From there, see [docs/ROADMAP.md](docs/ROADMAP.md) for good next steps: icons, a loot box
@@ -226,8 +226,10 @@ It uses only engine content, so no art assets are needed.
 
 - **Settings:** position, size, roll and brightness are under
   `[/Script/LootboxRecursion.LRCosmosActor]` in `Config/DefaultGame.ini`.
-- **Hidden during play:** the level's sky atmosphere, clouds, fog and a `Floor` mesh. A level
-  made from the Basic template has all of them; the level file itself isn't changed.
+- **Hidden during play:** everything visible the level brings: sky atmosphere, clouds, fog,
+  floors, landscapes and props (templates like Basic and Open World have them). Lights keep
+  working, and the level file itself isn't changed. Set `bHideLevelEnvironment=False` in the
+  same config section to build scenery in a level.
 - **Changing the physics** (inclination, disk radii, resolution): edit the constants at the
   top of the script and re-run it (`pip install numpy pillow`; a full bake takes ~7 minutes).
   Use `--preview-only` to re-render `docs/images` without re-tracing.

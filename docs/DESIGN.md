@@ -46,7 +46,7 @@ Irradiation enclosures create them (see below).
 ## The grid (implemented)
 
 - Integer cells `(X, Y, Z)`, unbounded in every direction, one deployed entity per cell.
-- You build on one **layer** (Z) at a time. The floor tiles, hover marker and placement
+- You build on one **layer** (Z) at a time. The grid lines, hover outline and placement
   preview show that layer; entities on every layer stay visible.
 - There's no support or gravity rule yet: anything can be placed on any layer.
 

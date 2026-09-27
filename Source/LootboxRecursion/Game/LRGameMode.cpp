@@ -34,7 +34,7 @@ void ALRGameMode::EnsureWorldView()
 	}
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	// Slightly above the origin so layer 0 doesn't z-fight with a template level's floor.
+	// Slightly above the origin, clear of a template level's floor (hidden in play anyway).
 	GetWorld()->SpawnActor<ALRWorldGridActor>(FVector(0.f, 0.f, 5.f), FRotator::ZeroRotator, Params);
 }
 
@@ -51,7 +51,7 @@ void ALRGameMode::EnsureCosmos()
 
 void ALRGameMode::EnsureLighting()
 {
-	// A level made from the "Basic" template already has a sun, sky and fog.
+	// A level made from a template (Basic, Open World) already has a sun.
 	if (TActorIterator<ADirectionalLight>(GetWorld()))
 	{
 		return;
