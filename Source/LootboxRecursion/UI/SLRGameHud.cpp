@@ -191,7 +191,7 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 			.VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Text(LOCTEXT("Title", "LOOT BOX RECURSION"))
+				.Text(LOCTEXT("Title", "QUANTUM RECURSION"))
 				.Font(Style.TitleFont)
 				.ColorAndOpacity(Style.Orange)
 			]

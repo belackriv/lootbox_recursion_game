@@ -2,7 +2,7 @@
 	"FileVersion": 3,
 	"EngineAssociation": "5.8",
 	"Category": "",
-	"Description": "Loot Box Recursion - a crafting / loot box / radiation-processing game on a one-dimensional world.",
+	"Description": "Quantum Recursion - a sci-fi crafting, quantum-cache and radiation-processing game on a 3D grid inside a black hole.",
 	"Modules": [
 		{
 			"Name": "LootboxRecursion",

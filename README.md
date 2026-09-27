@@ -1,4 +1,6 @@
-# Loot Box Recursion
+# Quantum Recursion
+
+*(Repository, module and code names still say `LootboxRecursion` from the original Rails prototype. Renaming those isn't worth the churn.)*
 
 A sci-fi crafting, loot box and radiation-processing game on a 3D grid, built with
 **Unreal Engine 5.8** and C++.

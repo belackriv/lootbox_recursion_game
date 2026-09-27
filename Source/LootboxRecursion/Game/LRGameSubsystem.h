@@ -37,75 +37,75 @@ public:
 	/** Errors from loading the JSON files in Content/Data. Non-empty means the game data is broken. */
 	const TArray<FString>& GetDataErrors() const { return DataErrors; }
 
-	UFUNCTION(BlueprintPure, Category = "Loot Box Recursion")
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion")
 	bool GetItemDef(FName Item, FLRItemDef& OutDef) const;
 
 	// ---- Commands ---------------------------------------------------------------------
-	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion")
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion")
 	FLRActionResult RequestAction(const FLRActionRequest& Request);
 
-	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion")
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion")
 	FLRActionResult RequestSimpleAction(FName Action);
 
-	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion")
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion")
 	FLRActionResult Craft(FName RecipeId);
 
 	/** Use / Deploy / Recall with the current selection filled in. */
-	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion")
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion")
 	FLRActionResult RequestActionWithSelection(FName Action);
 
 	// ---- Queries ----------------------------------------------------------------------
-	UFUNCTION(BlueprintPure, Category = "Loot Box Recursion")
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion")
 	FLRActionStatus GetActionStatus(FName Action) const;
 
-	UFUNCTION(BlueprintPure, Category = "Loot Box Recursion")
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion")
 	TArray<FLRInventorySlot> GetInventory() const;
 
-	UFUNCTION(BlueprintPure, Category = "Loot Box Recursion")
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion")
 	int32 CountItem(FName Item) const;
 
-	UFUNCTION(BlueprintPure, Category = "Loot Box Recursion")
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion")
 	bool GetPlacedAt(FIntVector Cell, FLRPlacedEntity& OutEntity) const;
 
-	UFUNCTION(BlueprintPure, Category = "Loot Box Recursion")
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion")
 	double GetSimTime() const;
 
 	// ---- Selection, hover, build layer & camera focus (UI state, not saved) -----------
-	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Selection")
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Selection")
 	void SelectSlot(int32 SlotIndex);
 
 	/** Select a grid cell. With bToggle, selecting the already-selected cell deselects it. */
-	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Selection")
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Selection")
 	void SelectCell(FIntVector Cell, bool bToggle = true);
 
-	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Selection")
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Selection")
 	void ClearCellSelection();
 
-	UFUNCTION(BlueprintPure, Category = "Loot Box Recursion|Selection")
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Selection")
 	int32 GetSelectedSlot() const { return SelectedSlot; }
 
-	UFUNCTION(BlueprintPure, Category = "Loot Box Recursion|Selection")
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Selection")
 	bool GetSelectedCell(FIntVector& OutCell) const;
 
 	/** The cell under the mouse cursor (set every frame by the world grid). */
 	void SetHoveredCell(const FIntVector& Cell) { HoveredCell = Cell; bHasHoveredCell = true; }
 	void ClearHoveredCell() { bHasHoveredCell = false; }
 
-	UFUNCTION(BlueprintPure, Category = "Loot Box Recursion|Selection")
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Selection")
 	bool GetHoveredCell(FIntVector& OutCell) const;
 
 	/** The Z layer you are building on. */
-	UFUNCTION(BlueprintPure, Category = "Loot Box Recursion|Selection")
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Selection")
 	int32 GetBuildLayer() const { return BuildLayer; }
 
-	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Selection")
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Selection")
 	void SetBuildLayer(int32 Layer);
 
-	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Selection")
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Selection")
 	void ChangeBuildLayer(int32 Delta) { SetBuildLayer(BuildLayer + Delta); }
 
 	/** Ask the camera to fly to a cell (and switch to its layer). */
-	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Selection")
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Selection")
 	void FocusOnCell(FIntVector Cell);
 
 	/** Increments on every FocusOnCell; the camera watches it. */
@@ -113,39 +113,39 @@ public:
 	FIntVector GetFocusRequestCell() const { return FocusRequestCell; }
 
 	/** Rails: the Trim button - fly to the first deployed entity (or the origin). */
-	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Selection")
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Selection")
 	void FocusHome();
 
 	/** Deployed entities sorted by layer, then Y, then X (for lists). */
 	TArray<FLRPlacedEntity> GetPlacedSorted() const;
 
 	// ---- Debug / meta -----------------------------------------------------------------
-	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Debug")
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Debug")
 	bool GiveItem(FName Item, int32 Count);
 
-	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Debug")
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Debug")
 	void SetTimeScale(float InTimeScale) { TimeScale = FMath::Clamp(InTimeScale, 0.f, 100.f); }
 
-	UFUNCTION(BlueprintPure, Category = "Loot Box Recursion|Debug")
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Debug")
 	float GetTimeScale() const { return TimeScale; }
 
-	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Debug")
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Debug")
 	void ResetGame();
 
-	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Debug")
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Debug")
 	bool SaveNow();
 
 	// ---- Events (Rails: PlayerInventoryChannel / PlayerActionsChannel broadcasts) ------
-	UPROPERTY(BlueprintAssignable, Category = "Loot Box Recursion")
+	UPROPERTY(BlueprintAssignable, Category = "Quantum Recursion")
 	FLRSimpleEvent OnInventoryChanged;
 
-	UPROPERTY(BlueprintAssignable, Category = "Loot Box Recursion")
+	UPROPERTY(BlueprintAssignable, Category = "Quantum Recursion")
 	FLRSimpleEvent OnWorldChanged;
 
-	UPROPERTY(BlueprintAssignable, Category = "Loot Box Recursion")
+	UPROPERTY(BlueprintAssignable, Category = "Quantum Recursion")
 	FLRSimpleEvent OnSelectionChanged;
 
-	UPROPERTY(BlueprintAssignable, Category = "Loot Box Recursion")
+	UPROPERTY(BlueprintAssignable, Category = "Quantum Recursion")
 	FLRActionCompletedEvent OnActionCompleted;
 
 	static const FString SaveSlotName;
