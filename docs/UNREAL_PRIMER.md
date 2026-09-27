@@ -66,7 +66,7 @@ Some UnrealScript concepts map directly:
     and dynamic delegates.
 - **Containers and strings:** `TArray` ≈ `Array`, `TMap` ≈ `Hash`, `TSet` ≈ `Set`.
   - `FString` is a mutable string.
-  - `FName` is an interned, case-insensitive identifier, good for ids like `"wood"`.
+  - `FName` is an interned, case-insensitive identifier, good for ids like `"carbon"`.
   - `FText` is user-facing, localizable text.
 
 ## 4. The gameplay framework in this project
@@ -78,7 +78,7 @@ UWorld (level) ├─ ALRGameMode           picks the classes below; spawns ligh
                ├─ ALRPlayerController   input, cursor, console commands
                │    └─ ALRCameraPawn    camera on a spring arm, follows the focus coordinate
                ├─ ALRHud                adds the Slate HUD (SLRGameHud) to the viewport
-               └─ ALRWorldLineActor     draws the 1D world with engine basic shapes
+               └─ ALRWorldGridActor     draws the 3D build grid with engine basic shapes
 ```
 
 - **Subsystems** are engine-managed singletons scoped to a lifetime (engine, game
@@ -134,7 +134,7 @@ zero assets. To move them to assets:
    editor and rebuild.
 3. **Logs.** Use `UE_LOG(LogLootbox, Log, TEXT("..."))` and read them in
    Window > Output Log. Filter by `LogLootbox`.
-4. **Console** (`~`): `LRGive wood 500`, `LRTimeScale 10`, `LRReset`, `LRItems`, `stat fps`.
+4. **Console** (`~`): `LRGive carbon 500`, `LRTimeScale 10`, `LRReset`, `LRItems`, `stat fps`.
 5. **Tests.** Open Tools > Session Frontend > Automation, filter `LootboxRecursion`, and
    run them.
 

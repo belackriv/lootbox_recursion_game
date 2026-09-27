@@ -6,6 +6,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSpacer.h"
 #include "Widgets/Layout/SUniformGridPanel.h"
 #include "Widgets/Notifications/SProgressBar.h"
@@ -200,7 +201,7 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 			.Padding(FMargin(16.f, 0.f))
 			[
 				SNew(STextBlock)
-				.Text(LOCTEXT("Help", "Click a cell to select it  |  hold A/D to pan, wheel to zoom, Q/E to orbit, R reset view, H home  |  ~ console: LRGive wood 500, LRTimeScale 10, LRReset"))
+				.Text(LOCTEXT("Help", "Click a cell to select it  |  WASD pan, wheel zoom, Q/E orbit, PgUp/PgDn layer, R reset view, H home  |  ~ console: LRGive carbon 500, LRTimeScale 10, LRReset"))
 				.Font(Style.SmallFont)
 				.ColorAndOpacity(Style.TextDim)
 			]
@@ -273,11 +274,11 @@ TSharedRef<SWidget> SLRGameHud::BuildActionsPanel()
 	.AutoHeight()
 	.Padding(FMargin(0.f, 0.f, 0.f, 6.f))
 	[
-		MakeActionButton(LRNames::Scavenge, [this]()
+		MakeActionButton(LRNames::Inject, [this]()
 		{
 			if (ULRGameSubsystem* Sub = GetSubsystem())
 			{
-				Sub->RequestSimpleAction(LRNames::Scavenge);
+				Sub->RequestSimpleAction(LRNames::Inject);
 			}
 		})
 	];
@@ -369,7 +370,7 @@ TSharedRef<SWidget> SLRGameHud::BuildWorldPanel()
 	const FLRHudStyle& Style = FLRHudStyle::Get();
 	TSharedRef<SVerticalBox> Box = SNew(SVerticalBox);
 
-	// Paging controls
+	// Build layer controls
 	Box->AddSlot()
 	.AutoHeight()
 	.Padding(FMargin(0.f, 0.f, 0.f, 4.f))
@@ -378,9 +379,9 @@ TSharedRef<SWidget> SLRGameHud::BuildWorldPanel()
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		[
-			MakeSmallButton(LOCTEXT("PageUp", "< 8"), [this]()
+			MakeSmallButton(LOCTEXT("LayerDown", "- Layer"), [this]()
 			{
-				if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->PanFocus(-8); }
+				if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->ChangeBuildLayer(-1); }
 			})
 		]
 		+ SHorizontalBox::Slot()
@@ -389,38 +390,70 @@ TSharedRef<SWidget> SLRGameHud::BuildWorldPanel()
 		.VAlign(VAlign_Center)
 		[
 			SNew(STextBlock)
-			.Font(Style.SmallFont)
-			.ColorAndOpacity(Style.TextDim)
+			.Font(Style.HeadingFont)
+			.ColorAndOpacity(Style.Text)
 			.Text_Lambda([this]()
 			{
 				const ULRGameSubsystem* Sub = GetSubsystem();
-				return AsText(FString::Printf(TEXT("centred on %d"), Sub ? Sub->GetFocusCoordinate() : 0));
+				return AsText(FString::Printf(TEXT("Layer Z = %d"), Sub ? Sub->GetBuildLayer() : 0));
 			})
 		]
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		[
-			MakeSmallButton(LOCTEXT("PageDown", "8 >"), [this]()
+			MakeSmallButton(LOCTEXT("LayerUp", "Layer +"), [this]()
 			{
-				if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->PanFocus(8); }
+				if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->ChangeBuildLayer(1); }
 			})
 		]
 	];
 
-	for (int32 Row = 0; Row < WorldRows; ++Row)
-	{
-		Box->AddSlot()
-		.AutoHeight()
-		.Padding(FMargin(0.f, 1.f))
-		[
-			MakeWorldRow(Row)
-		];
-	}
+	// Cursor / selection readout
+	Box->AddSlot()
+	.AutoHeight()
+	.Padding(FMargin(0.f, 2.f))
+	[
+		SNew(STextBlock)
+		.Font(Style.SmallFont)
+		.ColorAndOpacity(Style.TextDim)
+		.Text_Lambda([this]()
+		{
+			const ULRGameSubsystem* Sub = GetSubsystem();
+			FIntVector Cell;
+			if (!Sub || !Sub->GetHoveredCell(Cell))
+			{
+				return LOCTEXT("NoCursor", "Cursor: -");
+			}
+			return AsText(FString::Printf(TEXT("Cursor: %s"), *FLRSimulation::DescribeCell(Cell)));
+		})
+	];
+	Box->AddSlot()
+	.AutoHeight()
+	.Padding(FMargin(0.f, 2.f, 0.f, 4.f))
+	[
+		SNew(STextBlock)
+		.Font(Style.BodyFont)
+		.ColorAndOpacity(Style.Orange)
+		.AutoWrapText(true)
+		.Text_Lambda([this]()
+		{
+			const ULRGameSubsystem* Sub = GetSubsystem();
+			const FLRSimulation* Sim = GetSimulation();
+			FIntVector Cell;
+			if (!Sub || !Sim || !Sub->GetSelectedCell(Cell))
+			{
+				return LOCTEXT("NoSelection", "Selected: none (click a cell)");
+			}
+			const FLRPlacedEntity* Entity = Sim->FindPlaced(Cell);
+			return AsText(FString::Printf(TEXT("Selected: %s  %s"), *FLRSimulation::DescribeCell(Cell),
+				Entity ? *Sim->GetData().GetDisplayName(Entity->Item) : TEXT("(empty)")));
+		})
+	];
 
 	// Deploy / Recall act on the selected cell (and selected inventory slot for Deploy).
 	Box->AddSlot()
 	.AutoHeight()
-	.Padding(FMargin(0.f, 6.f, 0.f, 0.f))
+	.Padding(FMargin(0.f, 2.f, 0.f, 6.f))
 	[
 		SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot()
@@ -447,12 +480,63 @@ TSharedRef<SWidget> SLRGameHud::BuildWorldPanel()
 		]
 	];
 
+	// Everything deployed, on every layer. Rebuilt when the world changes (RebuildDeployedList).
+	Box->AddSlot()
+	.AutoHeight()
+	[
+		SNew(SBox)
+		.MaxDesiredHeight(220.f)
+		[
+			SNew(SScrollBox)
+			+ SScrollBox::Slot()
+			[
+				SAssignNew(DeployedBox, SVerticalBox)
+			]
+		]
+	];
+	RebuildDeployedList();
+
 	TSharedRef<SWidget> HomeButton = MakeSmallButton(LOCTEXT("Home", "Home"), [this]()
 	{
 		if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->FocusHome(); }
 	});
 
-	return MakePanel(LOCTEXT("Deployed", "DEPLOYED"), Box, HomeButton);
+	return MakePanel(LOCTEXT("Grid", "GRID"), Box, HomeButton);
+}
+
+void SLRGameHud::RebuildDeployedList()
+{
+	if (!DeployedBox.IsValid())
+	{
+		return;
+	}
+	const FLRHudStyle& Style = FLRHudStyle::Get();
+	DeployedBox->ClearChildren();
+
+	const ULRGameSubsystem* Sub = GetSubsystem();
+	const TArray<FLRPlacedEntity> Placed = Sub ? Sub->GetPlacedSorted() : TArray<FLRPlacedEntity>();
+	if (Placed.IsEmpty())
+	{
+		DeployedBox->AddSlot()
+		.AutoHeight()
+		[
+			SNew(STextBlock)
+			.Font(Style.SmallFont)
+			.ColorAndOpacity(Style.TextDark)
+			.AutoWrapText(true)
+			.Text(LOCTEXT("NothingDeployed", "Nothing deployed yet. Craft an enclosure, select it in the inventory, click a cell, then Deploy."))
+		];
+		return;
+	}
+	for (const FLRPlacedEntity& Entity : Placed)
+	{
+		DeployedBox->AddSlot()
+		.AutoHeight()
+		.Padding(FMargin(0.f, 1.f))
+		[
+			MakeDeployedRow(Entity)
+		];
+	}
 }
 
 TSharedRef<SWidget> SLRGameHud::BuildInfoPanel()
@@ -728,68 +812,55 @@ TSharedRef<SWidget> SLRGameHud::MakeInventorySlot(int32 SlotIndex)
 		];
 }
 
-TSharedRef<SWidget> SLRGameHud::MakeWorldRow(int32 RowIndex)
+TSharedRef<SWidget> SLRGameHud::MakeDeployedRow(const FLRPlacedEntity& Entity)
 {
 	const FLRHudStyle& Style = FLRHudStyle::Get();
+	const FIntVector Cell = Entity.Cell;
+	const FLRSimulation* Sim = GetSimulation();
+	const FString Name = Sim ? Sim->GetData().GetDisplayName(Entity.Item) : Entity.Item.ToString();
 
-	// Rails: WorldCellSlot.vue. Rows are recycled: row N always shows focus - 7 + N.
+	// Rails: WorldCellSlot.vue. Clicking a row selects the cell and flies the camera there.
 	return SNew(SBorder)
 		.BorderImage(&Style.WhiteBrush)
 		.Padding(FMargin(1.f))
-		.BorderBackgroundColor_Lambda([this, RowIndex]() -> FSlateColor
+		.BorderBackgroundColor_Lambda([this, Cell]() -> FSlateColor
 		{
 			const FLRHudStyle& S = FLRHudStyle::Get();
-			return IsCellSelected(GetRowCoordinate(RowIndex)) ? S.Orange : S.SlotBorder;
+			return IsCellSelected(Cell) ? S.Orange : S.SlotBorder;
 		})
 		[
 			SNew(SButton)
 			.ButtonStyle(&Style.SlotButtonStyle)
 			.IsFocusable(false)
 			.ContentPadding(FMargin(6.f, 2.f))
-			.OnClicked_Lambda([this, RowIndex]()
+			.OnClicked_Lambda([this, Cell]()
 			{
 				if (ULRGameSubsystem* Sub = GetSubsystem())
 				{
-					Sub->SelectCell(GetRowCoordinate(RowIndex));
+					Sub->SelectCell(Cell, /*bToggle*/ false);
+					Sub->FocusOnCell(Cell);
 				}
 				return FReply::Handled();
 			})
-			.OnHovered_Lambda([this, RowIndex]() { SetHover(EHoverKind::WorldCell, NAME_None, GetRowCoordinate(RowIndex)); })
+			.OnHovered_Lambda([this, Cell]() { SetHover(EHoverKind::WorldCell, NAME_None, 0, Cell); })
 			.OnUnhovered_Lambda([this]() { ClearHover(); })
 			[
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				[
-					SNew(SBox)
-					.WidthOverride(52.f)
-					[
-						SNew(STextBlock)
-						.Font(Style.SmallFont)
-						.Text_Lambda([this, RowIndex]() { return FText::AsNumber(GetRowCoordinate(RowIndex)); })
-						.ColorAndOpacity_Lambda([this, RowIndex]() -> FSlateColor
-						{
-							// Ruler ticks: major every 16, minor every 4 (WorldGrid.vue tickKind)
-							const FLRHudStyle& S = FLRHudStyle::Get();
-							const int32 Coordinate = GetRowCoordinate(RowIndex);
-							if (Coordinate % 16 == 0) { return S.Orange; }
-							if (Coordinate % 4 == 0)  { return S.Text; }
-							return S.TextDark;
-						})
-					]
-				]
 				+ SHorizontalBox::Slot()
 				.FillWidth(1.f)
 				[
 					SNew(STextBlock)
 					.Font(Style.SmallFont)
 					.ColorAndOpacity(Style.Text)
-					.Text_Lambda([this, RowIndex]()
-					{
-						const FLRSimulation* Sim = GetSimulation();
-						const FLRPlacedEntity* Entity = Sim ? Sim->FindPlaced(GetRowCoordinate(RowIndex)) : nullptr;
-						return Entity ? AsText(Sim->GetData().GetDisplayName(Entity->Item)) : FText::GetEmpty();
-					})
+					.Text(AsText(Name))
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				[
+					SNew(STextBlock)
+					.Font(Style.SmallFont)
+					.ColorAndOpacity(Style.TextDim)
+					.Text(AsText(FLRSimulation::DescribeCell(Cell)))
 				]
 			]
 		];
@@ -837,24 +908,18 @@ const FLRInventorySlot* SLRGameHud::GetSlot(int32 SlotIndex) const
 	return (Sim && Sim->GetInventory().IsValidIndex(SlotIndex)) ? &Sim->GetInventory()[SlotIndex] : nullptr;
 }
 
-int32 SLRGameHud::GetRowCoordinate(int32 RowIndex) const
+bool SLRGameHud::IsCellSelected(const FIntVector& Cell) const
 {
 	const ULRGameSubsystem* Sub = GetSubsystem();
-	return (Sub ? Sub->GetFocusCoordinate() : 0) - WorldRows / 2 + RowIndex;
-}
-
-bool SLRGameHud::IsCellSelected(int32 Coordinate) const
-{
-	const ULRGameSubsystem* Sub = GetSubsystem();
-	int32 Selected = 0;
-	return Sub && Sub->GetSelectedCell(Selected) && Selected == Coordinate;
+	FIntVector Selected;
+	return Sub && Sub->GetSelectedCell(Selected) && Selected == Cell;
 }
 
 bool SLRGameHud::HasSelectedCell(bool bWantOccupied) const
 {
 	const ULRGameSubsystem* Sub = GetSubsystem();
 	const FLRSimulation* Sim = GetSimulation();
-	int32 Selected = 0;
+	FIntVector Selected;
 	if (!Sub || !Sim || !Sub->GetSelectedCell(Selected))
 	{
 		return false;
@@ -866,11 +931,24 @@ bool SLRGameHud::HasSelectedCell(bool bWantOccupied) const
 // Info panel (Rails: the hoveredTooltip sidebar in MainLayout.vue)
 // ---------------------------------------------------------------------------------------
 
-void SLRGameHud::SetHover(EHoverKind Kind, FName Name, int32 Index)
+void SLRGameHud::SetHover(EHoverKind Kind, FName Name, int32 Index, const FIntVector& Cell)
 {
 	HoverKind = Kind;
 	HoverName = Name;
 	HoverIndex = Index;
+	HoverCell = Cell;
+}
+
+bool SLRGameHud::GetInfoCell(FIntVector& OutCell) const
+{
+	// A hovered Deployed-list row wins; otherwise show the cell under the 3D cursor.
+	if (HoverKind == EHoverKind::WorldCell)
+	{
+		OutCell = HoverCell;
+		return true;
+	}
+	const ULRGameSubsystem* Sub = GetSubsystem();
+	return HoverKind == EHoverKind::None && Sub && Sub->GetHoveredCell(OutCell);
 }
 
 FString SLRGameHud::DescribeCost(FName RecipeId, bool bMultiline) const
@@ -929,11 +1007,14 @@ FText SLRGameHud::GetHoverTitle() const
 		}
 		break;
 
-	case EHoverKind::WorldCell:
-		return AsText(FString::Printf(TEXT("Cell %d"), HoverIndex));
-
 	default:
 		break;
+	}
+
+	FIntVector Cell;
+	if (GetInfoCell(Cell))
+	{
+		return AsText(FString::Printf(TEXT("Cell %s"), *FLRSimulation::DescribeCell(Cell)));
 	}
 	return LOCTEXT("InfoIdle", "Info");
 }
@@ -992,17 +1073,20 @@ FText SLRGameHud::GetHoverBody() const
 		}
 		break;
 
-	case EHoverKind::WorldCell:
-		if (const FLRPlacedEntity* Entity = Sim->FindPlaced(HoverIndex))
-		{
-			const FLRItemDef* Def = Sim->GetData().FindItem(Entity->Item);
-			return AsText(FString::Printf(TEXT("%s\n%s\n\nDeployed at t=%.0fs. Select, then Recall to pick it up."),
-				*Sim->GetData().GetDisplayName(Entity->Item), Def ? *Def->Tooltip : TEXT(""), Entity->PlacedAt));
-		}
-		return LOCTEXT("EmptyCell", "Empty cell. Select it, select a deployable item, then Deploy.");
-
 	default:
 		break;
+	}
+
+	FIntVector Cell;
+	if (GetInfoCell(Cell))
+	{
+		if (const FLRPlacedEntity* Entity = Sim->FindPlaced(Cell))
+		{
+			const FLRItemDef* Def = Sim->GetData().FindItem(Entity->Item);
+			return AsText(FString::Printf(TEXT("%s\n%s\n\nDeployed at t=%.0fs. Select it, then Recall to pick it up."),
+				*Sim->GetData().GetDisplayName(Entity->Item), Def ? *Def->Tooltip : TEXT(""), Entity->PlacedAt));
+		}
+		return LOCTEXT("EmptyCell", "Empty cell. Click to select it, pick a deployable item in the inventory, then Deploy.");
 	}
 	return LOCTEXT("InfoHint", "Hover an action, item or cell to see details.");
 }

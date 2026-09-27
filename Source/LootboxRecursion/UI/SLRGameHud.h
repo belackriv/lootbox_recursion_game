@@ -9,6 +9,7 @@ class SVerticalBox;
 class ULRGameSubsystem;
 struct FLRActionStatus;
 struct FLRInventorySlot;
+struct FLRPlacedEntity;
 
 /**
  * The whole in-game UI, written in Slate (Unreal's C++ UI framework).
@@ -19,7 +20,8 @@ struct FLRInventorySlot;
  * needs manual refreshes. Only the message log is event-driven (AddLogMessage).
  *
  * Layout mirrors Pages/Index/Index.vue + MainLayout.vue: Actions and Inventory on the left,
- * the 3D world visible in the middle, the Deployed (world) list + Info + Log on the right.
+ * the 3D grid visible in the middle, the Grid panel (layer, selection, deployed list) + Info +
+ * Log on the right.
  */
 class LOOTBOXRECURSION_API SLRGameHud : public SCompoundWidget
 {
@@ -31,6 +33,9 @@ public:
 	void Construct(const FArguments& InArgs);
 
 	void AddLogMessage(const FString& Message, bool bIsError);
+
+	/** Refresh the list of deployed entities (call when the world changes). */
+	void RebuildDeployedList();
 
 private:
 	enum class EHoverKind : uint8
@@ -55,7 +60,7 @@ private:
 	TSharedRef<SWidget> MakeActionProgress(FName ActionName);
 	TSharedRef<SWidget> MakeRecipeButton(FName RecipeId);
 	TSharedRef<SWidget> MakeInventorySlot(int32 SlotIndex);
-	TSharedRef<SWidget> MakeWorldRow(int32 RowIndex);
+	TSharedRef<SWidget> MakeDeployedRow(const FLRPlacedEntity& Entity);
 	TSharedRef<SWidget> MakeSmallButton(const FText& Label, TFunction<void()> OnClick);
 
 	// Data helpers
@@ -63,12 +68,13 @@ private:
 	const FLRSimulation* GetSimulation() const;
 	FLRActionStatus GetStatus(FName ActionName) const;
 	const FLRInventorySlot* GetSlot(int32 SlotIndex) const;
-	int32 GetRowCoordinate(int32 RowIndex) const;
-	bool IsCellSelected(int32 Coordinate) const;
+	bool IsCellSelected(const FIntVector& Cell) const;
 	bool HasSelectedCell(bool bWantOccupied) const;
 
 	// Hover / info panel
-	void SetHover(EHoverKind Kind, FName Name, int32 Index = 0);
+	void SetHover(EHoverKind Kind, FName Name, int32 Index = 0, const FIntVector& Cell = FIntVector::ZeroValue);
+	/** The grid cell the info panel should describe, if any. */
+	bool GetInfoCell(FIntVector& OutCell) const;
 	void ClearHover() { HoverKind = EHoverKind::None; }
 	FText GetHoverTitle() const;
 	FText GetHoverBody() const;
@@ -81,6 +87,7 @@ private:
 	EHoverKind HoverKind = EHoverKind::None;
 	FName HoverName;
 	int32 HoverIndex = 0;
+	FIntVector HoverCell = FIntVector::ZeroValue;
 
 	struct FLogLine
 	{
@@ -89,8 +96,8 @@ private:
 	};
 	TArray<FLogLine> LogLines;
 	TSharedPtr<SVerticalBox> LogBox;
+	TSharedPtr<SVerticalBox> DeployedBox;
 
 	static constexpr int32 InventoryColumns = 10;
-	static constexpr int32 WorldRows = 15;
 	static constexpr int32 MaxLogLines = 8;
 };

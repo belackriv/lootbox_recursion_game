@@ -44,6 +44,10 @@ void ALRPlayerController::SetupInputComponent()
 	// Code-built equivalents of IA_* / IMC_* assets.
 	UInputAction* PanLeftAction = MakeAction(TEXT("IA_PanLeft"));
 	UInputAction* PanRightAction = MakeAction(TEXT("IA_PanRight"));
+	UInputAction* PanForwardAction = MakeAction(TEXT("IA_PanForward"));
+	UInputAction* PanBackAction = MakeAction(TEXT("IA_PanBack"));
+	UInputAction* LayerUpAction = MakeAction(TEXT("IA_LayerUp"));
+	UInputAction* LayerDownAction = MakeAction(TEXT("IA_LayerDown"));
 	UInputAction* OrbitLeftAction = MakeAction(TEXT("IA_OrbitLeft"));
 	UInputAction* OrbitRightAction = MakeAction(TEXT("IA_OrbitRight"));
 	UInputAction* ZoomAction = MakeAction(TEXT("IA_Zoom"), /*bAxis*/ true);
@@ -55,6 +59,14 @@ void ALRPlayerController::SetupInputComponent()
 	MappingContext->MapKey(PanLeftAction, EKeys::Left);
 	MappingContext->MapKey(PanRightAction, EKeys::D);
 	MappingContext->MapKey(PanRightAction, EKeys::Right);
+	MappingContext->MapKey(PanForwardAction, EKeys::W);
+	MappingContext->MapKey(PanForwardAction, EKeys::Up);
+	MappingContext->MapKey(PanBackAction, EKeys::S);
+	MappingContext->MapKey(PanBackAction, EKeys::Down);
+	MappingContext->MapKey(LayerUpAction, EKeys::PageUp);
+	MappingContext->MapKey(LayerUpAction, EKeys::RightBracket);
+	MappingContext->MapKey(LayerDownAction, EKeys::PageDown);
+	MappingContext->MapKey(LayerDownAction, EKeys::LeftBracket);
 	MappingContext->MapKey(OrbitLeftAction, EKeys::Q);
 	MappingContext->MapKey(OrbitRightAction, EKeys::E);
 	MappingContext->MapKey(ZoomAction, EKeys::MouseWheelAxis);
@@ -67,6 +79,10 @@ void ALRPlayerController::SetupInputComponent()
 		// Triggered fires every frame while a key is held; Started fires once per press.
 		Input->BindAction(PanLeftAction, ETriggerEvent::Triggered, this, &ALRPlayerController::PanLeft);
 		Input->BindAction(PanRightAction, ETriggerEvent::Triggered, this, &ALRPlayerController::PanRight);
+		Input->BindAction(PanForwardAction, ETriggerEvent::Triggered, this, &ALRPlayerController::PanForward);
+		Input->BindAction(PanBackAction, ETriggerEvent::Triggered, this, &ALRPlayerController::PanBack);
+		Input->BindAction(LayerUpAction, ETriggerEvent::Started, this, &ALRPlayerController::LayerUp);
+		Input->BindAction(LayerDownAction, ETriggerEvent::Started, this, &ALRPlayerController::LayerDown);
 		Input->BindAction(OrbitLeftAction, ETriggerEvent::Triggered, this, &ALRPlayerController::OrbitLeft);
 		Input->BindAction(OrbitRightAction, ETriggerEvent::Triggered, this, &ALRPlayerController::OrbitRight);
 		Input->BindAction(ZoomAction, ETriggerEvent::Triggered, this, &ALRPlayerController::Zoom);
@@ -92,12 +108,32 @@ ALRCameraPawn* ALRPlayerController::GetCameraPawn() const
 
 void ALRPlayerController::PanLeft()
 {
-	if (ALRCameraPawn* CameraPawn = GetCameraPawn()) { CameraPawn->AddPanInput(-1.f); }
+	if (ALRCameraPawn* CameraPawn = GetCameraPawn()) { CameraPawn->AddPanInput(FVector2D(-1.f, 0.f)); }
 }
 
 void ALRPlayerController::PanRight()
 {
-	if (ALRCameraPawn* CameraPawn = GetCameraPawn()) { CameraPawn->AddPanInput(1.f); }
+	if (ALRCameraPawn* CameraPawn = GetCameraPawn()) { CameraPawn->AddPanInput(FVector2D(1.f, 0.f)); }
+}
+
+void ALRPlayerController::PanForward()
+{
+	if (ALRCameraPawn* CameraPawn = GetCameraPawn()) { CameraPawn->AddPanInput(FVector2D(0.f, 1.f)); }
+}
+
+void ALRPlayerController::PanBack()
+{
+	if (ALRCameraPawn* CameraPawn = GetCameraPawn()) { CameraPawn->AddPanInput(FVector2D(0.f, -1.f)); }
+}
+
+void ALRPlayerController::LayerUp()
+{
+	if (ULRGameSubsystem* Subsystem = ULRGameSubsystem::Get(this)) { Subsystem->ChangeBuildLayer(1); }
+}
+
+void ALRPlayerController::LayerDown()
+{
+	if (ULRGameSubsystem* Subsystem = ULRGameSubsystem::Get(this)) { Subsystem->ChangeBuildLayer(-1); }
 }
 
 void ALRPlayerController::OrbitLeft()

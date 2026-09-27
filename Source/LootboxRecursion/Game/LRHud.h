@@ -25,6 +25,9 @@ protected:
 	UFUNCTION()
 	void HandleActionCompleted(const FLRActionResult& Result);
 
+	UFUNCTION()
+	void HandleWorldChanged();
+
 private:
 	TSharedPtr<SLRGameHud> HudWidget;
 };

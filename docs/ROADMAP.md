@@ -18,7 +18,7 @@ and play.
 - [ ] A loot box opening moment: a reveal panel listing what dropped, a Niagara burst on the
       box, and a sound. `OnActionCompleted` already carries `Gained`.
 - [ ] Real meshes for the enclosures in the world (a Blueprint subclass of
-      `ALRWorldLineActor`, or per-item mesh paths in data).
+      `ALRWorldGridActor`, or per-item mesh paths in data).
 - [ ] Hover highlight on 3D cells, and a selection outline.
 - [ ] Optional: rebuild one HUD panel in UMG to learn the Widget Blueprint workflow.
 
@@ -32,7 +32,7 @@ See [DESIGN.md](DESIGN.md#irradiation-enclosures).
       the tier.
 - [ ] Show modifiers on the loot box tooltip (the HUD already lists them).
 
-## M3: Logistics on the line
+## M3: Logistics on the grid
 
 - [ ] Resource nodes at coordinates, so scavenging happens *somewhere*.
 - [ ] Transport time proportional to distance between cells.
@@ -41,7 +41,7 @@ See [DESIGN.md](DESIGN.md#irradiation-enclosures).
 ## M4: Content and progression
 
 - [ ] More materials and the radiation tier ladder.
-- [ ] Wood and iron loot box variants (their tables already exist).
+- [ ] Carbon and iron loot box variants (their tables already exist).
 - [ ] A goal and ending.
 
 ## M5: Ship it

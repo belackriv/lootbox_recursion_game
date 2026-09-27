@@ -20,7 +20,8 @@ void ALRHud::BeginPlay()
 	Viewport->AddViewportWidgetContent(HudWidget.ToSharedRef());
 
 	Subsystem->OnActionCompleted.AddDynamic(this, &ALRHud::HandleActionCompleted);
-	HudWidget->AddLogMessage(TEXT("Welcome back. Scavenge for materials to get started."), false);
+	Subsystem->OnWorldChanged.AddDynamic(this, &ALRHud::HandleWorldChanged);
+	HudWidget->AddLogMessage(TEXT("Horizon link established. Inject matter to get started."), false);
 }
 
 void ALRHud::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -28,6 +29,7 @@ void ALRHud::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (ULRGameSubsystem* Subsystem = ULRGameSubsystem::Get(this))
 	{
 		Subsystem->OnActionCompleted.RemoveDynamic(this, &ALRHud::HandleActionCompleted);
+		Subsystem->OnWorldChanged.RemoveDynamic(this, &ALRHud::HandleWorldChanged);
 	}
 	if (HudWidget.IsValid())
 	{
@@ -38,6 +40,14 @@ void ALRHud::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		HudWidget.Reset();
 	}
 	Super::EndPlay(EndPlayReason);
+}
+
+void ALRHud::HandleWorldChanged()
+{
+	if (HudWidget.IsValid())
+	{
+		HudWidget->RebuildDeployedList();
+	}
 }
 
 void ALRHud::HandleActionCompleted(const FLRActionResult& Result)

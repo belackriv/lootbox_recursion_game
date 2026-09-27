@@ -18,7 +18,7 @@
 namespace LRNames
 {
 	// Actions (actions.json "name")
-	inline const FName Scavenge(TEXT("scavenge"));
+	inline const FName Inject(TEXT("inject"));
 	inline const FName Craft(TEXT("craft"));
 	inline const FName Use(TEXT("use"));
 	inline const FName Deploy(TEXT("deploy"));
@@ -208,7 +208,7 @@ struct LOOTBOXRECURSION_API FLRActionDef
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	float CastTime = 0.f;
 
-	/** Actions that yield loot directly (scavenge) roll on this table. */
+	/** Actions that yield loot directly (inject) roll on this table. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FName LootTable;
 

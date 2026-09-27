@@ -4,14 +4,14 @@
 #include "GameFramework/Pawn.h"
 #include "LRCameraPawn.generated.h"
 
-class ALRWorldLineActor;
+class ALRWorldGridActor;
 class UCameraComponent;
 class USpringArmComponent;
 
 /**
- * The player is the creator of this little universe, not a character in it: this pawn is
- * just a "god camera" on a boom. It pans along the world line, zooms and orbits, and keeps
- * the subsystem's focus coordinate (used by the HUD's Deployed list) in sync.
+ * There is no character: you operate the pocket universe from outside the event horizon,
+ * so the player is a free "god camera" on a boom. It pans across the build layer, zooms,
+ * orbits, follows layer changes, and flies to cells the subsystem asks it to focus on.
  *
  * Input arrives from ALRPlayerController as Add*Input calls and is applied in Tick,
  * the same pattern as APawn::AddMovementInput.
@@ -26,8 +26,8 @@ public:
 
 	virtual void Tick(float DeltaSeconds) override;
 
-	/** -1..1 per frame while held: pan toward screen-left / screen-right. */
-	void AddPanInput(float Direction) { PendingPan += Direction; }
+	/** Per frame while held: X = right(+)/left(-), Y = forward(+)/back(-), relative to the view. */
+	void AddPanInput(const FVector2D& Direction) { PendingPan += Direction; }
 	/** Mouse wheel notches: positive zooms in. */
 	void AddZoomInput(float Notches);
 	/** -1..1 per frame while held: orbit around the focus point. */
@@ -53,7 +53,7 @@ public:
 
 	/** Downward tilt of the camera boom, in degrees. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-	float Pitch = -35.f;
+	float Pitch = -50.f;
 
 	/** How quickly the camera catches up with its targets. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
@@ -67,17 +67,18 @@ protected:
 	TObjectPtr<UCameraComponent> Camera;
 
 private:
-	TWeakObjectPtr<ALRWorldLineActor> WorldLine;
+	TWeakObjectPtr<ALRWorldGridActor> WorldGrid;
 	bool bInitialized = false;
 
-	float CurrentCoordinate = 0.f;
-	float TargetCoordinate = 0.f;
-	int32 LastWrittenFocus = 0;
+	/** Focus point in grid-local space (cm). The pawn sits here; the boom looks at it. */
+	FVector CurrentFocus = FVector::ZeroVector;
+	FVector TargetFocus = FVector::ZeroVector;
+	int32 LastFocusSerial = 0;
 
 	float OrbitYaw = 0.f;
 	float TargetOrbitYaw = 0.f;
 	float TargetArmLength = 2200.f;
 
-	float PendingPan = 0.f;
+	FVector2D PendingPan = FVector2D::ZeroVector;
 	float PendingOrbit = 0.f;
 };

@@ -1,21 +1,25 @@
 # Loot Box Recursion
 
-A crafting, loot box and radiation-processing game on a one-dimensional world, built with
+A sci-fi crafting, loot box and radiation-processing game on a 3D grid, built with
 **Unreal Engine 5.8** and C++.
+
+Humanity has learned to harness a black hole as a *universe inside a universe*. From a
+facility outside the event horizon, you inject elementary matter (carbon, iron) into the
+pocket universe, then compress it into loot boxes and build machines on its grid. There's
+no character: you are the operator, looking in from outside.
 
 It's a port of the Rails/Vue prototype
 [`belackriv/lootbox_recursion`](https://github.com/belackriv/lootbox_recursion). All the game
 rules are ported:
 
-- scavenging
+- injecting matter (Rails "scavenge")
 - crafting
 - loot tables with modifiers
 - opening boxes, including boxes inside boxes
-- deploying and recalling entities in the 1D world
+- deploying and recalling entities, now on a 3D grid
 - inventory sort and compress
 
-It also adds save/load, a 3D view of the world, and the wood and iron irradiation enclosures
-from the design notes.
+It also adds save/load, a 3D view of the grid, and carbon and iron irradiation enclosures.
 
 > **Status: first playable skeleton, not yet compiled.** The code was written without an
 > Unreal Engine install available. The simulation logic was compiled and its tests run
@@ -73,18 +77,20 @@ In the editor, press **Play** (Alt+P).
 
 | Input | Does |
 |---|---|
-| Click **Scavenge** | Gather 25–34 wood or iron (5s cast) |
-| Click a **Craft** recipe | Loot Box (50/50), Wood or Iron Irradiation Enclosure |
+| Click **Inject Matter** | Receive 25–34 carbon or iron (5s cast) |
+| Click a **Craft** recipe | Loot Box (50/50), Carbon or Iron Irradiation Enclosure |
 | Click an inventory slot, then **Use** | Open the selected loot box (or the first one) |
-| Click a world cell (3D view or *Deployed* list), then **Deploy** | Place the selected (or first) enclosure there |
+| Click a grid cell, then **Deploy** | Place the selected (or first) enclosure there. With an enclosure selected in the inventory, the cursor shows a preview. |
 | Select an occupied cell, then **Recall** | Pick it back up |
 | **Sort** (inventory title bar) | Compress and alphabetize stacks |
-| Hold `A`/`D` or arrow keys | Pan along the world line |
+| Hold `W`/`A`/`S`/`D` or arrow keys | Pan across the grid |
 | Mouse wheel | Zoom |
 | Hold `Q`/`E` | Orbit the camera |
+| `PageUp`/`PageDown` or `]`/`[` | Build layer up / down (Z) |
+| Click a row in the **Grid** panel's list | Select that entity and fly the camera to it |
 | `R` | Reset camera angle and zoom |
-| `H` / **Home** | Jump to the first deployed entity (or 0) |
-| `~` | Console: `LRGive wood 500`, `LRTimeScale 10`, `LRItems`, `LRSave`, `LRReset` |
+| `H` / **Home** | Fly to the first deployed entity (or the origin) |
+| `~` | Console: `LRGive carbon 500`, `LRTimeScale 10`, `LRItems`, `LRSave`, `LRReset` |
 
 The game autosaves every 30s and on exit to `Saved/SaveGames/LootboxRecursion.sav`. Use
 `LRReset` to start over.
@@ -143,7 +149,7 @@ Your first commits should add some:
 2. **Make it the default.** In Edit → Project Settings → *Maps & Modes*, set
    **Editor Startup Map** and **Game Default Map** to `Main`. That updates
    `Config/DefaultEngine.ini`.
-3. Press Play. `LRGameMode` sees the level already has a sun, so it only adds the world line
+3. Press Play. `LRGameMode` sees the level already has a sun, so it only adds the grid
    and HUD.
 4. Commit the level with Git LFS. Check with `git lfs ls-files`.
 
@@ -181,7 +187,7 @@ The architecture in one breath:
   behaviour changes.
 - [docs/UNREAL_PRIMER.md](docs/UNREAL_PRIMER.md): modern Unreal for someone who last touched
   UnrealScript.
-- [docs/DESIGN.md](docs/DESIGN.md): game design, radiation tables, 1D world and logistics
+- [docs/DESIGN.md](docs/DESIGN.md): game design, radiation tables, 3D grid and logistics
   ideas.
 - [docs/ROADMAP.md](docs/ROADMAP.md): suggested next milestones.
 

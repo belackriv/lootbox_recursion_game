@@ -2,12 +2,12 @@
 	"_comment": "Ported from app/data/player_actions.yml. cooldown and castTime are in simulation seconds. Requirement: check = inventory | placed, filtered by item or category, condition = gt | gte | lt | lte | eq. 'craft' is enabled when any recipe is affordable and 'sort_inventory' when the inventory is unsorted (special-cased in code, like PlayerAction#update_disabled).",
 	"actions": [
 		{
-			"name": "scavenge",
-			"label": "Scavenge",
-			"tooltip": "Search the area for raw materials. Takes time but yields wood and iron.",
+			"name": "inject",
+			"label": "Inject Matter",
+			"tooltip": "Channel elementary matter through the event horizon into the pocket universe. Yields carbon or iron.",
 			"cooldown": 5,
 			"castTime": 5,
-			"lootTable": "scavenge"
+			"lootTable": "inject"
 		},
 		{
 			"name": "craft",
@@ -29,7 +29,7 @@
 		{
 			"name": "deploy",
 			"label": "Deploy",
-			"tooltip": "Deploy the selected item into the selected world cell.",
+			"tooltip": "Deploy the selected item into the selected grid cell.",
 			"cooldown": 1,
 			"castTime": 0,
 			"requirements": [
@@ -39,7 +39,7 @@
 		{
 			"name": "recall",
 			"label": "Recall",
-			"tooltip": "Recall a deployed entity from the selected world cell back into your inventory.",
+			"tooltip": "Recall a deployed entity from the selected grid cell back into your inventory.",
 			"cooldown": 1,
 			"castTime": 0,
 			"requirements": [

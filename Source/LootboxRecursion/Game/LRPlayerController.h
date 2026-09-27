@@ -12,10 +12,11 @@ struct FInputActionValue;
  * Mouse-driven "god mode" controller: cursor visible, click events on (so world tiles can be
  * clicked), camera controls forwarded to ALRCameraPawn, and a few console cheats.
  *
- *   A/D or Left/Right (hold)  pan along the world line
+ *   WASD / arrows (hold)      pan across the build layer
  *   Mouse wheel               zoom
  *   Q/E (hold)                orbit
- *   H / Home                  jump to the first deployed entity
+ *   PageUp/PageDown or ] [    build layer up / down
+ *   H / Home                  fly to the first deployed entity
  *   R                         reset camera angle and zoom
  *
  * Input uses Enhanced Input. Normally Input Actions and Mapping Contexts are assets you
@@ -30,7 +31,7 @@ class LOOTBOXRECURSION_API ALRPlayerController : public APlayerController
 public:
 	ALRPlayerController();
 
-	// ---- Console commands: press ~ in game and type e.g. "LRGive wood 500" -------------
+	// ---- Console commands: press ~ in game and type e.g. "LRGive carbon 500" -----------
 	UFUNCTION(Exec)
 	void LRGive(FName Item, int32 Count);
 
@@ -55,6 +56,10 @@ private:
 
 	void PanLeft();
 	void PanRight();
+	void PanForward();
+	void PanBack();
+	void LayerUp();
+	void LayerDown();
 	void OrbitLeft();
 	void OrbitRight();
 	void Zoom(const FInputActionValue& Value);

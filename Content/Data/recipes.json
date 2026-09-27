@@ -1,36 +1,36 @@
 {
-	"_comment": "Craft action choices. Ported from User#get_craft_choices + the CRAFTING_COST constants (ItemCraftingCost). The Rails IrradiationEnclosure (100 wood + 100 iron) is split into wood and iron variants per the design notes; their costs are placeholder tuning.",
+	"_comment": "Craft action choices. Ported from User#get_craft_choices + the CRAFTING_COST constants (ItemCraftingCost). The Rails IrradiationEnclosure (100 wood + 100 iron) is split into carbon and iron variants; their costs are placeholder tuning.",
 	"recipes": [
 		{
 			"id": "loot_box",
 			"label": "Loot Box",
-			"tooltip": "Package raw materials into a loot box.",
+			"tooltip": "Compress raw matter into a sealed loot box.",
 			"output": "loot_box",
 			"outputCount": 1,
 			"cost": [
-				{ "item": "wood", "count": 50 },
+				{ "item": "carbon", "count": 50 },
 				{ "item": "iron", "count": 50 }
 			]
 		},
 		{
-			"id": "wood_irradiation_enclosure",
-			"label": "Wood Irradiation Enclosure",
-			"tooltip": "A cheap, mostly-wooden radiation chamber.",
-			"output": "wood_irradiation_enclosure",
+			"id": "carbon_irradiation_enclosure",
+			"label": "Carbon Irradiation Enclosure",
+			"tooltip": "A light, graphite-lined radiation chamber.",
+			"output": "carbon_irradiation_enclosure",
 			"outputCount": 1,
 			"cost": [
-				{ "item": "wood", "count": 150 },
+				{ "item": "carbon", "count": 150 },
 				{ "item": "iron", "count": 50 }
 			]
 		},
 		{
 			"id": "iron_irradiation_enclosure",
 			"label": "Iron Irradiation Enclosure",
-			"tooltip": "A heavier, mostly-iron radiation chamber.",
+			"tooltip": "A heavier, steel-plated radiation chamber.",
 			"output": "iron_irradiation_enclosure",
 			"outputCount": 1,
 			"cost": [
-				{ "item": "wood", "count": 50 },
+				{ "item": "carbon", "count": 50 },
 				{ "item": "iron", "count": 150 }
 			]
 		}
