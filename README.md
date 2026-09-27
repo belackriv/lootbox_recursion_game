@@ -35,8 +35,14 @@ from the design notes.
      you edit in Zed; see [Using Zed](#using-zed-instead-of-visual-studio).
    - **Visual Studio Community**, if you want the full IDE and debugger.
 
-   Either way, select the *Desktop development with C++* workload plus a Windows 10/11 SDK,
-   and use the version Epic lists for your engine:
+   Either way, select the *Desktop development with C++* workload. Then, under
+   *Individual components*, make sure these are checked:
+   - a **Windows 10/11 SDK**
+   - the latest **MSVC v143** build tools
+   - **.NET Framework 4.8 (or 4.8.1) SDK** and its **targeting pack**. Without these the
+     build fails with *"Could not find NetFxSDK install dir"*.
+
+   Use the version Epic lists for your engine:
    [Setting up Visual Studio](https://dev.epicgames.com/documentation/en-us/unreal-engine/setting-up-visual-studio-development-environment-for-cplusplus-projects-in-unreal-engine).
 3. **Git LFS**: run `git lfs install` once. It's needed as soon as you commit maps or
    assets.
