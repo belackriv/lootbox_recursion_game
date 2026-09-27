@@ -31,6 +31,7 @@ ALRCameraPawn::ALRCameraPawn()
 	Camera->SetFieldOfView(60.f);
 
 	TargetArmLength = DefaultArmLength;
+	CurrentPitch = TargetPitch = Pitch;
 }
 
 void ALRCameraPawn::AddZoomInput(float Notches)
@@ -42,6 +43,7 @@ void ALRCameraPawn::AddZoomInput(float Notches)
 void ALRCameraPawn::ResetView()
 {
 	TargetOrbitYaw = 0.f;
+	TargetPitch = Pitch;
 	TargetArmLength = DefaultArmLength;
 }
 
@@ -78,10 +80,14 @@ void ALRCameraPawn::Tick(float DeltaSeconds)
 	// Always look at the current build layer.
 	TargetFocus.Z = Subsystem->GetBuildLayer() * CellSize;
 
-	// Orbit
-	TargetOrbitYaw += PendingOrbit * OrbitSpeed * DeltaSeconds;
+	// Orbit (Q/E) and free look (right mouse drag: X orbits, Y tilts)
+	TargetOrbitYaw += PendingOrbit * OrbitSpeed * DeltaSeconds + PendingLook.X * LookSensitivity;
+	TargetPitch = FMath::Clamp(TargetPitch + PendingLook.Y * LookSensitivity, MinPitch, MaxPitch);
 	PendingOrbit = 0.f;
-	OrbitYaw = FMath::FInterpTo(OrbitYaw, TargetOrbitYaw, DeltaSeconds, FollowSpeed);
+	PendingLook = FVector2D::ZeroVector;
+	OrbitYaw = FMath::FInterpTo(OrbitYaw, TargetOrbitYaw, DeltaSeconds, FollowSpeed * 2.f);
+	CurrentPitch = FMath::FInterpTo(CurrentPitch, TargetPitch, DeltaSeconds, FollowSpeed * 2.f);
+	SpringArm->SetRelativeRotation(FRotator(CurrentPitch, 0.f, 0.f));
 
 	// Pan relative to where the camera is facing (grid-local space). Faster when zoomed out.
 	const float YawRadians = FMath::DegreesToRadians(OrbitYaw);

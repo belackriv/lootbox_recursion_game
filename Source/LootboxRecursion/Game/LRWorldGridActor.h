@@ -17,11 +17,13 @@ class UTextRenderComponent;
  * build layer. Rails/Vue equivalent: WorldGrid.vue + WorldCellSlot.vue, now in three
  * dimensions.
  *
- * - Draws a window of floor tiles for the current build layer around the camera focus,
- *   using instanced meshes (one draw call per tile colour), with ruler lines every 4/16 cells.
+ * - Draws a patch of floor tiles for the current build layer around the camera focus, using
+ *   instanced meshes (one draw call per tile colour), with ruler lines every 4/16 cells.
+ *   The patch is built once and only moved, in whole ruler periods, as the camera pans.
  * - Draws one mesh per deployed entity, on every layer.
- * - Traces the mouse cursor every frame to find the hovered cell, shows a hover marker and
- *   a selection marker, and selects the hovered cell on click.
+ * - Works out the hovered cell every frame (cursor ray vs. deployed entities and the build
+ *   layer's plane) and shows hover / selection markers. Clicking is handled by the player
+ *   controller, which selects the hovered cell.
  *
  * Uses only engine content (/Engine/BasicShapes), so it works before the project has any art.
  */
@@ -42,9 +44,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Grid")
 	float CellSize = 100.f;
 
-	/** Floor tiles drawn in each direction around the camera focus. */
+	/** Floor tiles drawn in each direction around the patch centre. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Grid")
-	int32 TileRadius = 12;
+	int32 TileRadius = 24;
 
 protected:
 	virtual void BeginPlay() override;
@@ -53,14 +55,12 @@ protected:
 	UFUNCTION()
 	void HandleWorldChanged();
 
-	UFUNCTION()
-	void HandleComponentClicked(UPrimitiveComponent* TouchedComponent, FKey ButtonPressed);
-
 private:
-	UStaticMeshComponent* CreateMesh(UStaticMesh* Mesh, UMaterialInstanceDynamic*& OutMaterial, bool bClickable);
+	UStaticMeshComponent* CreateMesh(UStaticMesh* Mesh, UMaterialInstanceDynamic*& OutMaterial, bool bTraceable);
 	UInstancedStaticMeshComponent* CreateTileLayer(const FLinearColor& Color);
 	FIntVector GetFocusCell() const;
-	void RebuildTiles(const FIntVector& Center);
+	void BuildTilePattern();
+	void MoveTiles(const FIntVector& Anchor);
 	void UpdateHover();
 	void UpdateMarkers();
 	void RebuildEntities();
@@ -94,5 +94,6 @@ private:
 
 	TArray<FIntVector> EntityCells;
 
-	FIntVector TileCenter = FIntVector(TNumericLimits<int32>::Max(), 0, 0);
+	/** Where the tile patch is currently centred (a multiple of the ruler period in X/Y). */
+	FIntVector TileAnchor = FIntVector(TNumericLimits<int32>::Max(), 0, 0);
 };

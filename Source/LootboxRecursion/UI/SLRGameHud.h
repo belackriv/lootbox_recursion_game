@@ -69,6 +69,7 @@ private:
 	FLRActionStatus GetStatus(FName ActionName) const;
 	const FLRInventorySlot* GetSlot(int32 SlotIndex) const;
 	bool IsCellSelected(const FIntVector& Cell) const;
+	bool IsSelectedSlotUsable() const;
 	bool HasSelectedCell(bool bWantOccupied) const;
 
 	// Hover / info panel

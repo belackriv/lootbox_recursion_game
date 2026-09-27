@@ -12,7 +12,6 @@
 ALRPlayerController::ALRPlayerController()
 {
 	bShowMouseCursor = true;
-	bEnableClickEvents = true;
 	DefaultMouseCursor = EMouseCursor::Default;
 }
 
@@ -53,6 +52,10 @@ void ALRPlayerController::SetupInputComponent()
 	UInputAction* ZoomAction = MakeAction(TEXT("IA_Zoom"), /*bAxis*/ true);
 	UInputAction* HomeAction = MakeAction(TEXT("IA_Home"));
 	UInputAction* ResetViewAction = MakeAction(TEXT("IA_ResetView"));
+	UInputAction* FreeLookAction = MakeAction(TEXT("IA_FreeLook"));
+	UInputAction* LookAction = MakeAction(TEXT("IA_Look"));
+	LookAction->ValueType = EInputActionValueType::Axis2D;
+	UInputAction* SelectAction = MakeAction(TEXT("IA_Select"));
 
 	MappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Default"));
 	MappingContext->MapKey(PanLeftAction, EKeys::A);
@@ -73,6 +76,9 @@ void ALRPlayerController::SetupInputComponent()
 	MappingContext->MapKey(HomeAction, EKeys::H);
 	MappingContext->MapKey(HomeAction, EKeys::Home);
 	MappingContext->MapKey(ResetViewAction, EKeys::R);
+	MappingContext->MapKey(FreeLookAction, EKeys::RightMouseButton);
+	MappingContext->MapKey(LookAction, EKeys::Mouse2D);
+	MappingContext->MapKey(SelectAction, EKeys::LeftMouseButton);
 
 	if (UEnhancedInputComponent* Input = Cast<UEnhancedInputComponent>(InputComponent))
 	{
@@ -88,6 +94,11 @@ void ALRPlayerController::SetupInputComponent()
 		Input->BindAction(ZoomAction, ETriggerEvent::Triggered, this, &ALRPlayerController::Zoom);
 		Input->BindAction(HomeAction, ETriggerEvent::Started, this, &ALRPlayerController::Home);
 		Input->BindAction(ResetViewAction, ETriggerEvent::Started, this, &ALRPlayerController::ResetView);
+		Input->BindAction(FreeLookAction, ETriggerEvent::Started, this, &ALRPlayerController::FreeLookStart);
+		Input->BindAction(FreeLookAction, ETriggerEvent::Completed, this, &ALRPlayerController::FreeLookEnd);
+		Input->BindAction(LookAction, ETriggerEvent::Triggered, this, &ALRPlayerController::Look);
+		// Clicks on HUD buttons are consumed by Slate and never reach this.
+		Input->BindAction(SelectAction, ETriggerEvent::Started, this, &ALRPlayerController::SelectHovered);
 	}
 
 	// SetupInputComponent runs once this controller has its LocalPlayer, so the
@@ -162,6 +173,48 @@ void ALRPlayerController::Home()
 void ALRPlayerController::ResetView()
 {
 	if (ALRCameraPawn* CameraPawn = GetCameraPawn()) { CameraPawn->ResetView(); }
+}
+
+void ALRPlayerController::FreeLookStart()
+{
+	// Hide the cursor while dragging and put it back where it was afterwards.
+	bFreeLook = true;
+	float CursorX = 0.f;
+	float CursorY = 0.f;
+	if (GetMousePosition(CursorX, CursorY))
+	{
+		FreeLookCursorPosition = FVector2D(CursorX, CursorY);
+	}
+	bShowMouseCursor = false;
+}
+
+void ALRPlayerController::FreeLookEnd()
+{
+	bFreeLook = false;
+	bShowMouseCursor = true;
+	SetMouseLocation(FMath::RoundToInt(FreeLookCursorPosition.X), FMath::RoundToInt(FreeLookCursorPosition.Y));
+}
+
+void ALRPlayerController::Look(const FInputActionValue& Value)
+{
+	if (!bFreeLook)
+	{
+		return;
+	}
+	if (ALRCameraPawn* CameraPawn = GetCameraPawn())
+	{
+		CameraPawn->AddLookInput(Value.Get<FVector2D>());
+	}
+}
+
+void ALRPlayerController::SelectHovered()
+{
+	ULRGameSubsystem* Subsystem = ULRGameSubsystem::Get(this);
+	FIntVector Hovered;
+	if (Subsystem && Subsystem->GetHoveredCell(Hovered))
+	{
+		Subsystem->SelectCell(Hovered);
+	}
 }
 
 // ---- Console commands -----------------------------------------------------------------

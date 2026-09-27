@@ -19,7 +19,7 @@
 		{
 			"name": "use",
 			"label": "Use",
-			"tooltip": "Use the selected item. Select a loot box from your inventory to open it.",
+			"tooltip": "Use the selected item. Select a loot box in your inventory first, then Use to open it.",
 			"cooldown": 5,
 			"castTime": 5,
 			"requirements": [

@@ -32,6 +32,8 @@ public:
 	void AddZoomInput(float Notches);
 	/** -1..1 per frame while held: orbit around the focus point. */
 	void AddOrbitInput(float Direction) { PendingOrbit += Direction; }
+	/** Mouse delta while free look (right mouse) is held: X orbits, Y tilts. */
+	void AddLookInput(const FVector2D& MouseDelta) { PendingLook += MouseDelta; }
 	/** Back to the default angle and zoom. */
 	void ResetView();
 
@@ -51,9 +53,20 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
 	float MaxArmLength = 9000.f;
 
-	/** Downward tilt of the camera boom, in degrees. */
+	/** Default downward tilt of the camera boom, in degrees. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
 	float Pitch = -50.f;
+
+	/** Tilt limits for free look, in degrees (negative = looking down). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	float MinPitch = -85.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	float MaxPitch = -10.f;
+
+	/** Degrees per unit of mouse movement while free looking. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	float LookSensitivity = 0.25f;
 
 	/** How quickly the camera catches up with its targets. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
@@ -77,8 +90,11 @@ private:
 
 	float OrbitYaw = 0.f;
 	float TargetOrbitYaw = 0.f;
+	float CurrentPitch = -50.f;
+	float TargetPitch = -50.f;
 	float TargetArmLength = 2200.f;
 
 	FVector2D PendingPan = FVector2D::ZeroVector;
 	float PendingOrbit = 0.f;
+	FVector2D PendingLook = FVector2D::ZeroVector;
 };

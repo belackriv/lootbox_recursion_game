@@ -79,12 +79,13 @@ In the editor, press **Play** (Alt+P).
 |---|---|
 | Click **Inject Matter** | Receive 25–34 carbon or iron (5s cast) |
 | Click a **Craft** recipe | Loot Box (50/50), Carbon or Iron Irradiation Enclosure |
-| Click an inventory slot, then **Use** | Open the selected loot box (or the first one) |
+| Click a loot box in the inventory, then **Use** | Open it |
 | Click a grid cell, then **Deploy** | Place the selected (or first) enclosure there. With an enclosure selected in the inventory, the cursor shows a preview. |
 | Select an occupied cell, then **Recall** | Pick it back up |
 | **Sort** (inventory title bar) | Compress and alphabetize stacks |
 | Hold `W`/`A`/`S`/`D` or arrow keys | Pan across the grid |
 | Mouse wheel | Zoom |
+| Hold right mouse and drag | Free look: orbit and tilt |
 | Hold `Q`/`E` | Orbit the camera |
 | `PageUp`/`PageDown` or `]`/`[` | Build layer up / down (Z) |
 | Click a row in the **Grid** panel's list | Select that entity and fly the camera to it |

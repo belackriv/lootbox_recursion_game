@@ -201,7 +201,7 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 			.Padding(FMargin(16.f, 0.f))
 			[
 				SNew(STextBlock)
-				.Text(LOCTEXT("Help", "Click a cell to select it  |  WASD pan, wheel zoom, Q/E orbit, PgUp/PgDn layer, R reset view, H home  |  ~ console: LRGive carbon 500, LRTimeScale 10, LRReset"))
+				.Text(LOCTEXT("Help", "Click a cell to select it  |  WASD pan, wheel zoom, hold right mouse to look, Q/E orbit, PgUp/PgDn layer, R reset view, H home  |  ~ console: LRGive carbon 500, LRTimeScale 10"))
 				.Font(Style.SmallFont)
 				.ColorAndOpacity(Style.TextDim)
 			]
@@ -287,13 +287,16 @@ TSharedRef<SWidget> SLRGameHud::BuildActionsPanel()
 	.AutoHeight()
 	.Padding(FMargin(0.f, 0.f, 0.f, 6.f))
 	[
-		MakeActionButton(LRNames::Use, [this]()
-		{
-			if (ULRGameSubsystem* Sub = GetSubsystem())
+		MakeActionButton(LRNames::Use,
+			[this]()
 			{
-				Sub->RequestActionWithSelection(LRNames::Use);
-			}
-		})
+				if (ULRGameSubsystem* Sub = GetSubsystem())
+				{
+					Sub->RequestActionWithSelection(LRNames::Use);
+				}
+			},
+			// Only when the selected inventory slot holds something usable (a loot box).
+			[this]() { return IsSelectedSlotUsable(); })
 	];
 
 	// Craft: one button per recipe (Rails: CraftToggleButton + CraftActionButton choices).
@@ -906,6 +909,15 @@ const FLRInventorySlot* SLRGameHud::GetSlot(int32 SlotIndex) const
 {
 	const FLRSimulation* Sim = GetSimulation();
 	return (Sim && Sim->GetInventory().IsValidIndex(SlotIndex)) ? &Sim->GetInventory()[SlotIndex] : nullptr;
+}
+
+bool SLRGameHud::IsSelectedSlotUsable() const
+{
+	const ULRGameSubsystem* Sub = GetSubsystem();
+	const FLRSimulation* Sim = GetSimulation();
+	const FLRInventorySlot* Slot = Sub ? GetSlot(Sub->GetSelectedSlot()) : nullptr;
+	const FLRItemDef* Def = (Slot && !Slot->IsEmpty() && Sim) ? Sim->GetData().FindItem(Slot->Item) : nullptr;
+	return Def && Def->IsLootBox();
 }
 
 bool SLRGameHud::IsCellSelected(const FIntVector& Cell) const

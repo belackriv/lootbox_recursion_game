@@ -15,6 +15,8 @@ struct FInputActionValue;
  *   WASD / arrows (hold)      pan across the build layer
  *   Mouse wheel               zoom
  *   Q/E (hold)                orbit
+ *   Right mouse (hold + drag) free look: orbit and tilt
+ *   Left mouse                select the hovered grid cell
  *   PageUp/PageDown or ] [    build layer up / down
  *   H / Home                  fly to the first deployed entity
  *   R                         reset camera angle and zoom
@@ -65,6 +67,13 @@ private:
 	void Zoom(const FInputActionValue& Value);
 	void Home();
 	void ResetView();
+	void FreeLookStart();
+	void FreeLookEnd();
+	void Look(const FInputActionValue& Value);
+	void SelectHovered();
+
+	bool bFreeLook = false;
+	FVector2D FreeLookCursorPosition = FVector2D::ZeroVector;
 
 	UInputAction* MakeAction(const TCHAR* Name, bool bAxis = false);
 
