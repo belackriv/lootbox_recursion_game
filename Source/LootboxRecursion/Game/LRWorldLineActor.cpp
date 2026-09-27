@@ -3,7 +3,9 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Camera/PlayerCameraManager.h"
 #include "Game/LRGameSubsystem.h"
+#include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -95,6 +97,46 @@ void ALRWorldLineActor::Tick(float DeltaSeconds)
 		}
 	}
 	UpdateTileColors();
+	FaceLabelsToCamera();
+}
+
+void ALRWorldLineActor::FaceLabelsToCamera()
+{
+	const APlayerCameraManager* CameraManager = UGameplayStatics::GetPlayerCameraManager(this, 0);
+	if (!CameraManager)
+	{
+		return;
+	}
+	const FVector CameraLocation = CameraManager->GetCameraLocation();
+
+	// Put the coordinate labels on whichever side of the line the camera is on...
+	const float Side = FVector::DotProduct(CameraLocation - GetActorLocation(), GetActorForwardVector()) >= 0.f ? 1.f : -1.f;
+	for (int32 Index = 0; Index < TileLabels.Num(); ++Index)
+	{
+		TileLabels[Index]->SetRelativeLocation(FVector(90.f * Side, (WindowStart + Index) * CellSpacing, 12.f));
+	}
+
+	// ...and turn every label to face the camera (a text render reads correctly from its +X side).
+	auto Billboard = [&CameraLocation](UTextRenderComponent* Label)
+	{
+		FVector ToCamera = CameraLocation - Label->GetComponentLocation();
+		ToCamera.Z = 0.f;
+		if (!ToCamera.IsNearlyZero())
+		{
+			Label->SetWorldRotation(ToCamera.Rotation());
+		}
+	};
+	for (UTextRenderComponent* Label : TileLabels)
+	{
+		Billboard(Label);
+	}
+	for (const TPair<int32, TObjectPtr<UTextRenderComponent>>& Pair : EntityLabels)
+	{
+		if (Pair.Value)
+		{
+			Billboard(Pair.Value);
+		}
+	}
 }
 
 UStaticMeshComponent* ALRWorldLineActor::CreateMeshComponent(UStaticMesh* Mesh, UMaterialInstanceDynamic*& OutMaterial)
@@ -126,9 +168,7 @@ void ALRWorldLineActor::LayoutTiles(int32 NewWindowStart)
 		const float Y = Coordinate * CellSpacing;
 		Tiles[Index]->SetRelativeLocation(FVector(0.f, Y, 0.f));
 
-		// Labels sit on the camera side (-X) of the tile, facing the camera.
-		TileLabels[Index]->SetRelativeLocation(FVector(-90.f, Y, 12.f));
-		TileLabels[Index]->SetRelativeRotation(FRotator(0.f, 180.f, 0.f));
+		// Position and facing are updated every frame in FaceLabelsToCamera.
 		TileLabels[Index]->SetText(FText::AsNumber(Coordinate));
 	}
 }
@@ -209,7 +249,6 @@ void ALRWorldLineActor::RebuildEntities()
 		Label->SetWorldSize(28.f);
 		Label->SetTextRenderColor(EntityLabelColor);
 		Label->SetRelativeLocation(FVector(0.f, Y, 150.f));
-		Label->SetRelativeRotation(FRotator(0.f, 180.f, 0.f));
 		Label->SetText(FText::FromString(Def ? Def->Abbrev : Entity.Item.ToString()));
 		Label->RegisterComponent();
 		EntityLabels.Add(Entity.Coordinate, Label);

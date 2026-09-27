@@ -9,8 +9,14 @@ class UInputMappingContext;
 struct FInputActionValue;
 
 /**
- * Mouse-driven controller: cursor visible, click events on (so world tiles can be clicked),
- * keyboard / mouse wheel pans along the world line, and a few console cheats.
+ * Mouse-driven "god mode" controller: cursor visible, click events on (so world tiles can be
+ * clicked), camera controls forwarded to ALRCameraPawn, and a few console cheats.
+ *
+ *   A/D or Left/Right (hold)  pan along the world line
+ *   Mouse wheel               zoom
+ *   Q/E (hold)                orbit
+ *   H / Home                  jump to the first deployed entity
+ *   R                         reset camera angle and zoom
  *
  * Input uses Enhanced Input. Normally Input Actions and Mapping Contexts are assets you
  * create in the editor; here they are built in code so the project runs with zero assets.
@@ -45,23 +51,22 @@ protected:
 	virtual void SetupInputComponent() override;
 
 private:
+	class ALRCameraPawn* GetCameraPawn() const;
+
 	void PanLeft();
 	void PanRight();
-	void Scroll(const FInputActionValue& Value);
+	void OrbitLeft();
+	void OrbitRight();
+	void Zoom(const FInputActionValue& Value);
 	void Home();
+	void ResetView();
+
+	UInputAction* MakeAction(const TCHAR* Name, bool bAxis = false);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UInputMappingContext> MappingContext;
 
+	/** Keeps the runtime-created UInputActions alive (UPROPERTY = GC root). */
 	UPROPERTY(Transient)
-	TObjectPtr<UInputAction> PanLeftAction;
-
-	UPROPERTY(Transient)
-	TObjectPtr<UInputAction> PanRightAction;
-
-	UPROPERTY(Transient)
-	TObjectPtr<UInputAction> ScrollAction;
-
-	UPROPERTY(Transient)
-	TObjectPtr<UInputAction> HomeAction;
+	TArray<TObjectPtr<UInputAction>> InputActions;
 };

@@ -79,7 +79,10 @@ In the editor, press **Play** (Alt+P).
 | Click a world cell (3D view or *Deployed* list), then **Deploy** | Place the selected (or first) enclosure there |
 | Select an occupied cell, then **Recall** | Pick it back up |
 | **Sort** (inventory title bar) | Compress and alphabetize stacks |
-| `A`/`D`, arrow keys, mouse wheel | Pan along the world line |
+| Hold `A`/`D` or arrow keys | Pan along the world line |
+| Mouse wheel | Zoom |
+| Hold `Q`/`E` | Orbit the camera |
+| `R` | Reset camera angle and zoom |
 | `H` / **Home** | Jump to the first deployed entity (or 0) |
 | `~` | Console: `LRGive wood 500`, `LRTimeScale 10`, `LRItems`, `LRSave`, `LRReset` |
 

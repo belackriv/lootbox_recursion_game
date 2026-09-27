@@ -200,7 +200,7 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 			.Padding(FMargin(16.f, 0.f))
 			[
 				SNew(STextBlock)
-				.Text(LOCTEXT("Help", "Click a cell in the world or the Deployed list to select it  |  A/D, arrows or mouse wheel to pan, H for home  |  ~ opens the console (LRGive wood 500, LRTimeScale 10, LRReset)"))
+				.Text(LOCTEXT("Help", "Click a cell to select it  |  hold A/D to pan, wheel to zoom, Q/E to orbit, R reset view, H home  |  ~ console: LRGive wood 500, LRTimeScale 10, LRReset"))
 				.Font(Style.SmallFont)
 				.ColorAndOpacity(Style.TextDim)
 			]

@@ -56,6 +56,7 @@ private:
 	void LayoutTiles(int32 NewWindowStart);
 	void UpdateTileColors();
 	void RebuildEntities();
+	void FaceLabelsToCamera();
 
 	UPROPERTY()
 	TObjectPtr<UStaticMesh> CubeMesh;
