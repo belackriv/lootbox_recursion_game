@@ -26,7 +26,7 @@ because an online multi-user web app became a local single-player desktop game.
 | Action Cable `PlayerInventoryChannel` / `PlayerActionsChannel` | Delegates: `OnInventoryChanged`, `OnWorldChanged`, `OnActionCompleted` | Native delegates on the sim, re-broadcast as Blueprint-assignable delegates on the subsystem. |
 | Pinia `store/player.ts` (selection, world window) | `ULRGameSubsystem` selection + focus | |
 | `MainLayout.vue`, `Index.vue`, `ActionBar.vue`, `InventoryGrid.vue`, ... | `SLRGameHud` (Slate) | `*_Lambda` attributes act like Vue computed properties. |
-| `WorldGrid.vue` (virtualized list) | `ALRWorldLineActor` (3D) + the "Deployed" list in the HUD | Both render only a window of cells around the focus. |
+| `WorldGrid.vue` (virtualized 1D list) | `ALRWorldGridActor` (3D grid) + the Grid panel's deployed list | The grid draws floor tiles only around the camera focus. |
 | `TrimButton.vue` | "Home" button / `H` key → `ULRGameSubsystem::FocusHome` | |
 | Postgres | `USaveGame` in `Saved/SaveGames/LootboxRecursion.sav` | |
 | Users, sessions, auth, mailers | *(dropped)* | Single-player. The save file takes the place of the user. |
@@ -42,28 +42,37 @@ because an online multi-user web app became a local single-player desktop game.
 2. **An invalid request doesn't burn the cooldown.** Rails set `on_cooldown_until` before
    checking whether the action could succeed. The port validates first, then starts the
    cooldown.
-3. **Craft is enabled when any recipe is affordable.** Rails required wood > 50 **and**
+3. **Craft is enabled when any recipe is affordable.** Rails required wood (now carbon) > 50 **and**
    iron > 50. The check was strict, so exactly 50/50 couldn't craft a 50/50 loot box.
 4. **Adding items tops up existing stacks before using empty slots.** Rails took the first
    slot in slot order that was either empty or a matching partial stack.
 5. **Craft checks for space after paying the cost, inside one transaction.** If paying frees
    the only slot, the craft still succeeds. Rails looked for a slot first.
-6. **Scavenge is a loot table** (`scavenge` in `loot_tables.json`). The numbers are the same
-   (25–34 wood or iron) and the rest is data.
+6. **Scavenge became Inject Matter, and it's a loot table** (`inject` in
+   `loot_tables.json`). The numbers are the same (25–34 of one material) and the rest is
+   data.
 7. **Loot tables belong to the item** (`lootTable` on the item def), not to a `LootBox`
-   STI subclass. The `wood_loot_box` and `iron_loot_box` tables were ported but no item uses
+   STI subclass. The `carbon_loot_box` (Rails `WoodLootBox`) and `iron_loot_box` tables were ported but no item uses
    them yet. In Rails, crafting made a plain `LootBox`, which used `default`.
 8. **Loot boxes can drop loot boxes.** Any loot table entry may name a `lootbox` item, and
    each one gets its own instance. That's the "recursion", and a test covers it
    (`BoxInsideABox`).
-9. **The single Irradiation Enclosure became Wood and Iron variants**, per the design notes.
-   Their costs (150/50 and 50/150) are placeholders. The Rails enclosure cost 100 wood +
-   100 iron.
+9. **The single Irradiation Enclosure became Carbon and Iron variants**, per the design
+   notes. Their costs (150/50 and 50/150) are placeholders. The Rails enclosure cost 100
+   wood + 100 iron.
 10. **Sort keeps unique items' identity.** A sorted loot box keeps its modifiers. Rails needed
     the "displaced item" logic for this. Here it follows from the data model.
 11. **The repair and orphan-cleanup code is gone** (`User#use` loot box recovery,
     `cleanup_orphaned_inventory_items!`). Those fixed foreign-key drift, which in-memory
     state doesn't have.
+
+## Changes after the port (new direction)
+
+12. **Wood → carbon everywhere**: item ids, recipes, loot tables and tests. The theme is
+    sci-fi now (a pocket universe inside a harnessed black hole), and wood isn't an element.
+13. **The world is a 3D grid.** Rails had a signed 1D `world_coordinate`. Cells are now
+    `FIntVector` (X, Y, Z), you build on a selectable Z layer, and the camera is a free
+    god-mode camera. `SaveVersion` 2 ignores older saves.
 
 ## Deliberately not ported
 

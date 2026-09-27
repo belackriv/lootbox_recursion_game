@@ -1,21 +1,21 @@
 {
-	"_comment": "Ported from app/data/loot_tables.yml. A roll count is drawn from [rollsMin, rollsMax]; each roll picks one entry by weight and a count from [minCount, maxCount]. 'scavenge' replaces the hard-coded InventoryItem.scavenge_item (rand(10) + 25 of wood or iron). An entry may name a lootbox item - that is the 'recursion'.",
+	"_comment": "Ported from app/data/loot_tables.yml. A roll count is drawn from [rollsMin, rollsMax]; each roll picks one entry by weight and a count from [minCount, maxCount]. 'inject' replaces the hard-coded InventoryItem.scavenge_item (rand(10) + 25 of one material). An entry may name a lootbox item - that is the 'recursion'.",
 	"lootTables": [
 		{
 			"id": "default",
 			"rollsMin": 2,
 			"rollsMax": 4,
 			"entries": [
-				{ "item": "wood", "weight": 60, "minCount": 5, "maxCount": 20 },
+				{ "item": "carbon", "weight": 60, "minCount": 5, "maxCount": 20 },
 				{ "item": "iron", "weight": 40, "minCount": 3, "maxCount": 10 }
 			]
 		},
 		{
-			"id": "wood_loot_box",
+			"id": "carbon_loot_box",
 			"rollsMin": 2,
 			"rollsMax": 5,
 			"entries": [
-				{ "item": "wood", "weight": 80, "minCount": 10, "maxCount": 30 },
+				{ "item": "carbon", "weight": 80, "minCount": 10, "maxCount": 30 },
 				{ "item": "iron", "weight": 20, "minCount": 1, "maxCount": 5 }
 			]
 		},
@@ -25,15 +25,15 @@
 			"rollsMax": 5,
 			"entries": [
 				{ "item": "iron", "weight": 80, "minCount": 10, "maxCount": 30 },
-				{ "item": "wood", "weight": 20, "minCount": 1, "maxCount": 5 }
+				{ "item": "carbon", "weight": 20, "minCount": 1, "maxCount": 5 }
 			]
 		},
 		{
-			"id": "scavenge",
+			"id": "inject",
 			"rollsMin": 1,
 			"rollsMax": 1,
 			"entries": [
-				{ "item": "wood", "weight": 50, "minCount": 25, "maxCount": 34 },
+				{ "item": "carbon", "weight": 50, "minCount": 25, "maxCount": 34 },
 				{ "item": "iron", "weight": 50, "minCount": 25, "maxCount": 34 }
 			]
 		}

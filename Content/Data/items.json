@@ -1,51 +1,51 @@
 {
-	"_comment": "Item definitions. Ported from the InventoryItem STI subclasses (WoodInventoryItem, IronInventoryItem, LootBoxInventoryItem, IrradiationEnclosureInventoryItem). category: material | lootbox | placeable. Items with a lootTable can be opened with the Use action. Items with stackSize 1 get a unique instance id.",
+	"_comment": "Item definitions. Ported from the Rails InventoryItem STI subclasses (wood became carbon). category: material | lootbox | placeable. Items with a lootTable can be opened with the Use action. Items with stackSize 1 get a unique instance id.",
 	"items": [
 		{
-			"id": "wood",
-			"displayName": "Wood",
-			"abbrev": "WD",
-			"tooltip": "A sturdy building material gathered from the forest. Used in crafting.",
+			"id": "carbon",
+			"displayName": "Carbon",
+			"abbrev": "C",
+			"tooltip": "Elementary carbon, injected through the event horizon. Light, versatile, and the backbone of most structures.",
 			"category": "material",
 			"stackSize": 100,
-			"color": "#9C6B3C"
+			"color": "#6E6E78"
 		},
 		{
 			"id": "iron",
 			"displayName": "Iron",
-			"abbrev": "FE",
-			"tooltip": "A dense metal ore mined from rocky outcroppings. Used in crafting.",
+			"abbrev": "Fe",
+			"tooltip": "Elementary iron, injected through the event horizon. Dense and strong.",
 			"category": "material",
 			"stackSize": 100,
-			"color": "#9AA3AD"
+			"color": "#A8745A"
 		},
 		{
 			"id": "loot_box",
 			"displayName": "Loot Box",
 			"abbrev": "LB",
-			"tooltip": "A mysterious box containing unknown rewards. Use it from your inventory to reveal its contents.",
+			"tooltip": "A sealed package of compressed matter. Nobody is quite sure what the pocket universe will put inside. Use it to find out.",
 			"category": "lootbox",
 			"stackSize": 1,
 			"lootTable": "default",
 			"color": "#E8A020"
 		},
 		{
-			"id": "wood_irradiation_enclosure",
-			"displayName": "Wood Irradiation Enclosure",
-			"abbrev": "WIE",
-			"tooltip": "A timber-framed radiation chamber. Deploy it into the world.",
+			"id": "carbon_irradiation_enclosure",
+			"displayName": "Carbon Irradiation Enclosure",
+			"abbrev": "CIE",
+			"tooltip": "A graphite-lined radiation chamber. Graphite moderates neutrons. Deploy it into the grid.",
 			"category": "placeable",
 			"stackSize": 1,
-			"color": "#6FAF4A"
+			"color": "#4F8FBF"
 		},
 		{
 			"id": "iron_irradiation_enclosure",
 			"displayName": "Iron Irradiation Enclosure",
 			"abbrev": "FIE",
-			"tooltip": "A steel-plated radiation chamber. Deploy it into the world.",
+			"tooltip": "A steel-plated radiation chamber. Deploy it into the grid.",
 			"category": "placeable",
 			"stackSize": 1,
-			"color": "#4AA3BF"
+			"color": "#BF6A4A"
 		}
 	]
 }

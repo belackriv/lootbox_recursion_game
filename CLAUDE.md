@@ -12,7 +12,7 @@ Rails app `belackriv/lootbox_recursion`.
   together.
 - `Game/` is the engine glue:
   - `ULRGameSubsystem` owns the sim, ticks it, and saves and loads it.
-  - The GameMode, PlayerController, CameraPawn, WorldLineActor and HUD live here too.
+  - The GameMode, PlayerController, CameraPawn, WorldGridActor and HUD live here too.
 - `UI/` is the Slate HUD (`SLRGameHud`) with its style.
 - Includes are relative to the module root (`#include "Simulation/LRSimulation.h"`).
   `Build.cs` adds `ModuleDirectory` to the include paths.

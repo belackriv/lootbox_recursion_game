@@ -88,7 +88,7 @@ struct LOOTBOXRECURSION_API FLRLootBoxInstance
 	TArray<FLRLootModifier> Modifiers;
 };
 
-/** Rails: a PlaceableEntity row with placed_at / world_coordinate set. */
+/** Rails: a PlaceableEntity row with placed_at / world_coordinate set (now a 3D grid cell). */
 USTRUCT(BlueprintType)
 struct LOOTBOXRECURSION_API FLRPlacedEntity
 {
@@ -100,9 +100,9 @@ struct LOOTBOXRECURSION_API FLRPlacedEntity
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FName Item;
 
-	/** Signed 1D world coordinate. */
+	/** Grid cell (X, Y, Z = layer). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	int32 Coordinate = 0;
+	FIntVector Cell = FIntVector::ZeroValue;
 
 	/** Simulation time it was placed. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
@@ -129,12 +129,12 @@ struct LOOTBOXRECURSION_API FLRActionRequest
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LR")
 	int32 Slot = INDEX_NONE;
 
-	/** Deploy / Recall: world cell. Only meaningful when bHasCoordinate is true. */
+	/** Deploy / Recall: grid cell. Only meaningful when bHasCell is true. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LR")
-	int32 Coordinate = 0;
+	FIntVector Cell = FIntVector::ZeroValue;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LR")
-	bool bHasCoordinate = false;
+	bool bHasCell = false;
 
 	static FLRActionRequest Make(FName InAction)
 	{

@@ -4,14 +4,15 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Game/LRGameSubsystem.h"
-#include "Game/LRWorldLineActor.h"
+#include "Game/LRWorldGridActor.h"
 #include "GameFramework/SpringArmComponent.h"
 
 ALRCameraPawn::ALRCameraPawn()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
-	// Don't let the controller's rotation spin the pawn; the boom angle is fixed.
+	// The pawn's facing is driven entirely by Tick, never by the controller or the level's
+	// PlayerStart, so the default view is always the same.
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationRoll = false;
@@ -20,39 +21,82 @@ ALRCameraPawn::ALRCameraPawn()
 
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(RootComponent);
-	SpringArm->TargetArmLength = 2200.f;
-	SpringArm->SetRelativeRotation(FRotator(-30.f, 0.f, 0.f)); // look down the +X axis at the line
+	SpringArm->TargetArmLength = DefaultArmLength;
+	SpringArm->SetRelativeRotation(FRotator(Pitch, 0.f, 0.f)); // boom points back along -X, camera looks down +X
 	SpringArm->bDoCollisionTest = false;
 	SpringArm->bUsePawnControlRotation = false;
 
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(SpringArm, USpringArmComponent::SocketName);
 	Camera->SetFieldOfView(60.f);
+
+	TargetArmLength = DefaultArmLength;
+}
+
+void ALRCameraPawn::AddZoomInput(float Notches)
+{
+	// Multiplicative zoom feels even at every distance.
+	TargetArmLength = FMath::Clamp(TargetArmLength * FMath::Pow(0.85f, Notches), MinArmLength, MaxArmLength);
+}
+
+void ALRCameraPawn::ResetView()
+{
+	TargetOrbitYaw = 0.f;
+	TargetArmLength = DefaultArmLength;
 }
 
 void ALRCameraPawn::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	if (!WorldLine.IsValid())
+	if (!WorldGrid.IsValid())
 	{
-		TActorIterator<ALRWorldLineActor> It(GetWorld());
-		WorldLine = It ? *It : nullptr;
+		TActorIterator<ALRWorldGridActor> It(GetWorld());
+		WorldGrid = It ? *It : nullptr;
 	}
 	const ULRGameSubsystem* Subsystem = ULRGameSubsystem::Get(this);
-	if (!WorldLine.IsValid() || !Subsystem)
+	if (!WorldGrid.IsValid() || !Subsystem)
 	{
 		return;
 	}
+	const float CellSize = WorldGrid->CellSize;
 
-	const FVector Target = WorldLine->GetCellWorldLocation(Subsystem->GetFocusCoordinate());
-	if (!bSnapped)
+	if (!bInitialized)
 	{
-		SetActorLocation(Target);
-		bSnapped = true;
+		CurrentFocus = TargetFocus = WorldGrid->CellToLocal(Subsystem->GetFocusRequestCell());
+		LastFocusSerial = Subsystem->GetFocusRequestSerial();
+		SpringArm->TargetArmLength = TargetArmLength;
+		bInitialized = true;
 	}
-	else
+
+	// Someone asked to look at a specific cell (HUD list, Home): fly there.
+	if (Subsystem->GetFocusRequestSerial() != LastFocusSerial)
 	{
-		SetActorLocation(FMath::VInterpTo(GetActorLocation(), Target, DeltaSeconds, FollowSpeed));
+		LastFocusSerial = Subsystem->GetFocusRequestSerial();
+		TargetFocus = WorldGrid->CellToLocal(Subsystem->GetFocusRequestCell());
 	}
+	// Always look at the current build layer.
+	TargetFocus.Z = Subsystem->GetBuildLayer() * CellSize;
+
+	// Orbit
+	TargetOrbitYaw += PendingOrbit * OrbitSpeed * DeltaSeconds;
+	PendingOrbit = 0.f;
+	OrbitYaw = FMath::FInterpTo(OrbitYaw, TargetOrbitYaw, DeltaSeconds, FollowSpeed);
+
+	// Pan relative to where the camera is facing (grid-local space). Faster when zoomed out.
+	const float YawRadians = FMath::DegreesToRadians(OrbitYaw);
+	const FVector Forward(FMath::Cos(YawRadians), FMath::Sin(YawRadians), 0.f);
+	const FVector Right(-FMath::Sin(YawRadians), FMath::Cos(YawRadians), 0.f);
+	const FVector2D Pan = PendingPan.GetClampedToMaxSize(1.f);
+	PendingPan = FVector2D::ZeroVector;
+	const float ZoomFactor = SpringArm->TargetArmLength / FMath::Max(DefaultArmLength, 1.f);
+	TargetFocus += (Right * Pan.X + Forward * Pan.Y) * PanSpeed * CellSize * ZoomFactor * DeltaSeconds;
+
+	CurrentFocus = FMath::VInterpTo(CurrentFocus, TargetFocus, DeltaSeconds, FollowSpeed);
+
+	// Zoom
+	SpringArm->TargetArmLength = FMath::FInterpTo(SpringArm->TargetArmLength, TargetArmLength, DeltaSeconds, FollowSpeed);
+
+	SetActorLocation(WorldGrid->GetActorTransform().TransformPosition(CurrentFocus));
+	SetActorRotation(FRotator(0.f, WorldGrid->GetActorRotation().Yaw + OrbitYaw, 0.f));
 }

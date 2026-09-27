@@ -7,7 +7,7 @@
 #include "Game/LRCameraPawn.h"
 #include "Game/LRHud.h"
 #include "Game/LRPlayerController.h"
-#include "Game/LRWorldLineActor.h"
+#include "Game/LRWorldGridActor.h"
 
 ALRGameMode::ALRGameMode()
 {
@@ -26,13 +26,14 @@ void ALRGameMode::StartPlay()
 void ALRGameMode::EnsureWorldView()
 {
 	// If a designer placed one in the level, use it; otherwise spawn a default.
-	if (TActorIterator<ALRWorldLineActor>(GetWorld()))
+	if (TActorIterator<ALRWorldGridActor>(GetWorld()))
 	{
 		return;
 	}
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	GetWorld()->SpawnActor<ALRWorldLineActor>(FVector(0.f, 0.f, 50.f), FRotator::ZeroRotator, Params);
+	// Slightly above the origin so layer 0 doesn't z-fight with a template level's floor.
+	GetWorld()->SpawnActor<ALRWorldGridActor>(FVector(0.f, 0.f, 5.f), FRotator::ZeroRotator, Params);
 }
 
 void ALRGameMode::EnsureLighting()

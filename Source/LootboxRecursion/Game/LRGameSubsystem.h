@@ -65,17 +65,18 @@ public:
 	int32 CountItem(FName Item) const;
 
 	UFUNCTION(BlueprintPure, Category = "Loot Box Recursion")
-	bool GetPlacedAt(int32 Coordinate, FLRPlacedEntity& OutEntity) const;
+	bool GetPlacedAt(FIntVector Cell, FLRPlacedEntity& OutEntity) const;
 
 	UFUNCTION(BlueprintPure, Category = "Loot Box Recursion")
 	double GetSimTime() const;
 
-	// ---- Selection & camera focus (UI state, not saved) --------------------------------
+	// ---- Selection, hover, build layer & camera focus (UI state, not saved) -----------
 	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Selection")
 	void SelectSlot(int32 SlotIndex);
 
+	/** Select a grid cell. With bToggle, selecting the already-selected cell deselects it. */
 	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Selection")
-	void SelectCell(int32 Coordinate);
+	void SelectCell(FIntVector Cell, bool bToggle = true);
 
 	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Selection")
 	void ClearCellSelection();
@@ -84,21 +85,39 @@ public:
 	int32 GetSelectedSlot() const { return SelectedSlot; }
 
 	UFUNCTION(BlueprintPure, Category = "Loot Box Recursion|Selection")
-	bool GetSelectedCell(int32& OutCoordinate) const;
+	bool GetSelectedCell(FIntVector& OutCell) const;
 
-	/** The world coordinate the camera centres on. */
+	/** The cell under the mouse cursor (set every frame by the world grid). */
+	void SetHoveredCell(const FIntVector& Cell) { HoveredCell = Cell; bHasHoveredCell = true; }
+	void ClearHoveredCell() { bHasHoveredCell = false; }
+
 	UFUNCTION(BlueprintPure, Category = "Loot Box Recursion|Selection")
-	int32 GetFocusCoordinate() const { return FocusCoordinate; }
+	bool GetHoveredCell(FIntVector& OutCell) const;
+
+	/** The Z layer you are building on. */
+	UFUNCTION(BlueprintPure, Category = "Loot Box Recursion|Selection")
+	int32 GetBuildLayer() const { return BuildLayer; }
 
 	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Selection")
-	void SetFocusCoordinate(int32 Coordinate);
+	void SetBuildLayer(int32 Layer);
 
 	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Selection")
-	void PanFocus(int32 Delta) { SetFocusCoordinate(FocusCoordinate + Delta); }
+	void ChangeBuildLayer(int32 Delta) { SetBuildLayer(BuildLayer + Delta); }
 
-	/** Rails: the Trim button - jump back to the first deployed entity (or 0). */
+	/** Ask the camera to fly to a cell (and switch to its layer). */
+	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Selection")
+	void FocusOnCell(FIntVector Cell);
+
+	/** Increments on every FocusOnCell; the camera watches it. */
+	int32 GetFocusRequestSerial() const { return FocusRequestSerial; }
+	FIntVector GetFocusRequestCell() const { return FocusRequestCell; }
+
+	/** Rails: the Trim button - fly to the first deployed entity (or the origin). */
 	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Selection")
 	void FocusHome();
+
+	/** Deployed entities sorted by layer, then Y, then X (for lists). */
+	TArray<FLRPlacedEntity> GetPlacedSorted() const;
 
 	// ---- Debug / meta -----------------------------------------------------------------
 	UFUNCTION(BlueprintCallable, Category = "Loot Box Recursion|Debug")
@@ -146,7 +165,11 @@ private:
 	double SecondsSinceAutosave = 0.0;
 
 	int32 SelectedSlot = INDEX_NONE;
-	int32 SelectedCell = 0;
+	FIntVector SelectedCell = FIntVector::ZeroValue;
 	bool bHasSelectedCell = false;
-	int32 FocusCoordinate = 0;
+	FIntVector HoveredCell = FIntVector::ZeroValue;
+	bool bHasHoveredCell = false;
+	int32 BuildLayer = 0;
+	FIntVector FocusRequestCell = FIntVector::ZeroValue;
+	int32 FocusRequestSerial = 0;
 };

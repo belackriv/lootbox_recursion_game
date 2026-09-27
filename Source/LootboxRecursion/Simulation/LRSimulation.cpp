@@ -13,7 +13,7 @@ namespace
 	const FName ReasonNoLootBox(TEXT("no_loot_box"));
 	const FName ReasonNoLootTable(TEXT("no_loot_table"));
 	const FName ReasonNoInventorySpace(TEXT("insufficient_inventory_space"));
-	const FName ReasonNoCoordinate(TEXT("no_coordinate"));
+	const FName ReasonNoCell(TEXT("no_cell"));
 	const FName ReasonOccupied(TEXT("occupied"));
 	const FName ReasonNoPlaceable(TEXT("no_placeable_item"));
 	const FName ReasonNothingPlaced(TEXT("no_placed_entity"));
@@ -31,7 +31,7 @@ namespace
 		if (Reason == ReasonInsufficientMaterials) { return TEXT("not enough materials"); }
 		if (Reason == ReasonNoSlot || Reason == ReasonNoInventorySpace) { return TEXT("inventory is full"); }
 		if (Reason == ReasonNoLootBox) { return TEXT("no loot box to open"); }
-		if (Reason == ReasonNoCoordinate) { return TEXT("select a world cell first"); }
+		if (Reason == ReasonNoCell) { return TEXT("select a grid cell first"); }
 		if (Reason == ReasonOccupied) { return TEXT("that cell is occupied"); }
 		if (Reason == ReasonNoPlaceable) { return TEXT("nothing deployable selected"); }
 		if (Reason == ReasonNothingPlaced) { return TEXT("nothing deployed in that cell"); }
@@ -126,7 +126,7 @@ bool FLRSimulation::Load(const FLRSaveData& SaveData)
 	Placed.Reset();
 	for (const FLRPlacedEntity& Entity : SaveData.Placed)
 	{
-		Placed.Add(Entity.Coordinate, Entity);
+		Placed.Add(Entity.Cell, Entity);
 	}
 	ActionStates.Reset();
 	for (const FLRActionState& State : SaveData.Actions)
@@ -143,7 +143,7 @@ bool FLRSimulation::Load(const FLRSaveData& SaveData)
 	{
 		NextInstanceId = FMath::Max(NextInstanceId, Pair.Key + 1);
 	}
-	for (const TPair<int32, FLRPlacedEntity>& Pair : Placed)
+	for (const TPair<FIntVector, FLRPlacedEntity>& Pair : Placed)
 	{
 		NextInstanceId = FMath::Max(NextInstanceId, Pair.Value.InstanceId + 1);
 	}
@@ -259,7 +259,7 @@ bool FLRSimulation::CheckRequirement(const FLRRequirement& Requirement) const
 	int32 Actual = 0;
 	if (Requirement.Check == LRNames::CheckPlaced)
 	{
-		for (const TPair<int32, FLRPlacedEntity>& Pair : Placed)
+		for (const TPair<FIntVector, FLRPlacedEntity>& Pair : Placed)
 		{
 			const FLRItemDef* Def = Data.FindItem(Pair.Value.Item);
 			const bool bItemMatches = Requirement.Item.IsNone() || Pair.Value.Item == Requirement.Item;
@@ -431,14 +431,14 @@ FName FLRSimulation::ValidateRequest(const FLRActionRequest& Request) const
 	}
 	else if (Request.Action == LRNames::Deploy)
 	{
-		if (!Request.bHasCoordinate) { return ReasonNoCoordinate; }
-		if (Placed.Contains(Request.Coordinate)) { return ReasonOccupied; }
+		if (!Request.bHasCell) { return ReasonNoCell; }
+		if (Placed.Contains(Request.Cell)) { return ReasonOccupied; }
 		if (ResolvePlaceableSlot(Request.Slot) == INDEX_NONE) { return ReasonNoPlaceable; }
 	}
 	else if (Request.Action == LRNames::Recall)
 	{
-		if (!Request.bHasCoordinate) { return ReasonNoCoordinate; }
-		if (!Placed.Contains(Request.Coordinate)) { return ReasonNothingPlaced; }
+		if (!Request.bHasCell) { return ReasonNoCell; }
+		if (!Placed.Contains(Request.Cell)) { return ReasonNothingPlaced; }
 	}
 	return NAME_None;
 }
@@ -456,19 +456,19 @@ FLRActionResult FLRSimulation::Execute(const FLRActionRequest& Request)
 	if (Request.Action == LRNames::Deploy)        { return ExecuteDeploy(Request); }
 	if (Request.Action == LRNames::Recall)        { return ExecuteRecall(Request); }
 	if (Request.Action == LRNames::SortInventory) { return ExecuteSort(); }
-	if (!Def->LootTable.IsNone())                 { return ExecuteScavenge(*Def); }
+	if (!Def->LootTable.IsNone())                 { return ExecuteLootAction(*Def); }
 
 	return MakeFailure(Request.Action, ReasonUnknownAction,
 		FString::Printf(TEXT("No behaviour implemented for '%s'"), *Request.Action.ToString()));
 }
 
-FLRActionResult FLRSimulation::ExecuteScavenge(const FLRActionDef& Def)
+FLRActionResult FLRSimulation::ExecuteLootAction(const FLRActionDef& Def)
 {
-	// Rails: InventoryItem.scavenge_item - now just a roll on a loot table.
+	// Rails: InventoryItem.scavenge_item - now just a roll on a loot table (e.g. "inject").
 	const FLRLootTableDef* Table = Data.FindLootTable(Def.LootTable);
 	if (!Table)
 	{
-		return MakeFailure(Def.Name, ReasonNoLootTable, TEXT("Scavenge has no loot table"));
+		return MakeFailure(Def.Name, ReasonNoLootTable, FString::Printf(TEXT("%s has no loot table"), *Def.Label));
 	}
 
 	const TArray<FLRItemAmount> Rolled = MergeAmounts(RollLootTable(*Table));
@@ -599,11 +599,11 @@ FLRActionResult FLRSimulation::ExecuteUse(const FLRActionRequest& Request)
 FLRActionResult FLRSimulation::ExecuteDeploy(const FLRActionRequest& Request)
 {
 	// Rails: User#deploy + IrradiationEnclosureInventoryItem#place! + PlaceableEntity#place!
-	if (!Request.bHasCoordinate)
+	if (!Request.bHasCell)
 	{
-		return MakeFailure(Request.Action, ReasonNoCoordinate, TEXT("Can't deploy: select a world cell first"));
+		return MakeFailure(Request.Action, ReasonNoCell, TEXT("Can't deploy: select a grid cell first"));
 	}
-	if (Placed.Contains(Request.Coordinate))
+	if (Placed.Contains(Request.Cell))
 	{
 		return MakeFailure(Request.Action, ReasonOccupied, TEXT("Can't deploy: that cell is occupied"));
 	}
@@ -618,28 +618,28 @@ FLRActionResult FLRSimulation::ExecuteDeploy(const FLRActionRequest& Request)
 	FLRPlacedEntity Entity;
 	Entity.InstanceId = Slot.InstanceId != 0 ? Slot.InstanceId : AllocateInstanceId();
 	Entity.Item = Slot.Item;
-	Entity.Coordinate = Request.Coordinate;
+	Entity.Cell = Request.Cell;
 	Entity.PlacedAt = Now;
 
 	Inventory[SlotIndex].Clear(); // placeables are unique: one per slot
-	Placed.Add(Entity.Coordinate, Entity);
+	Placed.Add(Entity.Cell, Entity);
 
 	FLRActionResult Result;
 	Result.Action = Request.Action;
 	Result.bSuccess = true;
 	Result.Spent.Emplace(Slot.Item, 1);
-	Result.Message = FString::Printf(TEXT("Deployed %s at %d"), *Data.GetDisplayName(Slot.Item), Entity.Coordinate);
+	Result.Message = FString::Printf(TEXT("Deployed %s at %s"), *Data.GetDisplayName(Slot.Item), *DescribeCell(Entity.Cell));
 	return Result;
 }
 
 FLRActionResult FLRSimulation::ExecuteRecall(const FLRActionRequest& Request)
 {
 	// Rails: IrradiationEnclosureInventoryItem.recall! + PlaceableEntity#recall!
-	if (!Request.bHasCoordinate)
+	if (!Request.bHasCell)
 	{
-		return MakeFailure(Request.Action, ReasonNoCoordinate, TEXT("Can't recall: select a world cell first"));
+		return MakeFailure(Request.Action, ReasonNoCell, TEXT("Can't recall: select a grid cell first"));
 	}
-	const FLRPlacedEntity* Found = Placed.Find(Request.Coordinate);
+	const FLRPlacedEntity* Found = Placed.Find(Request.Cell);
 	if (!Found)
 	{
 		return MakeFailure(Request.Action, ReasonNothingPlaced, TEXT("Can't recall: nothing deployed in that cell"));
@@ -650,13 +650,13 @@ FLRActionResult FLRSimulation::ExecuteRecall(const FLRActionRequest& Request)
 	{
 		return MakeFailure(Request.Action, ReasonNoInventorySpace, TEXT("Can't recall: inventory is full"));
 	}
-	Placed.Remove(Request.Coordinate);
+	Placed.Remove(Request.Cell);
 
 	FLRActionResult Result;
 	Result.Action = Request.Action;
 	Result.bSuccess = true;
 	Result.Gained.Emplace(Entity.Item, 1);
-	Result.Message = FString::Printf(TEXT("Recalled %s from %d"), *Data.GetDisplayName(Entity.Item), Entity.Coordinate);
+	Result.Message = FString::Printf(TEXT("Recalled %s from %s"), *Data.GetDisplayName(Entity.Item), *DescribeCell(Entity.Cell));
 	return Result;
 }
 
@@ -1054,6 +1054,11 @@ TArray<FLRItemAmount> FLRSimulation::MergeAmounts(const TArray<FLRItemAmount>& A
 		}
 	}
 	return Out;
+}
+
+FString FLRSimulation::DescribeCell(const FIntVector& Cell)
+{
+	return FString::Printf(TEXT("(%d, %d, %d)"), Cell.X, Cell.Y, Cell.Z);
 }
 
 FString FLRSimulation::DescribeAmounts(const TArray<FLRItemAmount>& Amounts) const

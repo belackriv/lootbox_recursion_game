@@ -4,13 +4,17 @@
 #include "GameFramework/Pawn.h"
 #include "LRCameraPawn.generated.h"
 
-class ALRWorldLineActor;
+class ALRWorldGridActor;
 class UCameraComponent;
 class USpringArmComponent;
 
 /**
- * A pawn that is just a camera on a boom. Every frame it glides toward the world cell the
- * subsystem says to focus on. (The player never "walks" in this game - yet.)
+ * There is no character: you operate the pocket universe from outside the event horizon,
+ * so the player is a free "god camera" on a boom. It pans across the build layer, zooms,
+ * orbits, follows layer changes, and flies to cells the subsystem asks it to focus on.
+ *
+ * Input arrives from ALRPlayerController as Add*Input calls and is applied in Tick,
+ * the same pattern as APawn::AddMovementInput.
  */
 UCLASS()
 class LOOTBOXRECURSION_API ALRCameraPawn : public APawn
@@ -22,9 +26,38 @@ public:
 
 	virtual void Tick(float DeltaSeconds) override;
 
-	/** How quickly the camera catches up with the focus coordinate. */
+	/** Per frame while held: X = right(+)/left(-), Y = forward(+)/back(-), relative to the view. */
+	void AddPanInput(const FVector2D& Direction) { PendingPan += Direction; }
+	/** Mouse wheel notches: positive zooms in. */
+	void AddZoomInput(float Notches);
+	/** -1..1 per frame while held: orbit around the focus point. */
+	void AddOrbitInput(float Direction) { PendingOrbit += Direction; }
+	/** Back to the default angle and zoom. */
+	void ResetView();
+
+	/** Pan speed in cells per second at the default zoom (scales with zoom). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-	float FollowSpeed = 6.f;
+	float PanSpeed = 10.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	float OrbitSpeed = 90.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	float DefaultArmLength = 2200.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	float MinArmLength = 500.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	float MaxArmLength = 9000.f;
+
+	/** Downward tilt of the camera boom, in degrees. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	float Pitch = -50.f;
+
+	/** How quickly the camera catches up with its targets. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	float FollowSpeed = 8.f;
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
@@ -34,6 +67,18 @@ protected:
 	TObjectPtr<UCameraComponent> Camera;
 
 private:
-	TWeakObjectPtr<ALRWorldLineActor> WorldLine;
-	bool bSnapped = false;
+	TWeakObjectPtr<ALRWorldGridActor> WorldGrid;
+	bool bInitialized = false;
+
+	/** Focus point in grid-local space (cm). The pawn sits here; the boom looks at it. */
+	FVector CurrentFocus = FVector::ZeroVector;
+	FVector TargetFocus = FVector::ZeroVector;
+	int32 LastFocusSerial = 0;
+
+	float OrbitYaw = 0.f;
+	float TargetOrbitYaw = 0.f;
+	float TargetArmLength = 2200.f;
+
+	FVector2D PendingPan = FVector2D::ZeroVector;
+	float PendingOrbit = 0.f;
 };

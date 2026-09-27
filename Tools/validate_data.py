@@ -14,7 +14,7 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "Content" / "Data"
 CATEGORIES = {"material", "lootbox", "placeable"}
 CONDITIONS = {"gt", "gte", "lt", "lte", "eq"}
 CHECKS = {"inventory", "placed"}
-REQUIRED_ACTIONS = {"scavenge", "craft", "use", "deploy", "recall", "sort_inventory"}
+REQUIRED_ACTIONS = {"inject", "craft", "use", "deploy", "recall", "sort_inventory"}
 
 
 def main() -> int:

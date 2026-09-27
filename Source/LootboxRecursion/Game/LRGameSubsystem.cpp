@@ -13,7 +13,7 @@ const FString ULRGameSubsystem::SaveSlotName = TEXT("LootboxRecursion");
 namespace
 {
 	constexpr double AutosaveIntervalSeconds = 30.0;
-	constexpr int32 MaxFocusDistance = 1000000;
+	constexpr int32 MaxBuildLayer = 256;
 }
 
 ULRGameSubsystem* ULRGameSubsystem::Get(const UObject* WorldContextObject)
@@ -127,7 +127,7 @@ void ULRGameSubsystem::ResetGame()
 	Simulation->Reset(static_cast<int32>(FDateTime::Now().GetTicks() & 0x7fffffff));
 	SelectedSlot = INDEX_NONE;
 	bHasSelectedCell = false;
-	FocusCoordinate = 0;
+	FocusOnCell(FIntVector::ZeroValue);
 	OnSelectionChanged.Broadcast();
 	SaveNow();
 }
@@ -169,8 +169,8 @@ FLRActionResult ULRGameSubsystem::RequestActionWithSelection(FName Action)
 	Request.Slot = SelectedSlot;
 	if (bHasSelectedCell)
 	{
-		Request.Coordinate = SelectedCell;
-		Request.bHasCoordinate = true;
+		Request.Cell = SelectedCell;
+		Request.bHasCell = true;
 	}
 	return RequestAction(Request);
 }
@@ -197,9 +197,9 @@ int32 ULRGameSubsystem::CountItem(FName Item) const
 	return Simulation ? Simulation->CountItem(Item) : 0;
 }
 
-bool ULRGameSubsystem::GetPlacedAt(int32 Coordinate, FLRPlacedEntity& OutEntity) const
+bool ULRGameSubsystem::GetPlacedAt(FIntVector Cell, FLRPlacedEntity& OutEntity) const
 {
-	const FLRPlacedEntity* Entity = Simulation ? Simulation->FindPlaced(Coordinate) : nullptr;
+	const FLRPlacedEntity* Entity = Simulation ? Simulation->FindPlaced(Cell) : nullptr;
 	if (Entity)
 	{
 		OutEntity = *Entity;
@@ -221,15 +221,15 @@ void ULRGameSubsystem::SelectSlot(int32 SlotIndex)
 	OnSelectionChanged.Broadcast();
 }
 
-void ULRGameSubsystem::SelectCell(int32 Coordinate)
+void ULRGameSubsystem::SelectCell(FIntVector Cell, bool bToggle)
 {
-	if (bHasSelectedCell && SelectedCell == Coordinate)
+	if (bToggle && bHasSelectedCell && SelectedCell == Cell)
 	{
 		bHasSelectedCell = false;
 	}
 	else
 	{
-		SelectedCell = Coordinate;
+		SelectedCell = Cell;
 		bHasSelectedCell = true;
 	}
 	OnSelectionChanged.Broadcast();
@@ -241,33 +241,50 @@ void ULRGameSubsystem::ClearCellSelection()
 	OnSelectionChanged.Broadcast();
 }
 
-bool ULRGameSubsystem::GetSelectedCell(int32& OutCoordinate) const
+bool ULRGameSubsystem::GetSelectedCell(FIntVector& OutCell) const
 {
-	OutCoordinate = SelectedCell;
+	OutCell = SelectedCell;
 	return bHasSelectedCell;
 }
 
-void ULRGameSubsystem::SetFocusCoordinate(int32 Coordinate)
+bool ULRGameSubsystem::GetHoveredCell(FIntVector& OutCell) const
 {
-	FocusCoordinate = FMath::Clamp(Coordinate, -MaxFocusDistance, MaxFocusDistance);
+	OutCell = HoveredCell;
+	return bHasHoveredCell;
+}
+
+void ULRGameSubsystem::SetBuildLayer(int32 Layer)
+{
+	BuildLayer = FMath::Clamp(Layer, -MaxBuildLayer, MaxBuildLayer);
+}
+
+void ULRGameSubsystem::FocusOnCell(FIntVector Cell)
+{
+	FocusRequestCell = Cell;
+	++FocusRequestSerial;
+	SetBuildLayer(Cell.Z);
+}
+
+TArray<FLRPlacedEntity> ULRGameSubsystem::GetPlacedSorted() const
+{
+	TArray<FLRPlacedEntity> Out;
+	if (Simulation)
+	{
+		Simulation->GetPlaced().GenerateValueArray(Out);
+	}
+	Out.Sort([](const FLRPlacedEntity& A, const FLRPlacedEntity& B)
+	{
+		if (A.Cell.Z != B.Cell.Z) { return A.Cell.Z < B.Cell.Z; }
+		if (A.Cell.Y != B.Cell.Y) { return A.Cell.Y < B.Cell.Y; }
+		return A.Cell.X < B.Cell.X;
+	});
+	return Out;
 }
 
 void ULRGameSubsystem::FocusHome()
 {
-	int32 Home = 0;
-	bool bFound = false;
-	if (Simulation)
-	{
-		for (const TPair<int32, FLRPlacedEntity>& Pair : Simulation->GetPlaced())
-		{
-			if (!bFound || Pair.Key < Home)
-			{
-				Home = Pair.Key;
-				bFound = true;
-			}
-		}
-	}
-	SetFocusCoordinate(Home);
+	const TArray<FLRPlacedEntity> Sorted = GetPlacedSorted();
+	FocusOnCell(Sorted.IsEmpty() ? FIntVector::ZeroValue : Sorted[0].Cell);
 }
 
 // ---- Simulation event forwarding ------------------------------------------------------

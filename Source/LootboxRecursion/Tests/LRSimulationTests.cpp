@@ -15,7 +15,7 @@
 namespace LRTest
 {
 
-	const FName Wood(TEXT("wood"));
+	const FName Carbon(TEXT("carbon"));
 	const FName Iron(TEXT("iron"));
 	const FName Box(TEXT("loot_box"));
 	const FName MysteryBox(TEXT("mystery_box"));
@@ -62,24 +62,24 @@ namespace LRTest
 	FLRGameData MakeData()
 	{
 		FLRGameData Data;
-		AddItemDef(Data, Wood, TEXT("Wood"), LRNames::CategoryMaterial, 100);
+		AddItemDef(Data, Carbon, TEXT("Carbon"), LRNames::CategoryMaterial, 100);
 		AddItemDef(Data, Iron, TEXT("Iron"), LRNames::CategoryMaterial, 100);
 		AddItemDef(Data, Box, TEXT("Loot Box"), LRNames::CategoryLootBox, 1, TEXT("box"));
 		AddItemDef(Data, MysteryBox, TEXT("Mystery Box"), LRNames::CategoryLootBox, 1, TEXT("nested"));
 		AddItemDef(Data, Enclosure, TEXT("Enclosure"), LRNames::CategoryPlaceable, 1);
 
-		AddTable(Data, TEXT("box"), 2, Wood, 10);         // always 2 x 10 wood
-		AddTable(Data, TEXT("scavenge"), 1, Wood, 30);    // always 30 wood
+		AddTable(Data, TEXT("box"), 2, Carbon, 10);       // always 2 x 10 carbon
+		AddTable(Data, TEXT("inject"), 1, Carbon, 30);    // always 30 carbon
 		AddTable(Data, TEXT("nested"), 1, Box, 1);        // a box inside a box
 
 		FLRRecipeDef BoxRecipe;
 		BoxRecipe.Id = Box;
 		BoxRecipe.Label = TEXT("Loot Box");
 		BoxRecipe.Output = Box;
-		BoxRecipe.Cost = { FLRItemAmount(Wood, 50), FLRItemAmount(Iron, 50) };
+		BoxRecipe.Cost = { FLRItemAmount(Carbon, 50), FLRItemAmount(Iron, 50) };
 		Data.Recipes.Add(BoxRecipe);
 
-		Data.Actions.Add(MakeAction(LRNames::Scavenge, 5.f, 5.f, TEXT("scavenge")));
+		Data.Actions.Add(MakeAction(LRNames::Inject, 5.f, 5.f, TEXT("inject")));
 		Data.Actions.Add(MakeAction(LRNames::Craft, 5.f, 5.f));
 
 		FLRActionDef Use = MakeAction(LRNames::Use, 5.f, 5.f);
@@ -112,36 +112,36 @@ namespace LRTest
 		return Request;
 	}
 
-	FLRActionRequest AtCell(FName Action, int32 Coordinate)
+	FLRActionRequest AtCell(FName Action, const FIntVector& Cell)
 	{
 		FLRActionRequest Request = FLRActionRequest::Make(Action);
-		Request.Coordinate = Coordinate;
-		Request.bHasCoordinate = true;
+		Request.Cell = Cell;
+		Request.bHasCell = true;
 		return Request;
 	}
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimScavengeTest, "LootboxRecursion.Simulation.ScavengeCastAndCooldown", LR_TEST_FLAGS)
-bool FLRSimScavengeTest::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimInjectTest, "LootboxRecursion.Simulation.InjectCastAndCooldown", LR_TEST_FLAGS)
+bool FLRSimInjectTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 42);
 
-	const FLRActionResult Started = Sim.RequestAction(FLRActionRequest::Make(LRNames::Scavenge));
+	const FLRActionResult Started = Sim.RequestAction(FLRActionRequest::Make(LRNames::Inject));
 	TestTrue(TEXT("request accepted"), Started.bSuccess && Started.bStarted);
-	TestTrue(TEXT("status shows casting"), Sim.GetActionStatus(LRNames::Scavenge).bCasting);
+	TestTrue(TEXT("status shows casting"), Sim.GetActionStatus(LRNames::Inject).bCasting);
 
-	const FLRActionResult Again = Sim.RequestAction(FLRActionRequest::Make(LRNames::Scavenge));
+	const FLRActionResult Again = Sim.RequestAction(FLRActionRequest::Make(LRNames::Inject));
 	TestFalse(TEXT("second request rejected while casting"), Again.bSuccess);
 
 	Sim.Advance(4.9);
-	TestEqual(TEXT("no wood before cast completes"), Sim.CountItem(LRTest::Wood), 0);
+	TestEqual(TEXT("no carbon before cast completes"), Sim.CountItem(LRTest::Carbon), 0);
 
 	bool bCompleted = false;
 	Sim.OnActionCompleted.AddLambda([&bCompleted](const FLRActionResult& Result) { bCompleted = Result.bSuccess; });
 	Sim.Advance(0.2);
 	TestTrue(TEXT("completion broadcast"), bCompleted);
-	TestEqual(TEXT("wood after cast"), Sim.CountItem(LRTest::Wood), 30);
-	TestFalse(TEXT("cooldown over (cooldown == cast time)"), Sim.GetActionStatus(LRNames::Scavenge).bOnCooldown);
+	TestEqual(TEXT("carbon after cast"), Sim.CountItem(LRTest::Carbon), 30);
+	TestFalse(TEXT("cooldown over (cooldown == cast time)"), Sim.GetActionStatus(LRNames::Inject).bOnCooldown);
 	return true;
 }
 
@@ -150,21 +150,21 @@ bool FLRSimStackingTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 1);
 
-	TestTrue(TEXT("give 250 wood"), Sim.GiveItem(LRTest::Wood, 250));
+	TestTrue(TEXT("give 250 carbon"), Sim.GiveItem(LRTest::Carbon, 250));
 	TestEqual(TEXT("slot 0"), Sim.GetInventory()[0].Count, 100);
 	TestEqual(TEXT("slot 1"), Sim.GetInventory()[1].Count, 100);
 	TestEqual(TEXT("slot 2"), Sim.GetInventory()[2].Count, 50);
 
-	TestTrue(TEXT("give 60 more wood"), Sim.GiveItem(LRTest::Wood, 60));
+	TestTrue(TEXT("give 60 more carbon"), Sim.GiveItem(LRTest::Carbon, 60));
 	TestEqual(TEXT("partial stack topped up first"), Sim.GetInventory()[2].Count, 100);
 	TestEqual(TEXT("remainder in next slot"), Sim.GetInventory()[3].Count, 10);
 
 	// Fill the remaining 46 slots with iron.
 	TestTrue(TEXT("fill with iron"), Sim.GiveItem(LRTest::Iron, 4600));
 	TestFalse(TEXT("iron no longer fits"), Sim.GiveItem(LRTest::Iron, 1));
-	TestTrue(TEXT("wood still fits in the partial stack"), Sim.GiveItem(LRTest::Wood, 90));
-	TestFalse(TEXT("but not more than that"), Sim.GiveItem(LRTest::Wood, 1000));
-	TestEqual(TEXT("failed add changed nothing"), Sim.CountItem(LRTest::Wood), 400);
+	TestTrue(TEXT("carbon still fits in the partial stack"), Sim.GiveItem(LRTest::Carbon, 90));
+	TestFalse(TEXT("but not more than that"), Sim.GiveItem(LRTest::Carbon, 1000));
+	TestEqual(TEXT("failed add changed nothing"), Sim.CountItem(LRTest::Carbon), 400);
 	return true;
 }
 
@@ -180,12 +180,12 @@ bool FLRSimCraftTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("can't craft without materials"), Poor.bSuccess);
 	TestFalse(TEXT("failed request does not start a cooldown"), Sim.GetActionStatus(LRNames::Craft).bOnCooldown);
 
-	Sim.GiveItem(LRTest::Wood, 60);
+	Sim.GiveItem(LRTest::Carbon, 60);
 	Sim.GiveItem(LRTest::Iron, 55);
 	TestTrue(TEXT("craft accepted"), Sim.RequestAction(Craft).bStarted);
 	Sim.Advance(5.0);
 
-	TestEqual(TEXT("wood spent"), Sim.CountItem(LRTest::Wood), 10);
+	TestEqual(TEXT("carbon spent"), Sim.CountItem(LRTest::Carbon), 10);
 	TestEqual(TEXT("iron spent"), Sim.CountItem(LRTest::Iron), 5);
 	TestEqual(TEXT("box crafted"), Sim.CountItem(LRTest::Box), 1);
 
@@ -216,7 +216,7 @@ bool FLRSimOpenTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("box consumed"), Sim.CountItem(LRTest::Box), 0);
 	TestNull(TEXT("box instance removed"), Sim.FindLootBox(InstanceId));
-	TestEqual(TEXT("2 rolls x 10 wood"), Sim.CountItem(LRTest::Wood), 20);
+	TestEqual(TEXT("2 rolls x 10 carbon"), Sim.CountItem(LRTest::Carbon), 20);
 	return true;
 }
 
@@ -230,8 +230,8 @@ bool FLRSimOpenRollbackTest::RunTest(const FString& Parameters)
 	const int32 InstanceId = Sim.GetInventory()[0].InstanceId;
 	FLRLootModifier Modifier;
 	Modifier.Kind = TEXT("item_count_mult");
-	Modifier.Item = LRTest::Wood;
-	Modifier.Value = 20.f; // 2 x 200 wood: needs 4 slots, only the box's own slot frees up
+	Modifier.Item = LRTest::Carbon;
+	Modifier.Value = 20.f; // 2 x 200 carbon: needs 4 slots, only the box's own slot frees up
 	TestTrue(TEXT("modifier attached"), Sim.AddLootBoxModifier(InstanceId, Modifier));
 
 	Sim.RequestAction(LRTest::UseSlot(0));
@@ -240,7 +240,7 @@ bool FLRSimOpenRollbackTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("box still there"), Sim.CountItem(LRTest::Box), 1);
 	TestNotNull(TEXT("box instance restored"), Sim.FindLootBox(InstanceId));
 	TestEqual(TEXT("modifiers kept"), Sim.FindLootBox(InstanceId) ? Sim.FindLootBox(InstanceId)->Modifiers.Num() : 0, 1);
-	TestEqual(TEXT("no wood leaked"), Sim.CountItem(LRTest::Wood), 0);
+	TestEqual(TEXT("no carbon leaked"), Sim.CountItem(LRTest::Carbon), 0);
 	return true;
 }
 
@@ -260,7 +260,7 @@ bool FLRSimRecursionTest::RunTest(const FString& Parameters)
 
 	Sim.RequestAction(LRTest::UseSlot(0));
 	Sim.Advance(5.0);
-	TestEqual(TEXT("inner box opened too"), Sim.CountItem(LRTest::Wood), 20);
+	TestEqual(TEXT("inner box opened too"), Sim.CountItem(LRTest::Carbon), 20);
 	return true;
 }
 
@@ -271,7 +271,7 @@ bool FLRSimModifierTest::RunTest(const FString& Parameters)
 	Table.RollsMin = 2;
 	Table.RollsMax = 4;
 	FLRLootEntry Entry;
-	Entry.Item = LRTest::Wood;
+	Entry.Item = LRTest::Carbon;
 	Entry.Weight = 10;
 	Entry.MinCount = 5;
 	Entry.MaxCount = 8;
@@ -282,11 +282,11 @@ bool FLRSimModifierTest::RunTest(const FString& Parameters)
 	ExtraRolls.Value = 2.f;
 	FLRLootModifier Weight;
 	Weight.Kind = TEXT("item_weight_mult");
-	Weight.Item = LRTest::Wood;
+	Weight.Item = LRTest::Carbon;
 	Weight.Value = 3.f;
 	FLRLootModifier Count;
 	Count.Kind = TEXT("item_count_mult");
-	Count.Item = LRTest::Wood;
+	Count.Item = LRTest::Carbon;
 	Count.Value = 2.f;
 
 	const FLRLootTableDef Out = FLRSimulation::ApplyModifiers(Table, { ExtraRolls, Weight, Count });
@@ -310,20 +310,22 @@ bool FLRSimDeployRecallTest::RunTest(const FString& Parameters)
 
 	TestFalse(TEXT("deploy needs a coordinate"), Sim.RequestAction(FLRActionRequest::Make(LRNames::Deploy)).bSuccess);
 
-	FLRActionRequest Deploy = LRTest::AtCell(LRNames::Deploy, -3);
+	const FIntVector Cell(-3, 4, 2);
+	FLRActionRequest Deploy = LRTest::AtCell(LRNames::Deploy, Cell);
 	Deploy.Slot = 0;
-	TestTrue(TEXT("deploy at -3 (instant)"), Sim.RequestAction(Deploy).bSuccess);
-	const FLRPlacedEntity* Placed = Sim.FindPlaced(-3);
+	TestTrue(TEXT("deploy at (-3, 4, 2) (instant)"), Sim.RequestAction(Deploy).bSuccess);
+	const FLRPlacedEntity* Placed = Sim.FindPlaced(Cell);
+	TestNull(TEXT("neighbouring layer still empty"), Sim.FindPlaced(FIntVector(-3, 4, 1)));
 	TestNotNull(TEXT("entity placed"), Placed);
 	TestEqual(TEXT("keeps its identity"), Placed ? Placed->InstanceId : 0, FirstId);
 	TestEqual(TEXT("one enclosure left in inventory"), Sim.CountItem(LRTest::Enclosure), 1);
 
 	Sim.Advance(1.0); // deploy cooldown
-	TestFalse(TEXT("occupied cell rejected"), Sim.RequestAction(LRTest::AtCell(LRNames::Deploy, -3)).bSuccess);
+	TestFalse(TEXT("occupied cell rejected"), Sim.RequestAction(LRTest::AtCell(LRNames::Deploy, Cell)).bSuccess);
 
 	Sim.Advance(1.0);
-	TestTrue(TEXT("recall"), Sim.RequestAction(LRTest::AtCell(LRNames::Recall, -3)).bSuccess);
-	TestNull(TEXT("cell cleared"), Sim.FindPlaced(-3));
+	TestTrue(TEXT("recall"), Sim.RequestAction(LRTest::AtCell(LRNames::Recall, Cell)).bSuccess);
+	TestNull(TEXT("cell cleared"), Sim.FindPlaced(Cell));
 	TestEqual(TEXT("back in inventory"), Sim.CountItem(LRTest::Enclosure), 2);
 	TestTrue(TEXT("same instance came back"),
 		Sim.GetInventory().ContainsByPredicate([FirstId](const FLRInventorySlot& Slot) { return Slot.InstanceId == FirstId; }));
@@ -343,9 +345,9 @@ bool FLRSimSortTest::RunTest(const FString& Parameters)
 		Save.Inventory[Index].Count = Count;
 		Save.Inventory[Index].InstanceId = InstanceId;
 	};
-	SetSlot(0, LRTest::Wood, 40);
+	SetSlot(0, LRTest::Carbon, 40);
 	SetSlot(2, LRTest::Iron, 30);
-	SetSlot(3, LRTest::Wood, 70);
+	SetSlot(3, LRTest::Carbon, 70);
 	SetSlot(5, LRTest::Box, 1, 9);
 	FLRLootBoxInstance BoxInstance;
 	BoxInstance.InstanceId = 9;
@@ -356,12 +358,12 @@ bool FLRSimSortTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("sort needed"), Sim.IsSortNeeded());
 	TestTrue(TEXT("sort"), Sim.RequestAction(FLRActionRequest::Make(LRNames::SortInventory)).bSuccess);
 
-	// Alphabetical by display name: Iron, Loot Box, Wood (x2 stacks).
+	// Alphabetical by display name: Carbon (x2 stacks), Iron, Loot Box.
 	const TArray<FLRInventorySlot>& Inv = Sim.GetInventory();
-	TestTrue(TEXT("0 = iron 30"), Inv[0].Item == LRTest::Iron && Inv[0].Count == 30);
-	TestTrue(TEXT("1 = loot box, same instance"), Inv[1].Item == LRTest::Box && Inv[1].InstanceId == 9);
-	TestTrue(TEXT("2 = wood 100"), Inv[2].Item == LRTest::Wood && Inv[2].Count == 100);
-	TestTrue(TEXT("3 = wood 10"), Inv[3].Item == LRTest::Wood && Inv[3].Count == 10);
+	TestTrue(TEXT("0 = carbon 100"), Inv[0].Item == LRTest::Carbon && Inv[0].Count == 100);
+	TestTrue(TEXT("1 = carbon 10"), Inv[1].Item == LRTest::Carbon && Inv[1].Count == 10);
+	TestTrue(TEXT("2 = iron 30"), Inv[2].Item == LRTest::Iron && Inv[2].Count == 30);
+	TestTrue(TEXT("3 = loot box, same instance"), Inv[3].Item == LRTest::Box && Inv[3].InstanceId == 9);
 	TestTrue(TEXT("4 empty"), Inv[4].IsEmpty());
 	TestFalse(TEXT("sorted now"), Sim.IsSortNeeded());
 
@@ -379,19 +381,19 @@ bool FLRSimSaveLoadTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 7);
 	Sim.GiveItem(LRTest::Enclosure, 1);
-	Sim.RequestAction(LRTest::AtCell(LRNames::Deploy, 12));
-	Sim.RequestAction(FLRActionRequest::Make(LRNames::Scavenge)); // mid-cast when saved
+	Sim.RequestAction(LRTest::AtCell(LRNames::Deploy, FIntVector(12, -1, 3)));
+	Sim.RequestAction(FLRActionRequest::Make(LRNames::Inject)); // mid-cast when saved
 	Sim.Advance(2.0);
 
 	const FLRSaveData Save = Sim.Save();
 
 	FLRSimulation Loaded(LRTest::MakeData(), 0);
 	TestTrue(TEXT("load"), Loaded.Load(Save));
-	TestNotNull(TEXT("placed entity restored"), Loaded.FindPlaced(12));
-	TestTrue(TEXT("cast restored"), Loaded.GetActionStatus(LRNames::Scavenge).bCasting);
+	TestNotNull(TEXT("placed entity restored"), Loaded.FindPlaced(FIntVector(12, -1, 3)));
+	TestTrue(TEXT("cast restored"), Loaded.GetActionStatus(LRNames::Inject).bCasting);
 
 	Loaded.Advance(3.0);
-	TestEqual(TEXT("pending cast completes after load"), Loaded.CountItem(LRTest::Wood), 30);
+	TestEqual(TEXT("pending cast completes after load"), Loaded.CountItem(LRTest::Carbon), 30);
 
 	FLRSaveData Old = Save;
 	Old.Version = FLRSimulation::SaveVersion + 1;
@@ -411,7 +413,7 @@ bool FLRGameDataShippedTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("Content/Data loads cleanly"), bLoaded);
 
-	for (const FName Action : { LRNames::Scavenge, LRNames::Craft, LRNames::Use, LRNames::Deploy, LRNames::Recall, LRNames::SortInventory })
+	for (const FName Action : { LRNames::Inject, LRNames::Craft, LRNames::Use, LRNames::Deploy, LRNames::Recall, LRNames::SortInventory })
 	{
 		TestNotNull(*FString::Printf(TEXT("action '%s' defined"), *Action.ToString()), Data.FindAction(Action));
 	}

@@ -20,7 +20,7 @@ class LOOTBOXRECURSION_API FLRSimulation
 {
 public:
 	static constexpr int32 PlayerInventorySlots = 50; // Rails: User::BASE_INVENTORY_SLOTS
-	static constexpr int32 SaveVersion = 1;
+	static constexpr int32 SaveVersion = 2; // 2: 3D grid cells, wood -> carbon
 
 	DECLARE_MULTICAST_DELEGATE(FOnChanged);
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnActionCompleted, const FLRActionResult& /*Result*/);
@@ -41,8 +41,8 @@ public:
 	// ---- Queries ----------------------------------------------------------------------
 	const FLRGameData& GetData() const { return Data; }
 	const TArray<FLRInventorySlot>& GetInventory() const { return Inventory; }
-	const TMap<int32, FLRPlacedEntity>& GetPlaced() const { return Placed; }
-	const FLRPlacedEntity* FindPlaced(int32 Coordinate) const { return Placed.Find(Coordinate); }
+	const TMap<FIntVector, FLRPlacedEntity>& GetPlaced() const { return Placed; }
+	const FLRPlacedEntity* FindPlaced(const FIntVector& Cell) const { return Placed.Find(Cell); }
 	const FLRLootBoxInstance* FindLootBox(int32 InstanceId) const { return LootBoxes.Find(InstanceId); }
 
 	int32 CountItem(FName Item) const;
@@ -94,13 +94,13 @@ private:
 		FLRSimulation& Sim;
 		TArray<FLRInventorySlot> Inventory;
 		TMap<int32, FLRLootBoxInstance> LootBoxes;
-		TMap<int32, FLRPlacedEntity> Placed;
+		TMap<FIntVector, FLRPlacedEntity> Placed;
 		int32 NextInstanceId;
 		bool bCommitted = false;
 	};
 
 	FLRActionResult Execute(const FLRActionRequest& Request);
-	FLRActionResult ExecuteScavenge(const FLRActionDef& Def);
+	FLRActionResult ExecuteLootAction(const FLRActionDef& Def);
 	FLRActionResult ExecuteCraft(const FLRActionRequest& Request);
 	FLRActionResult ExecuteUse(const FLRActionRequest& Request);
 	FLRActionResult ExecuteDeploy(const FLRActionRequest& Request);
@@ -129,6 +129,12 @@ private:
 	TArray<FLRInventorySlot> BuildSortedInventory() const;
 
 	FString DescribeAmounts(const TArray<FLRItemAmount>& Amounts) const;
+
+public:
+	/** "(x, y, z)" */
+	static FString DescribeCell(const FIntVector& Cell);
+
+private:
 	static TArray<FLRItemAmount> MergeAmounts(const TArray<FLRItemAmount>& Amounts);
 	static FLRActionResult MakeFailure(FName Action, FName Reason, const FString& Message);
 
@@ -138,6 +144,6 @@ private:
 	int32 NextInstanceId = 1;
 	TArray<FLRInventorySlot> Inventory;
 	TMap<int32, FLRLootBoxInstance> LootBoxes; // by instance id
-	TMap<int32, FLRPlacedEntity> Placed;       // by world coordinate
+	TMap<FIntVector, FLRPlacedEntity> Placed;  // by grid cell
 	TMap<FName, FLRActionState> ActionStates;  // by action name
 };
