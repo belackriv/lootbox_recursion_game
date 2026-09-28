@@ -156,8 +156,9 @@ you need it. Most day-to-day debugging is `UE_LOG` plus the Output Log.
 
 ## First steps in the editor
 
-The repo deliberately contains **no binary assets**, so it's fully reviewable in a diff.
-Your first commits should add some:
+The repo keeps binary assets to a minimum, so most of it is reviewable in a diff. So far
+there's one: the grid beam material, `Content/Materials/M_GridBeam` (stored with Git LFS).
+Your next commits should add a few more:
 
 1. **Make a real level.** Go to File → New Level → **Empty Level**. The game spawns its own
    lights, grid, stars and black hole, so the level needs nothing in it. Save it as

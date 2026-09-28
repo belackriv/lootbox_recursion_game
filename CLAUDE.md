@@ -31,8 +31,9 @@ Rails app `belackriv/lootbox_recursion`.
 - Avoid variable shadowing. UE treats it as an error.
 - New gameplay rules go in `FLRSimulation` with an automation test in
   `Tests/LRSimulationTests.cpp`. New content goes in JSON, not code.
-- The repo has no binary assets yet. Anything that needs a `.uasset` must be created in the
-  editor by the user.
+- Binary assets are few and live in Git LFS (so cloud sessions only see pointer files):
+  so far just `Content/Materials/M_GridBeam` (the grid beams; the code sets its `Color`
+  parameter). Anything that needs a `.uasset` must be created in the editor by the user.
 
 ## Checks available without the engine
 
