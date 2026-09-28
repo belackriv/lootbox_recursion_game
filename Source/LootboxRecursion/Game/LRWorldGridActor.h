@@ -29,7 +29,7 @@ class UTexture2D;
  *
  * Uses only engine content (/Engine/BasicShapes), so it works before the project has any art.
  */
-UCLASS()
+UCLASS(Config = Game)
 class LOOTBOXRECURSION_API ALRWorldGridActor : public AActor
 {
 	GENERATED_BODY()
@@ -45,6 +45,15 @@ public:
 	/** Distance between neighbouring cell centres (across a hexagon's flat sides), and between layers, in cm. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Grid")
 	float CellSize = 100.f;
+
+	/**
+	 * Optional material for the grid beams, outlines included. If the asset exists it replaces
+	 * the built-in flat unlit look: the grid sets its "Color" vector parameter (HDR, so values
+	 * above 1 bloom). Make it Unlit with Color driving Emissive, and tick "Used with Instanced
+	 * Static Meshes". See docs/ROADMAP.md, M1.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "World Grid")
+	FSoftObjectPath BeamMaterialPath = FSoftObjectPath(TEXT("/Game/Materials/M_GridBeam.M_GridBeam"));
 
 	/** Rings of cells drawn around the patch centre (the lines fade out before the last one). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Grid")
@@ -85,6 +94,10 @@ private:
 	/** Unlit (see LRUnlit): grid beams and cell outlines. */
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> UnlitMaterial;
+
+	/** BeamMaterialPath, if that asset exists; used instead of UnlitMaterial for the beams. */
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> BeamMaterial;
 
 	UPROPERTY()
 	TObjectPtr<UTexture2D> WhiteTexture;

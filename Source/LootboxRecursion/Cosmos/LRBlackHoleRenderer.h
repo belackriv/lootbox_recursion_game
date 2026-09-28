@@ -31,8 +31,8 @@ public:
 	 */
 	void Render(double TimeSeconds, TArray<FColor>& OutPixels) const;
 
-	/** Rotation period of the disk's inner edge, in seconds. */
-	float SpinSeconds = 8.f;
+	/** Rotation period of the disk's inner edge, in seconds (SPIN_SECONDS in the bake tool). */
+	float SpinSeconds = 3.f;
 	/** Overall disk brightness before tone mapping. */
 	float Brightness = 2.6f;
 

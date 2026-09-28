@@ -22,8 +22,11 @@ and play.
 - [x] Hover highlight and selection on grid cells.
 - [x] Cosmic look: grey/amber HUD, a grid of glowing light beams in the void, starfield, and
       an animated, ray-traced black hole backdrop.
-- [ ] Grid beams in a real emissive material (they borrow the engine's widget material for
-      now), with a smooth distance fade instead of stepped brightness layers.
+- [ ] Grid beams in a real emissive material. The code is ready: if
+      `/Game/Materials/M_GridBeam` exists, the grid uses it and sets its `Color` parameter
+      (the path is `BeamMaterialPath` on the grid actor, set in `DefaultGame.ini`). Creating
+      the asset is an editor step. Later: a smooth distance fade in the material instead of
+      stepped brightness layers.
 - [ ] Higher-resolution black hole bake (1024²), lensed stars near the shadow, nebula haze.
 - [ ] Verify the black hole's blend: if `Widget3DPassThrough_Translucent` turns out to be
       premultiplied (AlphaComposite), drop the `1/Alpha` scale in `FLRBlackHoleRenderer::RenderRow`

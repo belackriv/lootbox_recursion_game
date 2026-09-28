@@ -5,6 +5,7 @@
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/PostProcessComponent.h"
 #include "Components/SkyAtmosphereComponent.h"
+#include "Components/SkyLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/VolumetricCloudComponent.h"
 #include "Engine/Level.h"
@@ -196,6 +197,7 @@ void ALRCosmosActor::BuildBlackHole()
 		UE_LOG(LogLootbox, Warning, TEXT("Cosmos: no black hole (%s). Run Tools/cosmos/generate_black_hole.py."), *Error);
 		return;
 	}
+	Renderer.SpinSeconds = DiskSpinSeconds;
 	if (!PlaneMesh || !UnlitTranslucentMaterial)
 	{
 		return;
@@ -267,6 +269,7 @@ void ALRCosmosActor::UploadFrame()
 	// No render resource (e.g. -nullrhi): the cleanup callback would never run, so don't allocate.
 	if (!BlackHoleTexture || !BlackHoleTexture->GetResource())
 	{
+		UE_LOG(LogLootbox, Verbose, TEXT("Cosmos: black hole texture has no render resource, frame skipped"));
 		return;
 	}
 	Renderer.Render(AnimationTime, FramePixels);
@@ -330,6 +333,15 @@ void ALRCosmosActor::HideLevelContent(ULevel* Level)
 				|| Component->IsA<UExponentialHeightFogComponent>())
 			{
 				Component->SetVisibility(false);
+			}
+			// A real-time capture sky light needs a sky to capture, and we just hid it: the engine
+			// then prints a red warning every frame and the light turns black anyway.
+			else if (const USkyLightComponent* SkyLight = Cast<USkyLightComponent>(Component))
+			{
+				if (SkyLight->bRealTimeCapture)
+				{
+					Component->SetVisibility(false);
+				}
 			}
 			// Floors, landscapes, template props: the void has no ground.
 			else if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Component))

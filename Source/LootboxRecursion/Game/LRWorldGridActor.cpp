@@ -11,6 +11,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/Pawn.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Misc/PackageName.h"
 #include "Rendering/LRUnlit.h"
 #include "Simulation/LRHexGrid.h"
 #include "UObject/ConstructorHelpers.h"
@@ -105,6 +106,12 @@ void ALRWorldGridActor::BeginPlay()
 	Super::BeginPlay();
 
 	WhiteTexture = LRUnlit::MakeSolidTexture(FColor::White);
+	// A project material for the beams, if one has been made (checked first so a missing
+	// asset doesn't log a load failure every time).
+	if (!BeamMaterialPath.IsNull() && FPackageName::DoesPackageExist(BeamMaterialPath.GetLongPackageName()))
+	{
+		BeamMaterial = Cast<UMaterialInterface>(BeamMaterialPath.TryLoad());
+	}
 	for (int32 Step = 0; Step < BrightnessSteps; ++Step)
 	{
 		TileLayers.Add(CreateBeamLayer(Glow(LineColor, StepBrightness(Step))));
@@ -195,7 +202,13 @@ UInstancedStaticMeshComponent* ALRWorldGridActor::CreateBeamLayer(const FLinearC
 	Beams->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	LRUnlit::ExcludeFromLighting(Beams);
 	Beams->RegisterComponent();
-	if (UMaterialInstanceDynamic* Material = LRUnlit::MakeMaterial(UnlitMaterial, this, WhiteTexture, Tint))
+	if (BeamMaterial)
+	{
+		UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(BeamMaterial, this);
+		Material->SetVectorParameterValue(ColorParam, Tint);
+		Beams->SetMaterial(0, Material);
+	}
+	else if (UMaterialInstanceDynamic* Material = LRUnlit::MakeMaterial(UnlitMaterial, this, WhiteTexture, Tint))
 	{
 		Beams->SetMaterial(0, Material);
 	}

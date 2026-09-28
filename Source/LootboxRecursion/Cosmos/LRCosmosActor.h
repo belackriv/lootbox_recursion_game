@@ -61,6 +61,13 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Cosmos")
 	float ExposureBias = 0.f;
 
+	/**
+	 * Seconds for the disk's inner edge to go round once; the outer edge is about 8 times slower.
+	 * Set it very low (0.5) to check the animation reaches the screen at all.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Cosmos")
+	float DiskSpinSeconds = 3.f;
+
 	/** How often the disk animation is re-rendered. */
 	UPROPERTY(Config, EditAnywhere, Category = "Cosmos")
 	float FramesPerSecond = 30.f;

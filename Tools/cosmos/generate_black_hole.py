@@ -15,6 +15,7 @@ rotates while the lensing stays physically correct. Run it after changing any co
     pip install numpy pillow
     python Tools/cosmos/generate_black_hole.py            # writes Content/Cosmos/BlackHole.lrbh
     python Tools/cosmos/generate_black_hole.py --preview  # also writes preview images to docs/images
+    python Tools/cosmos/generate_black_hole.py --noise-only --preview  # new turbulence, no re-trace
 
 File format (little-endian), shared with Source/LootboxRecursion/Cosmos/LRBlackHoleRenderer.cpp:
     char[4] "LRBH", uint32 version(1), uint32 width, uint32 height,
@@ -180,10 +181,22 @@ def bake():
     shadow_q = np.clip(np.round(shadow * 255), 0, 255).astype(np.uint8)
     ring_q = np.clip(np.round(ring_d * 255), 0, 255).astype(np.uint8)
 
-    # Turbulence: smooth random bands, stretched along the orbit.
+    noise_q = make_noise()
+    write_table(r_norm, phi_q, shift_q, shadow_q, ring_q, noise_q)
+    return r_norm, phi_q, shift_q, shadow_q, ring_q, noise_q
+
+
+# Turbulence octaves (bumps around the orbit, weight). Fine streaks with strong weights keep the
+# swirl visible where the disk turns slowly: its outer edge takes (R_OUTER/R_INNER)^1.5 times
+# longer than the inner edge.
+NOISE_OCTAVES = ((8, 1.0), (16, 0.8), (32, 0.6), (64, 0.45))
+
+
+def make_noise():
+    """Turbulence: smooth random bands, stretched along the orbit."""
     rng = np.random.default_rng(1234)
     noise = np.zeros((NOISE_RADIAL, NOISE_ANGULAR))
-    for octave, amp in ((4, 1.0), (8, 0.6), (16, 0.35), (32, 0.2)):
+    for octave, amp in NOISE_OCTAVES:
         coarse = rng.random((NOISE_RADIAL // 4 + 1, octave))
         rows = np.linspace(0, coarse.shape[0] - 1, NOISE_RADIAL)
         cols = np.linspace(0, octave, NOISE_ANGULAR, endpoint=False)
@@ -194,8 +207,10 @@ def bake():
         bot = coarse[r1][:, c0] * (1 - fc) + coarse[r1][:, c1] * fc
         noise += amp * (top * (1 - fr) + bot * fr)
     noise = (noise - noise.min()) / (noise.max() - noise.min())
-    noise_q = np.round(noise * 255).astype(np.uint8)
+    return np.round(noise * 255).astype(np.uint8)
 
+
+def write_table(r_norm, phi_q, shift_q, shadow_q, ring_q, noise_q):
     OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(OUT_FILE, "wb") as f:
         f.write(b"LRBH")
@@ -206,11 +221,10 @@ def bake():
         f.write(rec.tobytes())
         f.write(noise_q.tobytes())
     print(f"Wrote {OUT_FILE} ({OUT_FILE.stat().st_size:,} bytes)")
-    return r_norm, phi_q, shift_q, shadow_q, ring_q, noise_q
 
 
 # ---- Reference compositor (mirrors FLRBlackHoleRenderer::Render) --------------------------
-SPIN_SECONDS = 8.0    # rotation period at the inner edge
+SPIN_SECONDS = 3.0    # rotation period at the inner edge (FLRBlackHoleRenderer::SpinSeconds)
 
 def composite(r_norm, phi_q, shift_q, shadow_q, ring_q, noise_q, time):
     has = r_norm > 0
@@ -268,7 +282,9 @@ def preview(data):
         img = 1 - np.exp(-img * 1.8)                     # simple tone map
         frames.append(Image.fromarray((np.clip(img, 0, 1) ** (1 / 1.8) * 255).astype(np.uint8)))
     frames[0].save(PREVIEW_DIR / "black_hole_preview.png")
-    frames[0].save(PREVIEW_DIR / "black_hole_preview.gif", save_all=True, append_images=frames[1:], duration=60, loop=0)
+    # Real time: the GIF shows the disk turning at the speed the game does.
+    frame_ms = round(SPIN_SECONDS / 48 * 1000)
+    frames[0].save(PREVIEW_DIR / "black_hole_preview.gif", save_all=True, append_images=frames[1:], duration=frame_ms, loop=0)
     print(f"Wrote previews to {PREVIEW_DIR}")
 
 
@@ -276,9 +292,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--preview", action="store_true", help="also render preview images")
     parser.add_argument("--preview-only", action="store_true", help="re-render previews from the existing file")
+    parser.add_argument("--noise-only", action="store_true", help="regenerate the turbulence in the existing file without re-tracing")
     args = parser.parse_args()
     if args.preview_only:
         preview(load())
+    elif args.noise_only:
+        r_norm, phi_q, shift_q, shadow_q, ring_q, _ = load()
+        noise_q = make_noise()
+        write_table(r_norm.reshape(SIZE, SIZE), phi_q.reshape(SIZE, SIZE), shift_q.reshape(SIZE, SIZE),
+                    shadow_q.reshape(SIZE, SIZE), ring_q.reshape(SIZE, SIZE), noise_q)
+        if args.preview:
+            preview(load())
     else:
         baked = bake()
         if args.preview:

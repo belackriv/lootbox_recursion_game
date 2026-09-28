@@ -1298,22 +1298,41 @@ bool FLRBlackHoleRenderTest::RunTest(const FString& Parameters)
 	TArray<FColor> First;
 	TArray<FColor> Later;
 	Renderer.Render(0.0, First);
-	Renderer.Render(1.5, Later);
+	Renderer.Render(1.0, Later);
 	TestEqual(TEXT("pixel count"), First.Num(), W * H);
 
 	const FColor Centre = First[(H / 2) * W + W / 2];
 	TestTrue(TEXT("the shadow is opaque black"), Centre.A == 255 && Centre.R < 8 && Centre.G < 8 && Centre.B < 8);
 	TestEqual(TEXT("empty space in the corner is transparent"), static_cast<int32>(First[0].A), 0);
 
-	int32 Changed = 0;
+	// Visibly animated, not just changing by a shade: in one second, most of the bright disk
+	// moves by more than 12/255 on screen (colour times alpha). The old, smoother bake managed
+	// about a quarter, which looked static in game; the current one manages about two thirds.
+	auto OnScreen = [](const FColor& Pixel, int32 Channel)
+	{
+		const int32 Value = Channel == 0 ? Pixel.R : (Channel == 1 ? Pixel.G : Pixel.B);
+		return Value * Pixel.A / 255;
+	};
 	int32 Lit = 0;
+	int32 Moved = 0;
 	for (int32 Index = 0; Index < First.Num(); ++Index)
 	{
-		Changed += First[Index] != Later[Index] ? 1 : 0;
-		Lit += (First[Index].R > 60 && First[Index].A > 100) ? 1 : 0; // warm, mostly opaque
+		if (First[Index].R <= 60 || First[Index].A <= 100) // warm, mostly opaque
+		{
+			continue;
+		}
+		++Lit;
+		for (int32 Channel = 0; Channel < 3; ++Channel)
+		{
+			if (FMath::Abs(OnScreen(First[Index], Channel) - OnScreen(Later[Index], Channel)) > 12)
+			{
+				++Moved;
+				break;
+			}
+		}
 	}
 	TestTrue(TEXT("the disk is visible"), Lit > W * H / 50);
-	TestTrue(TEXT("the disk animates"), Changed > W * H / 50);
+	TestTrue(TEXT("the disk visibly animates"), Moved * 10 > Lit * 4);
 
 	TArray<uint8> Garbage = { 'N', 'O', 'P', 'E' };
 	FLRBlackHoleRenderer Bad;
