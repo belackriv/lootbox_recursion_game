@@ -22,8 +22,6 @@ Rails app `belackriv/lootbox_recursion`.
   with engine-only content.
 - Players see "Quantum Cache" for the `loot_box` item. Keep ids and code names as `LootBox`,
   and keep player-facing strings generic ("cache").
-- Likewise players see "Irradiator" for enclosures (`*_irradiation_enclosure`). Code and ids keep
-  `Enclosure`.
 - Includes are relative to the module root (`#include "Simulation/LRSimulation.h"`).
   `Build.cs` adds `ModuleDirectory` to the include paths.
 

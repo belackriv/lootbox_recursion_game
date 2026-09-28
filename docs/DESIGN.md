@@ -232,12 +232,12 @@ Cheat items (`LRGive`) don't count.
 | Feed the Horizon | when the host is down to 90% of its mass |
 | Build, Quantum Cache recipe | at nucleosynthesis |
 | Open, Dismantle | after building your first cache |
-| Carbon Irradiator | after opening a cache |
-| Grow Lamp | after building a carbon irradiator |
+| Nebula Irradiator | after opening a cache |
+| Grow Lamp | after building a nebula irradiator |
 | Infrared Emitter | after 3 visible-light exposures |
 | Microwave Emitter | after 3 infrared exposures |
-| Iron Irradiator | after 2 microwave exposures |
-| X-Ray Tube | after crafting an iron irradiator |
+| Corona Irradiator | after 2 microwave exposures |
+| X-Ray Tube | after crafting a corona irradiator |
 | Gamma Source | after your first X-ray |
 | Perturb retires | at recombination |
 
@@ -252,8 +252,9 @@ and requirements with OR.
 Irradiation is how loot boxes get better. Numbers are placeholder tuning in
 `Content/Data/items.json` and `radiation.json`.
 
-**Irradiators** are built in a cell. (Ids and code still call them enclosures, e.g.
-`carbon_irradiation_enclosure` and `IsEnclosure()`.) They draw see-through (`opacity` 0.25 in
+**Irradiators** are built in a cell. The tiers are named after ever hotter things in the sky:
+a nebula glows in infrared, visible light and microwaves, a star's corona gives off X-rays, and a
+future tier above could be the **Magnetar Irradiator** (gamma bursts). They draw see-through (`opacity` 0.25 in
 `items.json`), so the cache and source inside are visible. Each one has:
 
 - a **chamber** (one loot box)
@@ -264,8 +265,8 @@ Irradiation is how loot boxes get better. Numbers are placeholder tuning in
 
 | Irradiator | Max tier | Max stacks | Interval |
 |---|---|---|---|
-| Carbon (graphite-lined) | 4 (up to microwaves) | 3 | 10s |
-| Iron (steel-plated) | 7 (up to gamma) | 5 | 12s |
+| Nebula | 4 (up to microwaves) | 3 | 10s |
+| Corona | 7 (up to gamma) | 5 | 12s |
 
 **Sources** are built into an irradiator and emit one radiation type. Each radiation's `effect` in
 `radiation.json` is the loot modifier one exposure adds:
@@ -282,8 +283,8 @@ Irradiation is how loot boxes get better. Numbers are placeholder tuning in
 
 - A plain cache returns about 90% of its cost by value: a small gamble, not a farm. The
   tool values a unit of hydrogen at 1, helium 2, carbon 4 and iron 8, by rarity.
-- Each exposure stack adds roughly 15–25% value, so a full carbon irradiator is +40–60% and
-  a full iron irradiator roughly doubles a cache.
+- Each exposure stack adds roughly 15–25% value, so a full nebula irradiator is +40–60% and
+  a full corona irradiator roughly doubles a cache.
 - Irradiators are the scaling: many of them work in parallel, while Perturb is manual.
 
 **How it plays:**
@@ -304,7 +305,7 @@ Irradiation is how loot boxes get better. Numbers are placeholder tuning in
 
 - Sources that decay, or that need power: alpha / Pu-238 RTGs are the natural power source.
 - Ultraviolet (lithography → chips), radio, beta and neutron sources once there are items
-  for them. Graphite moderating neutrons in the carbon irradiator is a natural fit.
+  for them. A graphite-moderated neutron irradiator is a natural fit.
 - Gamma's downside: a chance to destroy contents, or to need shielding around the irradiator
   (lead or concrete blocks in neighbouring cells, which uses the 3D grid).
 - Irradiator upgrades, and multi-cell irradiators.

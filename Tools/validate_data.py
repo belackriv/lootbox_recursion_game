@@ -92,7 +92,7 @@ def main() -> int:
             errors.append(f"{where}: unknown radiation '{item.get('radiation')}'")
         stacks, tier = item.get("maxExposureStacks", 0), item.get("maxRadiationTier", 0)
         if stacks < 0 or tier < 0 or (stacks > 0 and item.get("exposureSeconds", 10) <= 0):
-            errors.append(f"{where}: enclosure needs maxExposureStacks/maxRadiationTier >= 0 and exposureSeconds > 0")
+            errors.append(f"{where}: irradiator needs maxExposureStacks/maxRadiationTier >= 0 and exposureSeconds > 0")
 
     unlock_keys = {f"recipe:{r.get('id')}" for r in recipes} | {f"action:{a.get('name')}" for a in actions}
 

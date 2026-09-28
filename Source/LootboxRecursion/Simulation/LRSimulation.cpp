@@ -17,7 +17,7 @@ namespace
 	const FName ReasonNoCell(TEXT("no_cell"));
 	const FName ReasonOccupied(TEXT("occupied"));
 	const FName ReasonNothingPlaced(TEXT("no_placed_entity"));
-	const FName ReasonNeedsEnclosure(TEXT("needs_enclosure"));
+	const FName ReasonNeedsIrradiator(TEXT("needs_irradiator"));
 	const FName ReasonChamberFull(TEXT("chamber_full"));
 	const FName ReasonSourceFull(TEXT("source_full"));
 	const FName ReasonTooStrong(TEXT("radiation_too_strong"));
@@ -44,7 +44,7 @@ FString FLRSimulation::DescribeReason(FName Reason)
 	if (Reason == ReasonNoCell) { return TEXT("select a grid cell first"); }
 	if (Reason == ReasonOccupied) { return TEXT("that cell is occupied"); }
 	if (Reason == ReasonNothingPlaced) { return TEXT("there's nothing to dismantle in that cell"); }
-	if (Reason == ReasonNeedsEnclosure) { return TEXT("sources are built into an irradiator"); }
+	if (Reason == ReasonNeedsIrradiator) { return TEXT("sources are built into an irradiator"); }
 	if (Reason == ReasonChamberFull) { return TEXT("the irradiator already holds a cache"); }
 	if (Reason == ReasonSourceFull) { return TEXT("the irradiator already holds a source"); }
 	if (Reason == ReasonTooStrong) { return TEXT("this irradiator can't contain radiation that strong"); }
@@ -440,29 +440,29 @@ void FLRSimulation::AdvanceIrradiation(double DeltaSeconds)
 	for (TPair<FIntVector, FLRPlacedEntity>& Pair : Placed)
 	{
 		FLRPlacedEntity& Entity = Pair.Value;
-		const FLRItemDef* EnclosureDef = Data.FindItem(Entity.Item);
-		if (!EnclosureDef || !EnclosureDef->IsEnclosure() || Entity.Chamber.IsEmpty() || Entity.Source.IsEmpty())
+		const FLRItemDef* IrradiatorDef = Data.FindItem(Entity.Item);
+		if (!IrradiatorDef || !IrradiatorDef->IsIrradiator() || Entity.Chamber.IsEmpty() || Entity.Source.IsEmpty())
 		{
 			continue;
 		}
 		FLRLootBoxInstance* Box = LootBoxes.Find(Entity.Chamber.InstanceId);
 		const FLRItemDef* SourceDef = Data.FindItem(Entity.Source.Item);
 		const FLRRadiationDef* Radiation = SourceDef ? Data.FindRadiation(SourceDef->Radiation) : nullptr;
-		if (!Box || !Radiation || Radiation->Effect.IsNone() || IsExposureComplete(*Box, *EnclosureDef))
+		if (!Box || !Radiation || Radiation->Effect.IsNone() || IsExposureComplete(*Box, *IrradiatorDef))
 		{
 			Entity.ExposureProgress = 0.0;
 			continue;
 		}
 
 		Entity.ExposureProgress += DeltaSeconds;
-		const double Interval = FMath::Max(0.1, static_cast<double>(EnclosureDef->ExposureSeconds));
-		while (Entity.ExposureProgress >= Interval && !IsExposureComplete(*Box, *EnclosureDef))
+		const double Interval = FMath::Max(0.1, static_cast<double>(IrradiatorDef->ExposureSeconds));
+		while (Entity.ExposureProgress >= Interval && !IsExposureComplete(*Box, *IrradiatorDef))
 		{
 			Entity.ExposureProgress -= Interval;
 			Messages.Add(FString::Printf(TEXT("%s at %s: %s"),
-				*Data.GetDisplayName(Entity.Chamber.Item), *DescribeCell(Entity.Cell), *ApplyExposure(*Box, *Radiation, *EnclosureDef)));
+				*Data.GetDisplayName(Entity.Chamber.Item), *DescribeCell(Entity.Cell), *ApplyExposure(*Box, *Radiation, *IrradiatorDef)));
 		}
-		if (IsExposureComplete(*Box, *EnclosureDef))
+		if (IsExposureComplete(*Box, *IrradiatorDef))
 		{
 			Entity.ExposureProgress = 0.0;
 		}
@@ -484,12 +484,12 @@ void FLRSimulation::AdvanceIrradiation(double DeltaSeconds)
 	AnnounceUnlocks(RefreshUnlocks());
 }
 
-bool FLRSimulation::IsExposureComplete(const FLRLootBoxInstance& Box, const FLRItemDef& EnclosureDef)
+bool FLRSimulation::IsExposureComplete(const FLRLootBoxInstance& Box, const FLRItemDef& IrradiatorDef)
 {
-	return Box.bRevealed || Box.Modifiers.Num() >= EnclosureDef.MaxExposureStacks;
+	return Box.bRevealed || Box.Modifiers.Num() >= IrradiatorDef.MaxExposureStacks;
 }
 
-FString FLRSimulation::ApplyExposure(FLRLootBoxInstance& Box, const FLRRadiationDef& Radiation, const FLRItemDef& EnclosureDef)
+FString FLRSimulation::ApplyExposure(FLRLootBoxInstance& Box, const FLRRadiationDef& Radiation, const FLRItemDef& IrradiatorDef)
 {
 	if (Radiation.Effect.Kind == LRNames::ModifierReveal)
 	{
@@ -511,7 +511,7 @@ FString FLRSimulation::ApplyExposure(FLRLootBoxInstance& Box, const FLRRadiation
 	Modifier.Source = Radiation.Id;
 	Box.Modifiers.Add(Modifier);
 	return FString::Printf(TEXT("absorbed %s, %s (%d/%d)"), *Radiation.Name, *DescribeModifier(Modifier, Data),
-		Box.Modifiers.Num(), EnclosureDef.MaxExposureStacks);
+		Box.Modifiers.Num(), IrradiatorDef.MaxExposureStacks);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -526,7 +526,7 @@ const FLRLootBoxInstance* FLRSimulation::FindCacheAt(const FIntVector& Cell) con
 	{
 		return LootBoxes.Find(Entity->InstanceId);
 	}
-	if (Def && Def->IsEnclosure() && !Entity->Chamber.IsEmpty())
+	if (Def && Def->IsIrradiator() && !Entity->Chamber.IsEmpty())
 	{
 		return LootBoxes.Find(Entity->Chamber.InstanceId);
 	}
@@ -584,22 +584,22 @@ FName FLRSimulation::ValidateBuild(FName RecipeId, const FIntVector& Cell) const
 	const FLRItemDef* Output = Data.FindItem(Recipe->Output);
 	if (!Output || Output->IsStructure()) { return ReasonUnknownRecipe; }
 
-	// Where the output goes: sources into the enclosure in the cell, caches into an empty cell
-	// or an enclosure's empty chamber, machines into an empty cell, materials anywhere.
+	// Where the output goes: sources into the irradiator in the cell, caches into an empty cell
+	// or an irradiator's empty chamber, machines into an empty cell, materials anywhere.
 	const FLRPlacedEntity* Entity = Placed.Find(Cell);
 	const FLRItemDef* EntityDef = Entity ? Data.FindItem(Entity->Item) : nullptr;
-	const bool bEnclosure = EntityDef && EntityDef->IsEnclosure();
+	const bool bIrradiator = EntityDef && EntityDef->IsIrradiator();
 	if (Output->IsSource())
 	{
-		if (!bEnclosure) { return ReasonNeedsEnclosure; }
+		if (!bIrradiator) { return ReasonNeedsIrradiator; }
 		if (!Entity->Source.IsEmpty()) { return ReasonSourceFull; }
 		const FLRRadiationDef* Radiation = Data.FindRadiation(Output->Radiation);
 		if (!Radiation || Radiation->Tier > EntityDef->MaxRadiationTier) { return ReasonTooStrong; }
 	}
 	else if (Output->IsLootBox())
 	{
-		if (Entity && !bEnclosure) { return ReasonOccupied; }
-		if (bEnclosure && !Entity->Chamber.IsEmpty()) { return ReasonChamberFull; }
+		if (Entity && !bIrradiator) { return ReasonOccupied; }
+		if (bIrradiator && !Entity->Chamber.IsEmpty()) { return ReasonChamberFull; }
 	}
 	else if (Output->Category != LRNames::CategoryMaterial && Entity)
 	{
@@ -1002,10 +1002,10 @@ FLRActionResult FLRSimulation::ExecuteCraft(const FLRActionRequest& Request)
 	}
 	else if (Output->IsSource())
 	{
-		FLRPlacedEntity& Enclosure = Placed.FindChecked(Request.Cell);
-		Enclosure.Source.Item = Output->Id;
-		Enclosure.Source.Count = 1;
-		Enclosure.Source.InstanceId = AllocateInstanceId();
+		FLRPlacedEntity& Irradiator = Placed.FindChecked(Request.Cell);
+		Irradiator.Source.Item = Output->Id;
+		Irradiator.Source.Count = 1;
+		Irradiator.Source.InstanceId = AllocateInstanceId();
 	}
 	else if (Output->IsLootBox())
 	{
@@ -1041,14 +1041,14 @@ FLRActionResult FLRSimulation::ExecuteUse(const FLRActionRequest& Request)
 	// in that cell.
 	FLRPlacedEntity* Entity = Request.bHasCell ? Placed.Find(Request.Cell) : nullptr;
 	const FLRItemDef* EntityDef = Entity ? Data.FindItem(Entity->Item) : nullptr;
-	const bool bInEnclosure = EntityDef && EntityDef->IsEnclosure() && !Entity->Chamber.IsEmpty();
-	if (!EntityDef || (!EntityDef->IsLootBox() && !bInEnclosure))
+	const bool bInIrradiator = EntityDef && EntityDef->IsIrradiator() && !Entity->Chamber.IsEmpty();
+	if (!EntityDef || (!EntityDef->IsLootBox() && !bInIrradiator))
 	{
 		return MakeFailure(Request.Action, ReasonNoLootBox, FString::Printf(TEXT("Can't open: %s"), *DescribeReason(ReasonNoLootBox)));
 	}
 	const FIntVector Cell = Request.Cell;
-	const int32 BoxId = bInEnclosure ? Entity->Chamber.InstanceId : Entity->InstanceId;
-	const FName BoxItem = bInEnclosure ? Entity->Chamber.Item : Entity->Item;
+	const int32 BoxId = bInIrradiator ? Entity->Chamber.InstanceId : Entity->InstanceId;
+	const FName BoxItem = bInIrradiator ? Entity->Chamber.Item : Entity->Item;
 	const FLRItemDef* BoxDef = Data.FindItem(BoxItem);
 
 	FLRLootBoxInstance Instance;
@@ -1078,7 +1078,7 @@ FLRActionResult FLRSimulation::ExecuteUse(const FLRActionRequest& Request)
 		: MergeAmounts(RollLootTable(ApplyModifiers(*Table, Instance.Modifiers)));
 
 	LootBoxes.Remove(BoxId);
-	if (bInEnclosure)
+	if (bInIrradiator)
 	{
 		Entity->Chamber.Clear();
 		Entity->ExposureProgress = 0.0;
@@ -1102,8 +1102,8 @@ FLRActionResult FLRSimulation::ExecuteUse(const FLRActionRequest& Request)
 
 FLRActionResult FLRSimulation::ExecuteDismantle(const FLRActionRequest& Request)
 {
-	// Take apart what's in the cell and return what it cost to the cell's matter. An enclosure
-	// comes apart one layer at a time: its source, then its cache, then the enclosure itself.
+	// Take apart what's in the cell and return what it cost to the cell's matter. An irradiator
+	// comes apart one layer at a time: its source, then its cache, then the irradiator itself.
 	const FName Invalid = ValidateRequest(Request);
 	if (!Invalid.IsNone())
 	{
@@ -1112,16 +1112,16 @@ FLRActionResult FLRSimulation::ExecuteDismantle(const FLRActionRequest& Request)
 	const FIntVector Cell = Request.Cell;
 	FLRPlacedEntity& Entity = Placed.FindChecked(Cell);
 	const FLRItemDef* Def = Data.FindItem(Entity.Item);
-	const bool bEnclosure = Def && Def->IsEnclosure();
+	const bool bIrradiator = Def && Def->IsIrradiator();
 
 	FName Removed;
-	if (bEnclosure && !Entity.Source.IsEmpty())
+	if (bIrradiator && !Entity.Source.IsEmpty())
 	{
 		Removed = Entity.Source.Item;
 		Entity.Source.Clear();
 		Entity.ExposureProgress = 0.0;
 	}
-	else if (bEnclosure && !Entity.Chamber.IsEmpty())
+	else if (bIrradiator && !Entity.Chamber.IsEmpty())
 	{
 		Removed = Entity.Chamber.Item;
 		LootBoxes.Remove(Entity.Chamber.InstanceId);
@@ -1409,7 +1409,7 @@ int32 FLRSimulation::Spill(const FIntVector& Cell, const TArray<FLRItemAmount>& 
 
 bool FLRSimulation::PlaceNewCache(const FIntVector& Cell, FName Item)
 {
-	// The cell itself first (if it's empty, or an enclosure with an empty chamber), then the
+	// The cell itself first (if it's empty, or an irradiator with an empty chamber), then the
 	// nearest empty cell within reach.
 	for (const FIntVector& Near : FLRHexGrid::CellsInRadius(Cell, GetReachRadius()))
 	{
@@ -1425,7 +1425,7 @@ bool FLRSimulation::PlaceNewCache(const FIntVector& Cell, FName Item)
 			return true;
 		}
 		const FLRItemDef* Def = Data.FindItem(Entity->Item);
-		if (Near == Cell && Def && Def->IsEnclosure() && Entity->Chamber.IsEmpty())
+		if (Near == Cell && Def && Def->IsIrradiator() && Entity->Chamber.IsEmpty())
 		{
 			Entity->Chamber.Item = Item;
 			Entity->Chamber.Count = 1;

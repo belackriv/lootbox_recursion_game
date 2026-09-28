@@ -1,5 +1,5 @@
 {
-	"_comment": "Radiation catalogue from the design notes. 'effect' is the loot modifier one exposure stack adds to a loot box in an irradiator (enclosure) (see FLRLootModifier: extra_rolls, item_weight_mult, item_count_mult, add_entry, reveal). Types without an effect have no source item yet. Acoustic and gravitational radiation are in docs/DESIGN.md without tiers.",
+	"_comment": "Radiation catalogue from the design notes. 'effect' is the loot modifier one exposure stack adds to a loot box in an irradiator (see FLRLootModifier: extra_rolls, item_weight_mult, item_count_mult, add_entry, reveal). Types without an effect have no source item yet. Acoustic and gravitational radiation are in docs/DESIGN.md without tiers.",
 	"radiation": [
 		{
 			"id": "visible_light",

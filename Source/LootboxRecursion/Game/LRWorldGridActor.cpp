@@ -581,7 +581,7 @@ void ALRWorldGridActor::RebuildEntities()
 		Mesh->SetRelativeLocation(Floor + FVector(0.f, 0.f, 50.f * Size.Z * Scale));
 		Mesh->SetRelativeScale3D(Size * Scale);
 
-		// Irradiators (enclosures) are see-through, with their contents inside on the floor: the
+		// Irradiators are see-through, with their contents inside on the floor: the
 		// cache as a small prism a little off centre, and the source as a small cube in the radiation's
 		// colour in the opposite corner. The label shows chamber progress. Overdensities show
 		// their amplitude.
@@ -590,7 +590,7 @@ void ALRWorldGridActor::RebuildEntities()
 		{
 			LabelText += FString::Printf(TEXT(" (%d)"), Entity.Amplitude);
 		}
-		if (Def && Def->IsEnclosure())
+		if (Def && Def->IsIrradiator())
 		{
 			const auto AddInside = [&](const FLRItemDef* PartDef, const FLinearColor& PartColor, const FVector& Offset, const FVector& PartSize)
 			{

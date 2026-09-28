@@ -617,7 +617,7 @@ TSharedRef<SWidget> SLRGameHud::BuildWorldPanel()
 		]
 	];
 
-	// Irradiation: shown only when the selected cell holds an enclosure.
+	// Irradiation: shown only when the selected cell holds an irradiator.
 	Box->AddSlot()
 	.AutoHeight()
 	.Padding(FMargin(0.f, 0.f, 0.f, 6.f))
@@ -626,7 +626,7 @@ TSharedRef<SWidget> SLRGameHud::BuildWorldPanel()
 		.BorderImage(&Style.WhiteBrush)
 		.BorderBackgroundColor(Style.PanelInner)
 		.Padding(FMargin(6.f))
-		.Visibility_Lambda([this]() { return GetSelectedEnclosure() ? EVisibility::Visible : EVisibility::Collapsed; })
+		.Visibility_Lambda([this]() { return GetSelectedIrradiator() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot()
@@ -638,8 +638,8 @@ TSharedRef<SWidget> SLRGameHud::BuildWorldPanel()
 				.AutoWrapText(true)
 				.Text_Lambda([this]()
 				{
-					const FLRPlacedEntity* Enclosure = GetSelectedEnclosure();
-					return Enclosure ? AsText(DescribeEnclosure(*Enclosure)) : FText::GetEmpty();
+					const FLRPlacedEntity* Irradiator = GetSelectedIrradiator();
+					return Irradiator ? AsText(DescribeIrradiator(*Irradiator)) : FText::GetEmpty();
 				})
 			]
 			+ SVerticalBox::Slot()
@@ -1097,7 +1097,7 @@ FLRActionStatus SLRGameHud::GetStatus(FName ActionName) const
 	return Sim ? Sim->GetActionStatus(ActionName) : FLRActionStatus();
 }
 
-const FLRPlacedEntity* SLRGameHud::GetSelectedEnclosure() const
+const FLRPlacedEntity* SLRGameHud::GetSelectedIrradiator() const
 {
 	const ULRGameSubsystem* Sub = GetSubsystem();
 	const FLRSimulation* Sim = GetSimulation();
@@ -1108,22 +1108,22 @@ const FLRPlacedEntity* SLRGameHud::GetSelectedEnclosure() const
 	}
 	const FLRPlacedEntity* Entity = Sim->FindPlaced(Cell);
 	const FLRItemDef* Def = Entity ? Sim->GetData().FindItem(Entity->Item) : nullptr;
-	return (Def && Def->IsEnclosure()) ? Entity : nullptr;
+	return (Def && Def->IsIrradiator()) ? Entity : nullptr;
 }
 
 TOptional<float> SLRGameHud::GetSelectedExposureFraction() const
 {
 	const FLRSimulation* Sim = GetSimulation();
-	const FLRPlacedEntity* Enclosure = GetSelectedEnclosure();
-	const FLRItemDef* Def = (Sim && Enclosure) ? Sim->GetData().FindItem(Enclosure->Item) : nullptr;
+	const FLRPlacedEntity* Irradiator = GetSelectedIrradiator();
+	const FLRItemDef* Def = (Sim && Irradiator) ? Sim->GetData().FindItem(Irradiator->Item) : nullptr;
 	if (!Def || Def->ExposureSeconds <= 0.f)
 	{
 		return 0.f;
 	}
-	return FMath::Clamp(static_cast<float>(Enclosure->ExposureProgress / Def->ExposureSeconds), 0.f, 1.f);
+	return FMath::Clamp(static_cast<float>(Irradiator->ExposureProgress / Def->ExposureSeconds), 0.f, 1.f);
 }
 
-FString SLRGameHud::DescribeEnclosure(const FLRPlacedEntity& Enclosure) const
+FString SLRGameHud::DescribeIrradiator(const FLRPlacedEntity& Irradiator) const
 {
 	const FLRSimulation* Sim = GetSimulation();
 	if (!Sim)
@@ -1131,34 +1131,34 @@ FString SLRGameHud::DescribeEnclosure(const FLRPlacedEntity& Enclosure) const
 		return FString();
 	}
 	const FLRGameData& Data = Sim->GetData();
-	const FLRItemDef* Def = Data.FindItem(Enclosure.Item);
+	const FLRItemDef* Def = Data.FindItem(Irradiator.Item);
 	FString Text = FString::Printf(TEXT("%s: tier <= %d, up to %d stacks, %.0fs per exposure"),
-		*Data.GetDisplayName(Enclosure.Item), Def ? Def->MaxRadiationTier : 0, Def ? Def->MaxExposureStacks : 0, Def ? Def->ExposureSeconds : 0.f);
+		*Data.GetDisplayName(Irradiator.Item), Def ? Def->MaxRadiationTier : 0, Def ? Def->MaxExposureStacks : 0, Def ? Def->ExposureSeconds : 0.f);
 
-	const FLRLootBoxInstance* Box = Enclosure.Chamber.IsEmpty() ? nullptr : Sim->FindLootBox(Enclosure.Chamber.InstanceId);
-	if (Enclosure.Chamber.IsEmpty())
+	const FLRLootBoxInstance* Box = Irradiator.Chamber.IsEmpty() ? nullptr : Sim->FindLootBox(Irradiator.Chamber.InstanceId);
+	if (Irradiator.Chamber.IsEmpty())
 	{
 		Text += TEXT("\nChamber: empty");
 	}
 	else if (Box && Box->bRevealed)
 	{
-		Text += FString::Printf(TEXT("\nChamber: %s, observed (contents fixed)"), *Data.GetDisplayName(Enclosure.Chamber.Item));
+		Text += FString::Printf(TEXT("\nChamber: %s, observed (contents fixed)"), *Data.GetDisplayName(Irradiator.Chamber.Item));
 	}
 	else
 	{
-		Text += FString::Printf(TEXT("\nChamber: %s, %d/%d stacks"), *Data.GetDisplayName(Enclosure.Chamber.Item),
+		Text += FString::Printf(TEXT("\nChamber: %s, %d/%d stacks"), *Data.GetDisplayName(Irradiator.Chamber.Item),
 			Box ? Box->Modifiers.Num() : 0, Def ? Def->MaxExposureStacks : 0);
 	}
 
-	if (Enclosure.Source.IsEmpty())
+	if (Irradiator.Source.IsEmpty())
 	{
 		Text += TEXT("\nSource: empty");
 	}
 	else
 	{
-		const FLRItemDef* SourceDef = Data.FindItem(Enclosure.Source.Item);
+		const FLRItemDef* SourceDef = Data.FindItem(Irradiator.Source.Item);
 		const FLRRadiationDef* Radiation = SourceDef ? Data.FindRadiation(SourceDef->Radiation) : nullptr;
-		Text += FString::Printf(TEXT("\nSource: %s (%s, tier %d)"), *Data.GetDisplayName(Enclosure.Source.Item),
+		Text += FString::Printf(TEXT("\nSource: %s (%s, tier %d)"), *Data.GetDisplayName(Irradiator.Source.Item),
 			Radiation ? *Radiation->Name : TEXT("?"), Radiation ? Radiation->Tier : 0);
 	}
 
@@ -1171,7 +1171,7 @@ FString SLRGameHud::DescribeEnclosure(const FLRPlacedEntity& Enclosure) const
 	{
 		Text += TEXT("\nDone. Open the cache here.");
 	}
-	else if (Enclosure.Chamber.IsEmpty() || Enclosure.Source.IsEmpty())
+	else if (Irradiator.Chamber.IsEmpty() || Irradiator.Source.IsEmpty())
 	{
 		Text += TEXT("\nIdle: build a cache and a radiation source into it.");
 	}
@@ -1476,9 +1476,9 @@ FText SLRGameHud::GetHoverBody() const
 	{
 		const FLRItemDef* Def = Data.FindItem(Entity->Item);
 		const FString Tooltip = Def ? Def->Tooltip : FString();
-		if (Def && Def->IsEnclosure())
+		if (Def && Def->IsIrradiator())
 		{
-			Body = FString::Printf(TEXT("%s\n\n%s"), *Tooltip, *DescribeEnclosure(*Entity));
+			Body = FString::Printf(TEXT("%s\n\n%s"), *Tooltip, *DescribeIrradiator(*Entity));
 		}
 		else if (Def && Def->IsOverdensity())
 		{

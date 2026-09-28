@@ -28,7 +28,7 @@ rules are ported:
 - **new:** a data-driven tech tree: recipes and actions unlock as you play
 - **new:** cosmic epochs from inflation to recombination, and a host black hole that evaporates
 
-It also adds save/load, a 3D view of the grid, and carbon and iron irradiators.
+It also adds save/load, a 3D view of the grid, and nebula and corona irradiators.
 
 > **Status: first playable skeleton, not yet compiled.** The code was written without an
 > Unreal Engine install available. The simulation logic was compiled and its tests run

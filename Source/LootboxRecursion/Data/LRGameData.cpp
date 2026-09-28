@@ -246,7 +246,7 @@ TArray<FString> FLRGameData::Validate() const
 		}
 		if (Item.MaxExposureStacks < 0 || Item.MaxRadiationTier < 0 || (Item.MaxExposureStacks > 0 && Item.ExposureSeconds <= 0.f))
 		{
-			Errors.Add(FString::Printf(TEXT("%s: enclosure needs maxExposureStacks/maxRadiationTier >= 0 and exposureSeconds > 0"), *Where));
+			Errors.Add(FString::Printf(TEXT("%s: irradiator needs maxExposureStacks/maxRadiationTier >= 0 and exposureSeconds > 0"), *Where));
 		}
 	}
 

@@ -72,13 +72,13 @@ private:
 	bool IsCellSelected(const FIntVector& Cell) const;
 	/** The selected grid cell, if any. */
 	bool GetSelected(FIntVector& OutCell) const;
-	/** The deployed irradiation enclosure in the selected cell, if any. */
-	const FLRPlacedEntity* GetSelectedEnclosure() const;
+	/** The deployed irradiator in the selected cell, if any. */
+	const FLRPlacedEntity* GetSelectedIrradiator() const;
 	TOptional<float> GetSelectedExposureFraction() const;
-	FString DescribeEnclosure(const FLRPlacedEntity& Enclosure) const;
+	FString DescribeIrradiator(const FLRPlacedEntity& Irradiator) const;
 	/** Perturb can seed or deepen a ripple in the selected cell. */
 	bool CanPerturbSelectedCell() const;
-	/** The selected cell holds a cache (or an enclosure with one) to open. */
+	/** The selected cell holds a cache (or an irradiator with one) to open. */
 	bool CanOpenSelectedCell() const;
 	/** The selected cell holds something Dismantle can take apart (not a structure). */
 	bool CanDismantleSelectedCell() const;

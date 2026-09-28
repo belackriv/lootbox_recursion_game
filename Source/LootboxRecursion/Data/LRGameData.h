@@ -105,19 +105,19 @@ struct LOOTBOXRECURSION_API FLRItemDef
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	float Opacity = 1.f;
 
-	/** Radiation sources: which radiation (radiation.json id) this item emits. Sources are built into an irradiator (an enclosure). */
+	/** Radiation sources: which radiation (radiation.json id) this item emits. Sources are built into an irradiator. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FName Radiation;
 
-	/** Irradiators (enclosures): highest radiation tier the enclosure can contain. */
+	/** Irradiators: highest radiation tier the irradiator can contain. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	int32 MaxRadiationTier = 0;
 
-	/** Irradiators (enclosures): most modifier stacks a loot box can pick up inside it. 0 = not an enclosure. */
+	/** Irradiators: most modifier stacks a loot box can pick up inside it. 0 = not an irradiator. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	int32 MaxExposureStacks = 0;
 
-	/** Irradiators (enclosures): seconds of exposure per modifier stack. */
+	/** Irradiators: seconds of exposure per modifier stack. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	float ExposureSeconds = 10.f;
 
@@ -132,7 +132,7 @@ struct LOOTBOXRECURSION_API FLRItemDef
 	bool IsLootBox() const { return !LootTable.IsNone(); }
 	bool IsPlaceable() const { return Category == LRNames::CategoryPlaceable; }
 	bool IsSource() const { return !Radiation.IsNone(); }
-	bool IsEnclosure() const { return IsPlaceable() && MaxExposureStacks > 0; }
+	bool IsIrradiator() const { return IsPlaceable() && MaxExposureStacks > 0; }
 	bool IsStructure() const { return Category == LRNames::CategoryStructure; }
 	bool IsOverdensity() const { return IsStructure() && MaxAmplitude > 0; }
 	bool IsUnique() const { return StackSize <= 1; }
@@ -186,8 +186,8 @@ struct LOOTBOXRECURSION_API FLRRequirement
 
 /**
  * A buildable thing. Built at a cell, paid from the matter within reach of it. Materials go into
- * the cell's matter; a cache or machine takes the cell (a cache can also go into an enclosure's
- * empty chamber); a source goes into the enclosure in the cell. Dismantling refunds the cost.
+ * the cell's matter; a cache or machine takes the cell (a cache can also go into an irradiator's
+ * empty chamber); a source goes into the irradiator in the cell. Dismantling refunds the cost.
  * Rails: User#get_craft_choices + <Class>::CRAFTING_COST.
  */
 USTRUCT(BlueprintType)
@@ -307,7 +307,7 @@ struct LOOTBOXRECURSION_API FLRActionDef
 /**
  * Alters a loot table before it is rolled. Rails: LootBoxModifier (which only had the
  * no-op base class). Radiation effects (radiation.json "effect") are modifiers, added to a
- * loot box each time an irradiation enclosure completes an exposure.
+ * loot box each time an irradiator completes an exposure.
  *
  * Kind:
  *   extra_rolls      - add Value to rollsMin and rollsMax

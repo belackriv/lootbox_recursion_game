@@ -27,10 +27,10 @@
 			]
 		},
 		{
-			"id": "carbon_irradiation_enclosure",
-			"label": "Carbon Irradiator",
-			"tooltip": "A light, graphite-lined radiation chamber. Contains radiation up to tier 4 (microwaves). Build a cache and a radiation source into it.",
-			"output": "carbon_irradiation_enclosure",
+			"id": "nebula_irradiator",
+			"label": "Nebula Irradiator",
+			"tooltip": "A chamber as cool as a glowing gas cloud. Contains radiation up to tier 4 (microwaves). Build a cache and a radiation source into it.",
+			"output": "nebula_irradiator",
 			"outputCount": 1,
 			"cost": [
 				{
@@ -52,10 +52,10 @@
 			]
 		},
 		{
-			"id": "iron_irradiation_enclosure",
-			"label": "Iron Irradiator",
-			"tooltip": "A heavy steel-plated radiation chamber. Contains any radiation up to tier 7 (gamma). Build a cache and a radiation source into it.",
-			"output": "iron_irradiation_enclosure",
+			"id": "corona_irradiator",
+			"label": "Corona Irradiator",
+			"tooltip": "A chamber as hot as a star's corona. Contains any radiation up to tier 7 (gamma). Build a cache and a radiation source into it.",
+			"output": "corona_irradiator",
 			"outputCount": 1,
 			"cost": [
 				{
@@ -95,7 +95,7 @@
 			"revealRequirements": [
 				{
 					"check": "stat",
-					"id": "crafted:carbon_irradiation_enclosure",
+					"id": "crafted:nebula_irradiator",
 					"condition": "gte",
 					"value": 1
 				}
@@ -170,7 +170,7 @@
 			"revealRequirements": [
 				{
 					"check": "stat",
-					"id": "crafted:iron_irradiation_enclosure",
+					"id": "crafted:corona_irradiator",
 					"condition": "gte",
 					"value": 1
 				}
@@ -179,7 +179,7 @@
 		{
 			"id": "gamma_source",
 			"label": "Gamma Source",
-			"tooltip": "Mutation: caches may collapse into more caches. Needs an iron irradiator.",
+			"tooltip": "Mutation: caches may collapse into more caches. Needs a corona irradiator.",
 			"output": "gamma_source",
 			"outputCount": 1,
 			"cost": [

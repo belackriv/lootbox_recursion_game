@@ -15,7 +15,7 @@ because an online multi-user web app became a local single-player desktop game.
 | `LootTable` (PORO) | `FLRLootTableDef` + `FLRSimulation::RollLootTable` | Same algorithm: roll count, then cumulative weight pick. |
 | `LootBoxModifier` | `FLRLootModifier` + `FLRSimulation::ApplyModifiers` | Rails had only the no-op base class. The port implements three kinds (`extra_rolls`, `item_weight_mult`, `item_count_mult`) as hooks for irradiation. |
 | `LootBox` row | `FLRLootBoxInstance` (by instance id) | |
-| `Entity` + `InventorySlot` + `InventoryItem` rows | *(gone)* Matter per grid cell (`FLRCellMatter`) | The port first had a 50-slot inventory; the theme since moved everything into the pocket universe. `FLRInventorySlot` survives as what an enclosure's chamber and source hold. |
+| `Entity` + `InventorySlot` + `InventoryItem` rows | *(gone)* Matter per grid cell (`FLRCellMatter`) | The port first had a 50-slot inventory; the theme since moved everything into the pocket universe. `FLRInventorySlot` survives as what an irradiator's chamber and source hold. |
 | `InventoryItemMutation` ledger | *(dropped)* | The ledger existed to stream deltas to the browser. Here the UI reads state directly. |
 | `PlaceableEntity` / `IrradiationEnclosure` rows | `FLRPlacedEntity` in `TMap<coordinate, entity>` | Keeps its instance id across deploy and recall. |
 | `PlayerAction` (ActiveModel) | `FLRActionDef` (static) + `FLRActionState` (dynamic) + `FLRActionStatus` (computed for UI) | |
@@ -58,8 +58,8 @@ because an online multi-user web app became a local single-player desktop game.
 8. **Loot boxes can drop loot boxes.** Any loot table entry may name a `lootbox` item, and
    each one gets its own instance. That's the "recursion", and a test covers it
    (`BoxInsideABox`).
-9. **The single Irradiation Enclosure became Carbon and Iron variants**, per the design
-   notes. Their costs (150/50 and 50/150) are placeholders. The Rails enclosure cost 100
+9. **The single Irradiation Enclosure became two tiers, the Nebula and Corona Irradiators**, per
+   the design notes. Their costs (150/50 and 50/150) are placeholders. The Rails irradiator cost 100
    wood + 100 iron.
 10. **Sort keeps unique items' identity.** A sorted loot box keeps its modifiers. Rails needed
     the "displaced item" logic for this. Here it follows from the data model.

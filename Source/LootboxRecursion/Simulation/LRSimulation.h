@@ -23,10 +23,10 @@
 class LOOTBOXRECURSION_API FLRSimulation
 {
 public:
-	/** 2: 3D grid, wood -> carbon. 3: enclosure contents. 4: unlocks + stats. 5: epochs, host, primordial materials. 6: matter in cells, no inventory. */
-	static constexpr int32 SaveVersion = 6;
-	/** Oldest save that still loads (newer fields just start empty). 6 removed the inventory, so older saves start fresh. */
-	static constexpr int32 MinCompatibleSaveVersion = 6;
+	/** 2: 3D grid, wood -> carbon. 3: irradiator contents. 4: unlocks + stats. 5: epochs, host, primordial materials. 6: matter in cells, no inventory. 7: irradiator ids renamed (nebula, corona). */
+	static constexpr int32 SaveVersion = 7;
+	/** Oldest save that still loads (newer fields just start empty). 7 renamed the irradiator ids, so older saves start fresh. */
+	static constexpr int32 MinCompatibleSaveVersion = 7;
 	/** Simulation seconds the sky takes to fade to a new epoch's plasma opacity. */
 	static constexpr double PlasmaFadeSeconds = 6.0;
 
@@ -51,7 +51,7 @@ public:
 	const TMap<FIntVector, FLRPlacedEntity>& GetPlaced() const { return Placed; }
 	const FLRPlacedEntity* FindPlaced(const FIntVector& Cell) const { return Placed.Find(Cell); }
 	const FLRLootBoxInstance* FindLootBox(int32 InstanceId) const { return LootBoxes.Find(InstanceId); }
-	/** The cache in a cell: a cache entity, or the one in an enclosure's chamber. Null if none. */
+	/** The cache in a cell: a cache entity, or the one in an irradiator's chamber. Null if none. */
 	const FLRLootBoxInstance* FindCacheAt(const FIntVector& Cell) const;
 	FLRActionStatus GetActionStatus(FName ActionName) const;
 
@@ -135,8 +135,8 @@ public:
 	static FString DescribeCell(const FIntVector& Cell);
 	/** Human-readable effect, e.g. "Carbon amounts x1.25". */
 	static FString DescribeModifier(const FLRLootModifier& Modifier, const FLRGameData& InData);
-	/** A box in an enclosure stops gaining stacks once revealed or at the enclosure's cap. */
-	static bool IsExposureComplete(const FLRLootBoxInstance& Box, const FLRItemDef& EnclosureDef);
+	/** A box in an irradiator stops gaining stacks once revealed or at the irradiator's cap. */
+	static bool IsExposureComplete(const FLRLootBoxInstance& Box, const FLRItemDef& IrradiatorDef);
 	FString DescribeAmounts(const TArray<FLRItemAmount>& Amounts) const;
 
 private:
@@ -170,10 +170,10 @@ private:
 	FName ValidateSeed(const FLRActionRequest& Request, const FLRActionDef& Def) const;
 	FLRActionResult ExecuteFeed(const FLRActionRequest& Request);
 
-	/** Irradiation: advance every loaded enclosure and apply exposures that completed. */
+	/** Irradiation: advance every loaded irradiator and apply exposures that completed. */
 	void AdvanceIrradiation(double DeltaSeconds);
 	/** Apply one exposure of Radiation to Box; returns a log message. */
-	FString ApplyExposure(FLRLootBoxInstance& Box, const FLRRadiationDef& Radiation, const FLRItemDef& EnclosureDef);
+	FString ApplyExposure(FLRLootBoxInstance& Box, const FLRRadiationDef& Radiation, const FLRItemDef& IrradiatorDef);
 	/** Host evaporation and the cosmic clock. */
 	void AdvanceCosmos(double DeltaSeconds);
 	/** Overdensities: yield matter into their own cell and, in later epochs, deepen on their own. */
@@ -197,7 +197,7 @@ private:
 	/** Put rolled or built items into the universe at Cell: materials into its matter, caches as new caches. Returns caches lost for lack of room. */
 	int32 Spill(const FIntVector& Cell, const TArray<FLRItemAmount>& Amounts);
 	/**
-	 * A new, unirradiated cache of Item: into Cell (empty, or an enclosure with an empty chamber),
+	 * A new, unirradiated cache of Item: into Cell (empty, or an irradiator with an empty chamber),
 	 * else the nearest empty cell within reach. Returns false if there was no room.
 	 */
 	bool PlaceNewCache(const FIntVector& Cell, FName Item);

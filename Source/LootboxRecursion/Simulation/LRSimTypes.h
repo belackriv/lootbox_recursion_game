@@ -11,7 +11,7 @@
  */
 
 /**
- * One held item: what an irradiation enclosure's chamber or source slot contains. (Rails: an
+ * One held item: what an irradiator's chamber or source slot contains. (Rails: an
  * InventorySlot + its InventoryItem; there is no player inventory any more.) Empty when Item is
  * NAME_None.
  */
@@ -121,7 +121,7 @@ struct LOOTBOXRECURSION_API FLRLootBoxInstance
 	TArray<FLRItemAmount> RevealedContents;
 };
 
-/** An entity in a grid cell: a ripple, a cache, or a machine such as an irradiation enclosure. Rails: a PlaceableEntity row. */
+/** An entity in a grid cell: a ripple, a cache, or a machine such as an irradiator. Rails: a PlaceableEntity row. */
 USTRUCT(BlueprintType)
 struct LOOTBOXRECURSION_API FLRPlacedEntity
 {
@@ -141,11 +141,11 @@ struct LOOTBOXRECURSION_API FLRPlacedEntity
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	double PlacedAt = 0.0;
 
-	/** Irradiation enclosures: the loot box being irradiated (empty if none). */
+	/** Irradiators: the loot box being irradiated (empty if none). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FLRInventorySlot Chamber;
 
-	/** Irradiation enclosures: the radiation source (empty if none). */
+	/** Irradiators: the radiation source (empty if none). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FLRInventorySlot Source;
 

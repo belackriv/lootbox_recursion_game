@@ -22,7 +22,7 @@ namespace LRTest
 	const FName Box(TEXT("loot_box"));
 	const FName MysteryBox(TEXT("mystery_box"));
 	const FName DoubleBox(TEXT("double_box"));
-	const FName Enclosure(TEXT("enclosure"));
+	const FName Irradiator(TEXT("irradiator"));
 	const FName Lamp(TEXT("lamp"));
 	const FName XRayTube(TEXT("xray_tube"));
 	const FName GammaSource(TEXT("gamma_source"));
@@ -89,12 +89,12 @@ namespace LRTest
 		AddItemDef(Data, Box, TEXT("Loot Box"), LRNames::CategoryLootBox, 1, TEXT("box"));
 		AddItemDef(Data, MysteryBox, TEXT("Mystery Box"), LRNames::CategoryLootBox, 1, TEXT("nested"));
 		AddItemDef(Data, DoubleBox, TEXT("Double Box"), LRNames::CategoryLootBox, 1, TEXT("double"));
-		AddItemDef(Data, Enclosure, TEXT("Enclosure"), LRNames::CategoryPlaceable, 1);
-		Data.Items[Enclosure].MaxRadiationTier = 5;
-		Data.Items[Enclosure].MaxExposureStacks = 2;
-		Data.Items[Enclosure].ExposureSeconds = 10.f;
+		AddItemDef(Data, Irradiator, TEXT("Irradiator"), LRNames::CategoryPlaceable, 1);
+		Data.Items[Irradiator].MaxRadiationTier = 5;
+		Data.Items[Irradiator].MaxExposureStacks = 2;
+		Data.Items[Irradiator].ExposureSeconds = 10.f;
 
-		// Radiation: light doubles carbon amounts, x-rays reveal, gamma is too strong for the enclosure.
+		// Radiation: light doubles carbon amounts, x-rays reveal, gamma is too strong for the irradiator.
 		auto AddRadiation = [&Data](FName Id, int32 Tier, FName Kind, FName Item, float Value)
 		{
 			FLRRadiationDef Radiation;
@@ -124,7 +124,7 @@ namespace LRTest
 		AddRecipe(Data, Box, Box, { FLRItemAmount(Carbon, 50), FLRItemAmount(Iron, 50) }).Label = TEXT("Loot Box");
 		AddRecipe(Data, MysteryBox, MysteryBox, { FLRItemAmount(Carbon, 1) });
 		AddRecipe(Data, DoubleBox, DoubleBox, { FLRItemAmount(Carbon, 1) });
-		AddRecipe(Data, Enclosure, Enclosure, { FLRItemAmount(Carbon, 10) });
+		AddRecipe(Data, Irradiator, Irradiator, { FLRItemAmount(Carbon, 10) });
 		AddRecipe(Data, Lamp, Lamp, { FLRItemAmount(Carbon, 5) });
 		AddRecipe(Data, XRayTube, XRayTube, { FLRItemAmount(Carbon, 1) });
 		AddRecipe(Data, GammaSource, GammaSource, { FLRItemAmount(Carbon, 1) });
@@ -141,11 +141,11 @@ namespace LRTest
 		CraftedABox.Id = TEXT("crafted:loot_box");
 		CraftedABox.Condition = TEXT("gte");
 		CraftedABox.Value = 1;
-		AddRecipe(Data, TEXT("gated_enclosure"), Enclosure, { FLRItemAmount(Carbon, 10) }).RevealRequirements.Add(CraftedABox);
+		AddRecipe(Data, TEXT("gated_irradiator"), Irradiator, { FLRItemAmount(Carbon, 10) }).RevealRequirements.Add(CraftedABox);
 
 		FLRRequirement AfterGated;
 		AfterGated.Check = LRNames::CheckUnlocked;
-		AfterGated.Id = TEXT("recipe:gated_enclosure");
+		AfterGated.Id = TEXT("recipe:gated_irradiator");
 		AfterGated.Condition = TEXT("eq");
 		AfterGated.Value = 1;
 		AddRecipe(Data, TEXT("chained_lamp"), Lamp, { FLRItemAmount(Carbon, 5) }).RevealRequirements.Add(AfterGated);
@@ -184,14 +184,14 @@ namespace LRTest
 		return Sim.RequestAction(AtCell(LRNames::Dismantle, Cell)).bSuccess;
 	}
 
-	/** An enclosure at Cell, paid for with matter given to it. */
-	void BuildEnclosure(FLRSimulation& Sim, const FIntVector& Cell)
+	/** An irradiator at Cell, paid for with matter given to it. */
+	void BuildIrradiator(FLRSimulation& Sim, const FIntVector& Cell)
 	{
 		Sim.GiveMatter(Cell, Carbon, 10);
-		Build(Sim, Enclosure, Cell);
+		Build(Sim, Irradiator, Cell);
 	}
 
-	/** Build a cache (or source) into the enclosure at Cell, paying with matter given to it. */
+	/** Build a cache (or source) into the irradiator at Cell, paying with matter given to it. */
 	bool BuildInto(FLRSimulation& Sim, FName Recipe, const FIntVector& Cell)
 	{
 		const FLRRecipeDef* Def = Sim.GetData().FindRecipe(Recipe);
@@ -202,7 +202,7 @@ namespace LRTest
 		return Build(Sim, Recipe, Cell).bSuccess;
 	}
 
-	/** The instance id of the cache at Cell (an entity or in an enclosure), or 0. */
+	/** The instance id of the cache at Cell (an entity or in an irradiator), or 0. */
 	int32 CacheIdAt(const FLRSimulation& Sim, const FIntVector& Cell)
 	{
 		const FLRLootBoxInstance* Cache = Sim.FindCacheAt(Cell);
@@ -499,16 +499,16 @@ bool FLRSimBuildDismantleTest::RunTest(const FString& Parameters)
 	const FIntVector Empty(-3, 1, 0);
 	Sim.GiveMatter(Empty, LRTest::Carbon, 10);
 	const FLRActionResult Loose = LRTest::Build(Sim, LRTest::Lamp, Empty);
-	TestTrue(TEXT("a source needs an enclosure"), !Loose.bSuccess && Loose.Reason == FName(TEXT("needs_enclosure")));
+	TestTrue(TEXT("a source needs an irradiator"), !Loose.bSuccess && Loose.Reason == FName(TEXT("needs_irradiator")));
 
-	LRTest::BuildEnclosure(Sim, Cell);
+	LRTest::BuildIrradiator(Sim, Cell);
 	const FLRPlacedEntity* Built = Sim.FindPlaced(Cell);
-	TestTrue(TEXT("enclosure built in the cell"), Built && Built->Item == LRTest::Enclosure);
+	TestTrue(TEXT("irradiator built in the cell"), Built && Built->Item == LRTest::Irradiator);
 	Sim.GiveMatter(Cell, LRTest::Carbon, 10);
-	TestFalse(TEXT("a machine needs an empty cell"), LRTest::Build(Sim, LRTest::Enclosure, Cell).bSuccess);
+	TestFalse(TEXT("a machine needs an empty cell"), LRTest::Build(Sim, LRTest::Irradiator, Cell).bSuccess);
 	TestEqual(TEXT("the refused build cost nothing"), Sim.GetMatter(Cell, LRTest::Carbon), 10);
 
-	TestTrue(TEXT("lamp into the enclosure"), LRTest::BuildInto(Sim, LRTest::Lamp, Cell));
+	TestTrue(TEXT("lamp into the irradiator"), LRTest::BuildInto(Sim, LRTest::Lamp, Cell));
 	TestTrue(TEXT("box into its chamber"), LRTest::BuildInto(Sim, LRTest::Box, Cell));
 	const FLRPlacedEntity* Loaded = Sim.FindPlaced(Cell);
 	TestTrue(TEXT("both inside"), Loaded && Loaded->Source.Item == LRTest::Lamp && Loaded->Chamber.Item == LRTest::Box);
@@ -520,7 +520,7 @@ bool FLRSimBuildDismantleTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("dismantle the cache"), LRTest::Dismantle(Sim, Cell));
 	TestEqual(TEXT("box refunded"), Sim.GetMatter(Cell, LRTest::Iron), 50);
 	TestNull(TEXT("its instance is gone"), Sim.FindLootBox(BoxId));
-	TestTrue(TEXT("dismantle the enclosure"), LRTest::Dismantle(Sim, Cell));
+	TestTrue(TEXT("dismantle the irradiator"), LRTest::Dismantle(Sim, Cell));
 	TestNull(TEXT("the cell is empty"), Sim.FindPlaced(Cell));
 	TestEqual(TEXT("all of it back"), Sim.GetMatter(Cell, LRTest::Carbon), 75);
 	TestFalse(TEXT("nothing left to dismantle"), LRTest::Dismantle(Sim, Cell));
@@ -533,7 +533,7 @@ bool FLRSimSaveLoadTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 7);
 	const FIntVector Cell(12, -1, 3);
-	LRTest::BuildEnclosure(Sim, Cell);
+	LRTest::BuildIrradiator(Sim, Cell);
 	Sim.GiveMatter(Cell, LRTest::Iron, 7);
 	Sim.RequestAction(LRTest::AtCell(LRTest::Gather, Cell)); // mid-cast when saved
 	Sim.Advance(2.0);
@@ -638,7 +638,7 @@ bool FLRSimIrradiateTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 1);
 	const FIntVector Cell(0, 0, 0);
-	LRTest::BuildEnclosure(Sim, Cell);
+	LRTest::BuildIrradiator(Sim, Cell);
 	TestTrue(TEXT("box into the chamber"), LRTest::BuildInto(Sim, LRTest::Box, Cell));
 	TestTrue(TEXT("lamp into the source slot"), LRTest::BuildInto(Sim, LRTest::Lamp, Cell));
 	TestTrue(TEXT("all the matter was spent"), Sim.GetAllMatter().IsEmpty());
@@ -648,13 +648,13 @@ bool FLRSimIrradiateTest::RunTest(const FString& Parameters)
 	Sim.Advance(0.2);
 	TestEqual(TEXT("first stack"), LRTest::StacksAt(Sim, Cell), 1);
 	Sim.Advance(100.0);
-	TestEqual(TEXT("capped at the enclosure's max stacks"), LRTest::StacksAt(Sim, Cell), 2);
+	TestEqual(TEXT("capped at the irradiator's max stacks"), LRTest::StacksAt(Sim, Cell), 2);
 
-	// 2 rolls x 10 carbon, amounts doubled twice = 2 x 40, opened right in the enclosure.
+	// 2 rolls x 10 carbon, amounts doubled twice = 2 x 40, opened right in the irradiator.
 	TestTrue(TEXT("open in place"), LRTest::Open(Sim, Cell));
 	TestEqual(TEXT("irradiated loot in the cell"), Sim.GetMatter(Cell, LRTest::Carbon), 80);
 	const FLRPlacedEntity* After = Sim.FindPlaced(Cell);
-	TestTrue(TEXT("the enclosure keeps its source"), After && After->Chamber.IsEmpty() && After->Source.Item == LRTest::Lamp);
+	TestTrue(TEXT("the irradiator keeps its source"), After && After->Chamber.IsEmpty() && After->Source.Item == LRTest::Lamp);
 	return true;
 }
 
@@ -663,11 +663,11 @@ bool FLRSimIrradiateRulesTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 1);
 	const FIntVector Cell(0, 0, 0);
-	LRTest::BuildEnclosure(Sim, Cell);
+	LRTest::BuildIrradiator(Sim, Cell);
 
 	Sim.GiveMatter(Cell, LRTest::Carbon, 1);
 	const FLRActionResult TooStrong = LRTest::Build(Sim, LRTest::GammaSource, Cell);
-	TestFalse(TEXT("gamma is too strong for a tier-5 enclosure"), TooStrong.bSuccess);
+	TestFalse(TEXT("gamma is too strong for a tier-5 irradiator"), TooStrong.bSuccess);
 	TestTrue(TEXT("reason"), TooStrong.Reason == FName(TEXT("radiation_too_strong")));
 
 	TestTrue(TEXT("first box"), LRTest::BuildInto(Sim, LRTest::Box, Cell));
@@ -679,7 +679,7 @@ bool FLRSimIrradiateRulesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("lamp"), LRTest::BuildInto(Sim, LRTest::Lamp, Cell));
 	Sim.GiveMatter(Cell, LRTest::Carbon, 5);
 	const FLRActionResult Second = LRTest::Build(Sim, LRTest::Lamp, Cell);
-	TestTrue(TEXT("one source per enclosure"), !Second.bSuccess && Second.Reason == FName(TEXT("source_full")));
+	TestTrue(TEXT("one source per irradiator"), !Second.bSuccess && Second.Reason == FName(TEXT("source_full")));
 	return true;
 }
 
@@ -688,7 +688,7 @@ bool FLRSimXRayTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 3);
 	const FIntVector Cell(0, 0, 0);
-	LRTest::BuildEnclosure(Sim, Cell);
+	LRTest::BuildIrradiator(Sim, Cell);
 	LRTest::BuildInto(Sim, LRTest::Box, Cell);
 	LRTest::BuildInto(Sim, LRTest::XRayTube, Cell);
 	const int32 BoxId = LRTest::CacheIdAt(Sim, Cell);
@@ -737,7 +737,7 @@ bool FLRSimIrradiateSaveTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 1);
 	const FIntVector Cell(0, 0, 0);
-	LRTest::BuildEnclosure(Sim, Cell);
+	LRTest::BuildIrradiator(Sim, Cell);
 	LRTest::BuildInto(Sim, LRTest::Box, Cell);
 	LRTest::BuildInto(Sim, LRTest::Lamp, Cell);
 	const int32 BoxId = LRTest::CacheIdAt(Sim, Cell);
@@ -750,7 +750,7 @@ bool FLRSimIrradiateSaveTest::RunTest(const FString& Parameters)
 	Loaded.Advance(4.0);
 	TestEqual(TEXT("progress carried over"), LRTest::StacksAt(Loaded, Cell), 1);
 
-	// New caches must not reuse the id of the box inside the enclosure.
+	// New caches must not reuse the id of the box inside the irradiator.
 	const FIntVector Elsewhere(5, 0, 0);
 	LRTest::BuildInto(Loaded, LRTest::Box, Elsewhere);
 	const int32 NewId = LRTest::CacheIdAt(Loaded, Elsewhere);
@@ -762,7 +762,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRTechTreeRecipeTest, "LootboxRecursion.TechTr
 bool FLRTechTreeRecipeTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 1);
-	const FName Gated(TEXT("gated_enclosure"));
+	const FName Gated(TEXT("gated_irradiator"));
 	const FName Chained(TEXT("chained_lamp"));
 	const FIntVector Cell(0, 0, 0);
 	TestTrue(TEXT("no reveal requirements = unlocked"), Sim.IsRecipeUnlocked(LRTest::Box));
@@ -903,7 +903,7 @@ bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("dismantle revealed"), Sim.GetActionStatus(LRNames::Dismantle).bRevealed);
 	TestTrue(TEXT("open it"), Act(LRTest::AtCell(LRNames::Use, CacheSite)));
 
-	TestTrue(TEXT("carbon enclosure"), Craft(TEXT("carbon_irradiation_enclosure"), CarbonCell));
+	TestTrue(TEXT("nebula irradiator"), Craft(TEXT("nebula_irradiator"), CarbonCell));
 	TestTrue(TEXT("grow lamp into it"), Craft(TEXT("grow_lamp"), CarbonCell));
 	TestTrue(TEXT("visible light run"), Irradiate(CarbonCell, 35.0));
 	// Swap sources: dismantling takes the source out first (and refunds it).
@@ -914,7 +914,7 @@ bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("microwave emitter"), Craft(TEXT("microwave_emitter"), CarbonCell));
 	TestTrue(TEXT("microwave run"), Irradiate(CarbonCell, 25.0));
 
-	TestTrue(TEXT("iron enclosure"), Craft(TEXT("iron_irradiation_enclosure"), IronCell));
+	TestTrue(TEXT("corona irradiator"), Craft(TEXT("corona_irradiator"), IronCell));
 	TestTrue(TEXT("x-ray tube into it"), Craft(TEXT("xray_tube"), IronCell));
 	TestTrue(TEXT("x-ray run"), Irradiate(IronCell, 13.0));
 	TestTrue(TEXT("take the tube out"), Act(LRTest::AtCell(LRNames::Dismantle, IronCell)));
@@ -1002,8 +1002,8 @@ bool FLRStructureSeedTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("no deeper than maxAmplitude"), LRTest::SeedAt(Sim, Cell));
 	TestTrue(TEXT("each perturbation drew on the host"), FMath::IsNearlyEqual(Sim.GetHostMass(), 0.7, 1e-6));
 
-	LRTest::BuildEnclosure(Sim, FIntVector(1, 0, 0));
-	TestNotNull(TEXT("an enclosure next door"), Sim.FindPlaced(FIntVector(1, 0, 0)));
+	LRTest::BuildIrradiator(Sim, FIntVector(1, 0, 0));
+	TestNotNull(TEXT("an irradiator next door"), Sim.FindPlaced(FIntVector(1, 0, 0)));
 	TestFalse(TEXT("can't seed into an occupied cell"), LRTest::SeedAt(Sim, FIntVector(1, 0, 0)));
 	const FLRActionResult Dismantled = Sim.RequestAction(LRTest::AtCell(LRNames::Dismantle, Cell));
 	TestTrue(TEXT("ripples can't be dismantled"), !Dismantled.bSuccess && Dismantled.Reason == FName(TEXT("cannot_dismantle")));
