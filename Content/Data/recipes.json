@@ -1,20 +1,28 @@
 {
-	"_comment": "Craft action choices. Ported from User#get_craft_choices + the CRAFTING_COST constants (ItemCraftingCost). revealRequirements make this the tech tree: a recipe stays hidden until they have all been met once, then it is unlocked for good. Useful checks: stat (lifetime counters: crafted:<recipe>, opened:<item>, gained:<item>, exposed:<radiation>, done:<action>) and unlocked (recipe:<id> / action:<name>). Costs and unlock thresholds are placeholder tuning.",
+	"_comment": "Craft action choices. revealRequirements make this the tech tree: a recipe stays hidden until they have all been met once, then it is unlocked for good. Useful checks: epoch (reached an epoch in universe.json), stat (lifetime counters: crafted:<recipe>, opened:<item>, gained:<item>, exposed:<radiation>, done:<action>) and unlocked (recipe:<id> / action:<name>). Costs and unlock thresholds are placeholder tuning.",
 	"recipes": [
 		{
 			"id": "loot_box",
 			"label": "Quantum Cache",
-			"tooltip": "Compress raw matter into a sealed quantum cache.",
+			"tooltip": "Crush primordial gas into a sealed cache. The crush fuses some of it: a cache collapses into hydrogen, helium, carbon and, rarely, iron.",
 			"output": "loot_box",
 			"outputCount": 1,
 			"cost": [
 				{
-					"item": "carbon",
-					"count": 50
+					"item": "hydrogen",
+					"count": 60
 				},
 				{
-					"item": "iron",
-					"count": 50
+					"item": "helium",
+					"count": 20
+				}
+			],
+			"revealRequirements": [
+				{
+					"check": "epoch",
+					"id": "nucleosynthesis",
+					"condition": "eq",
+					"value": 1
 				}
 			]
 		},
@@ -27,11 +35,11 @@
 			"cost": [
 				{
 					"item": "carbon",
-					"count": 150
+					"count": 40
 				},
 				{
-					"item": "iron",
-					"count": 50
+					"item": "helium",
+					"count": 60
 				}
 			],
 			"revealRequirements": [
@@ -51,12 +59,12 @@
 			"outputCount": 1,
 			"cost": [
 				{
-					"item": "carbon",
-					"count": 50
+					"item": "iron",
+					"count": 30
 				},
 				{
-					"item": "iron",
-					"count": 150
+					"item": "carbon",
+					"count": 60
 				}
 			],
 			"revealRequirements": [
@@ -76,12 +84,12 @@
 			"outputCount": 1,
 			"cost": [
 				{
-					"item": "carbon",
-					"count": 40
+					"item": "hydrogen",
+					"count": 60
 				},
 				{
-					"item": "iron",
-					"count": 20
+					"item": "carbon",
+					"count": 15
 				}
 			],
 			"revealRequirements": [
@@ -101,12 +109,12 @@
 			"outputCount": 1,
 			"cost": [
 				{
-					"item": "carbon",
+					"item": "helium",
 					"count": 40
 				},
 				{
-					"item": "iron",
-					"count": 40
+					"item": "carbon",
+					"count": 20
 				}
 			],
 			"revealRequirements": [
@@ -131,7 +139,7 @@
 				},
 				{
 					"item": "iron",
-					"count": 80
+					"count": 8
 				}
 			],
 			"revealRequirements": [
@@ -152,11 +160,11 @@
 			"cost": [
 				{
 					"item": "carbon",
-					"count": 60
+					"count": 40
 				},
 				{
 					"item": "iron",
-					"count": 120
+					"count": 25
 				}
 			],
 			"revealRequirements": [
@@ -176,12 +184,12 @@
 			"outputCount": 1,
 			"cost": [
 				{
-					"item": "carbon",
+					"item": "helium",
 					"count": 100
 				},
 				{
 					"item": "iron",
-					"count": 200
+					"count": 50
 				}
 			],
 			"revealRequirements": [

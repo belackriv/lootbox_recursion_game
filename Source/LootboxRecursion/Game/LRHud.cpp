@@ -21,7 +21,7 @@ void ALRHud::BeginPlay()
 
 	Subsystem->OnActionCompleted.AddDynamic(this, &ALRHud::HandleActionCompleted);
 	Subsystem->OnWorldChanged.AddDynamic(this, &ALRHud::HandleWorldChanged);
-	HudWidget->AddLogMessage(TEXT("Horizon link established. Inject matter to get started."), false);
+	HudWidget->AddLogMessage(TEXT("Horizon link established. Click a cell and Perturb to seed the first ripple."), false);
 }
 
 void ALRHud::EndPlay(const EEndPlayReason::Type EndPlayReason)

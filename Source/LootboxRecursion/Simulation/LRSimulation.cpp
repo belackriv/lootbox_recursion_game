@@ -27,9 +27,15 @@ namespace
 
 	const FName ReasonRecipeLocked(TEXT("recipe_locked"));
 	const FName ReasonNothingSelected(TEXT("nothing_selected"));
+	const FName ReasonCantRecall(TEXT("cannot_recall"));
+	const FName ReasonRippleAtMax(TEXT("ripple_at_max"));
+	const FName ReasonHorizonWeak(TEXT("horizon_too_weak"));
+	const FName ReasonNoHost(TEXT("no_host"));
+	const FName ReasonHostFull(TEXT("host_full"));
 
 	const FName IrradiateEvent(TEXT("irradiate"));
 	const FName UnlockEvent(TEXT("unlock"));
+	const FName HostEvent(TEXT("host"));
 
 	FString DescribeReason(FName Reason)
 	{
@@ -53,6 +59,11 @@ namespace
 		if (Reason == ReasonSourceFull) { return TEXT("the enclosure already holds a source"); }
 		if (Reason == ReasonTooStrong) { return TEXT("this enclosure can't contain radiation that strong"); }
 		if (Reason == ReasonEnclosureEmpty) { return TEXT("the enclosure is empty"); }
+		if (Reason == ReasonCantRecall) { return TEXT("that is part of the pocket universe now"); }
+		if (Reason == ReasonRippleAtMax) { return TEXT("that ripple can't get any deeper"); }
+		if (Reason == ReasonHorizonWeak) { return TEXT("the horizon is too weak, feed it first"); }
+		if (Reason == ReasonNoHost) { return TEXT("there is no host black hole to feed"); }
+		if (Reason == ReasonHostFull) { return TEXT("the host black hole is already at full mass"); }
 		return Reason.ToString();
 	}
 }
@@ -103,10 +114,23 @@ void FLRSimulation::Reset(int32 Seed)
 	ActionStates.Reset();
 	Unlocked.Reset();
 	Stats.Reset();
+	HostMass = 1.0;
+	CosmicTime = 0.0;
+	EnterEpoch(0);
 	RefreshUnlocks(); // starting unlocks, not announced
 
 	OnInventoryChanged.Broadcast();
 	OnWorldChanged.Broadcast();
+}
+
+void FLRSimulation::EnterEpoch(int32 Index)
+{
+	EpochIndex = Data.Epochs.IsValidIndex(Index) ? Index : 0;
+	EpochStartedAt = Now;
+	if (const FLREpochDef* Epoch = GetEpoch())
+	{
+		CosmicTime = FMath::Max(CosmicTime, Epoch->StartTime);
+	}
 }
 
 FLRSaveData FLRSimulation::Save() const
@@ -122,6 +146,11 @@ FLRSaveData FLRSimulation::Save() const
 	ActionStates.GenerateValueArray(Out.Actions);
 	Out.Unlocked = Unlocked.Array();
 	Out.Stats = Stats;
+	const FLREpochDef* Epoch = GetEpoch();
+	Out.Epoch = Epoch ? Epoch->Id : NAME_None;
+	Out.EpochStartedAt = EpochStartedAt;
+	Out.CosmicTime = CosmicTime;
+	Out.HostMass = HostMass;
 	return Out;
 }
 
@@ -158,6 +187,10 @@ bool FLRSimulation::Load(const FLRSaveData& SaveData)
 	Unlocked.Reset();
 	Unlocked.Append(SaveData.Unlocked);
 	Stats = SaveData.Stats;
+	HostMass = FMath::Clamp(SaveData.HostMass, 0.0, 1.0);
+	CosmicTime = SaveData.CosmicTime;
+	EnterEpoch(FMath::Max(0, Data.FindEpochIndex(SaveData.Epoch)));
+	EpochStartedAt = SaveData.EpochStartedAt; // keep an in-progress plasma fade going
 	RefreshUnlocks(); // catch up with data changes, not announced
 
 	// Never hand out an instance id that is already in use, even if the save is inconsistent.
@@ -217,7 +250,201 @@ void FLRSimulation::Advance(double DeltaSeconds)
 		Complete(Execute(Request));
 	}
 
-	AdvanceIrradiation(DeltaSeconds);
+	AdvanceCosmos(DeltaSeconds);
+	if (!IsFrozen())
+	{
+		AdvanceIrradiation(DeltaSeconds);
+		AdvanceStructures(DeltaSeconds);
+	}
+}
+
+void FLRSimulation::AdvanceCosmos(double DeltaSeconds)
+{
+	const FLRHostDef& Host = Data.Host;
+	if (Host.LifetimeSeconds > 0.f && HostMass > 0.0)
+	{
+		// Hawking evaporation: dM/dt is proportional to -1/M^2, so M^3 falls linearly and a
+		// full-mass host lasts LifetimeSeconds. The loss speeds up as the host shrinks.
+		const double Before = HostMass;
+		const double Cubed = Before * Before * Before - DeltaSeconds / Host.LifetimeSeconds;
+		HostMass = Cubed > 0.0 ? FMath::Pow(Cubed, 1.0 / 3.0) : 0.0;
+
+		TArray<FString> Messages;
+		if (Before > Host.WarningMass && HostMass <= Host.WarningMass && HostMass > 0.0)
+		{
+			Messages.Add(FString::Printf(TEXT("The horizon is thinning: the host black hole is down to %d%% of its mass. Feed it."),
+				FMath::FloorToInt32(HostMass * 100.0)));
+		}
+		if (HostMass <= 0.0)
+		{
+			Messages.Add(TEXT("The host black hole has evaporated. The pocket universe is frozen until you feed the horizon."));
+		}
+		AnnounceEvents(HostEvent, Messages);
+
+		// "host" requirements count whole percent, so only re-check when that changes.
+		if (FMath::FloorToInt32(Before * 100.0) != FMath::FloorToInt32(HostMass * 100.0))
+		{
+			AnnounceUnlocks(RefreshUnlocks());
+		}
+	}
+
+	if (IsFrozen())
+	{
+		return;
+	}
+	const FLREpochDef* Epoch = GetEpoch();
+	if (!Epoch || Epoch->ClockSeconds <= 0.f || Epoch->StartTime <= 0.0)
+	{
+		return;
+	}
+	const double End = Epoch->EndTime > 0.0 ? Epoch->EndTime
+		: (Data.Epochs.IsValidIndex(EpochIndex + 1) ? Data.Epochs[EpochIndex + 1].StartTime : 0.0);
+	if (End <= Epoch->StartTime || CosmicTime >= End)
+	{
+		return;
+	}
+	// Log scale: the clock sweeps the same number of decades every second, then waits at the
+	// end until the next epoch's requirements are met.
+	const double Rate = (FMath::Loge(End) - FMath::Loge(Epoch->StartTime)) / Epoch->ClockSeconds;
+	const double From = FMath::Max(CosmicTime, Epoch->StartTime);
+	CosmicTime = FMath::Min(End, FMath::Exp(FMath::Loge(From) + Rate * DeltaSeconds));
+}
+
+void FLRSimulation::AdvanceStructures(double DeltaSeconds)
+{
+	const FLREpochDef* Epoch = GetEpoch();
+	const FLRLootTableDef* YieldTable = (Epoch && !Epoch->YieldTable.IsNone()) ? Data.FindLootTable(Epoch->YieldTable) : nullptr;
+	const double GrowthSeconds = Epoch ? static_cast<double>(Epoch->RippleGrowthSeconds) : 0.0;
+
+	bool bInventoryChanged = false;
+	bool bWorldChanged = false;
+	for (TPair<FIntVector, FLRPlacedEntity>& Pair : Placed)
+	{
+		FLRPlacedEntity& Entity = Pair.Value;
+		const FLRItemDef* Def = Data.FindItem(Entity.Item);
+		if (!Def || !Def->IsOverdensity())
+		{
+			continue;
+		}
+
+		// After recombination gravity deepens the ripples on its own; before it, radiation
+		// pressure stops ordinary matter from clumping, so only Perturb can.
+		if (GrowthSeconds > 0.0 && Entity.Amplitude < Def->MaxAmplitude)
+		{
+			Entity.GrowthProgress += DeltaSeconds;
+			while (Entity.GrowthProgress >= GrowthSeconds && Entity.Amplitude < Def->MaxAmplitude)
+			{
+				Entity.GrowthProgress -= GrowthSeconds;
+				++Entity.Amplitude;
+				bWorldChanged = true;
+			}
+		}
+		if (GrowthSeconds <= 0.0 || Entity.Amplitude >= Def->MaxAmplitude)
+		{
+			Entity.GrowthProgress = 0.0;
+		}
+
+		if (!YieldTable)
+		{
+			Entity.YieldProgress = 0.0;
+			continue;
+		}
+		Entity.YieldProgress += DeltaSeconds;
+		const double Interval = FMath::Max(0.1, static_cast<double>(Def->YieldSeconds));
+		while (Entity.YieldProgress >= Interval)
+		{
+			Entity.YieldProgress -= Interval;
+			// One roll per amplitude: a deeper ripple gathers more.
+			TArray<FLRLootModifier> Modifiers;
+			if (Entity.Amplitude > 1)
+			{
+				FLRLootModifier ExtraRolls;
+				ExtraRolls.Kind = LRNames::ModifierExtraRolls;
+				ExtraRolls.Value = static_cast<float>(Entity.Amplitude - 1);
+				Modifiers.Add(ExtraRolls);
+			}
+			for (const FLRItemAmount& Amount : MergeAmounts(RollLootTable(ApplyModifiers(*YieldTable, Modifiers))))
+			{
+				// Whatever doesn't fit in a full inventory is lost.
+				if (AddItem(Amount.Item, Amount.Count))
+				{
+					AddStat(StatKey(TEXT("gained"), Amount.Item), Amount.Count);
+					bInventoryChanged = true;
+				}
+			}
+		}
+	}
+
+	if (bInventoryChanged)
+	{
+		OnInventoryChanged.Broadcast();
+	}
+	if (bWorldChanged)
+	{
+		OnWorldChanged.Broadcast();
+	}
+	if (bInventoryChanged || bWorldChanged)
+	{
+		AnnounceUnlocks(RefreshUnlocks());
+	}
+}
+
+void FLRSimulation::AnnounceEvents(FName Event, const TArray<FString>& Messages)
+{
+	for (const FString& Message : Messages)
+	{
+		FLRActionResult Result;
+		Result.Action = Event;
+		Result.bSuccess = true;
+		Result.Message = Message;
+		OnActionCompleted.Broadcast(Result);
+	}
+}
+
+float FLRSimulation::GetPlasmaOpacity() const
+{
+	const FLREpochDef* Epoch = GetEpoch();
+	if (!Epoch)
+	{
+		return 0.f;
+	}
+	if (EpochIndex == 0)
+	{
+		return Epoch->Plasma;
+	}
+	const float Previous = Data.Epochs[EpochIndex - 1].Plasma;
+	const float Alpha = static_cast<float>(FMath::Clamp(GetEpochAge() / PlasmaFadeSeconds, 0.0, 1.0));
+	return FMath::Lerp(Previous, Epoch->Plasma, Alpha);
+}
+
+FString FLRSimulation::FormatCosmicTime(double Seconds)
+{
+	constexpr double Minute = 60.0;
+	constexpr double Hour = 3600.0;
+	constexpr double Day = 86400.0;
+	constexpr double Year = 3.15576e7; // Julian year
+
+	if (Seconds <= 0.0)
+	{
+		return TEXT("0 s");
+	}
+	if (Seconds < 0.01)
+	{
+		// The nudge keeps exact powers of ten (1e-36) from rounding down a decade.
+		const int32 Exponent = FMath::FloorToInt32(FMath::Loge(Seconds) / FMath::Loge(10.0) + 1e-9);
+		return FString::Printf(TEXT("10^%d s"), Exponent);
+	}
+	if (Seconds < 1.0)    { return FString::Printf(TEXT("%.2f s"), Seconds); }
+	if (Seconds < Minute) { return FString::Printf(TEXT("%.0f s"), Seconds); }
+	if (Seconds < Hour)   { return FString::Printf(TEXT("%.0f min"), Seconds / Minute); }
+	if (Seconds < Day)    { return FString::Printf(TEXT("%.0f hours"), Seconds / Hour); }
+	if (Seconds < Year)   { return FString::Printf(TEXT("%.0f days"), Seconds / Day); }
+
+	const double Years = Seconds / Year;
+	if (Years < 1e3)      { return FString::Printf(TEXT("%.0f years"), Years); }
+	if (Years < 1e6)      { return FString::Printf(TEXT("%.0f thousand years"), Years / 1e3); }
+	if (Years < 1e9)      { return FString::Printf(TEXT("%.0f million years"), Years / 1e6); }
+	return FString::Printf(TEXT("%.1f billion years"), Years / 1e9);
 }
 
 void FLRSimulation::AdvanceIrradiation(double DeltaSeconds)
@@ -392,6 +619,11 @@ bool FLRSimulation::IsActionUnlocked(FName ActionName) const
 	return Action && (Action->RevealRequirements.IsEmpty() || Unlocked.Contains(FLRGameData::ActionUnlockKey(ActionName)));
 }
 
+bool FLRSimulation::IsActionRetired(FName ActionName) const
+{
+	return Unlocked.Contains(FLRGameData::ActionRetiredKey(ActionName));
+}
+
 TArray<FString> FLRSimulation::RefreshUnlocks()
 {
 	// Unlocks latch: once met, they stay. Loop so chains ("unlocked" requirements) resolve
@@ -420,6 +652,22 @@ TArray<FString> FLRSimulation::RefreshUnlocks()
 				Messages.Add(FString::Printf(TEXT("New action unlocked: %s"), *Action.Label));
 				bChanged = true;
 			}
+			const FName RetiredKey = FLRGameData::ActionRetiredKey(Action.Name);
+			if (!Action.RetireRequirements.IsEmpty() && !Unlocked.Contains(RetiredKey) && CheckRequirements(Action.RetireRequirements))
+			{
+				Unlocked.Add(RetiredKey);
+				Messages.Add(FString::Printf(TEXT("Action retired: %s is no longer needed"), *Action.Label));
+				bChanged = true;
+			}
+		}
+		// Epochs advance one at a time, in order.
+		if (Data.Epochs.IsValidIndex(EpochIndex + 1) && CheckRequirements(Data.Epochs[EpochIndex + 1].AdvanceRequirements))
+		{
+			EnterEpoch(EpochIndex + 1);
+			const FLREpochDef& Epoch = Data.Epochs[EpochIndex];
+			Messages.Add(FString::Printf(TEXT("New epoch: %s, %s after the Big Bang. %s"),
+				*Epoch.Name, *FormatCosmicTime(CosmicTime), *Epoch.Description));
+			bChanged = true;
 		}
 	}
 	return Messages;
@@ -452,6 +700,15 @@ bool FLRSimulation::CheckRequirement(const FLRRequirement& Requirement) const
 	else if (Requirement.Check == LRNames::CheckUnlocked)
 	{
 		Actual = Unlocked.Contains(Requirement.Id) ? 1 : 0;
+	}
+	else if (Requirement.Check == LRNames::CheckEpoch)
+	{
+		const int32 Index = Data.FindEpochIndex(Requirement.Id);
+		Actual = (Index != INDEX_NONE && EpochIndex >= Index) ? 1 : 0;
+	}
+	else if (Requirement.Check == LRNames::CheckHost)
+	{
+		Actual = FMath::FloorToInt32(HostMass * 100.0);
 	}
 	else if (Requirement.Check == LRNames::CheckPlaced)
 	{
@@ -504,7 +761,7 @@ FLRActionStatus FLRSimulation::GetActionStatus(FName ActionName) const
 	Status.Tooltip = Def->Tooltip;
 	Status.Cooldown = Def->Cooldown;
 	Status.CastTime = Def->CastTime;
-	Status.bRevealed = IsActionUnlocked(ActionName); // latched tech-tree unlock
+	Status.bRevealed = IsActionUnlocked(ActionName) && !IsActionRetired(ActionName); // latched tech-tree unlock
 
 	// Rails: PlayerAction#update_disabled special-cased sort_inventory the same way.
 	if (ActionName == LRNames::Craft)
@@ -626,7 +883,17 @@ FLRActionResult FLRSimulation::RequestAction(const FLRActionRequest& Request)
 
 FName FLRSimulation::ValidateRequest(const FLRActionRequest& Request) const
 {
-	if (Request.Action == LRNames::Craft)
+	const FLRActionDef* ActionDef = Data.FindAction(Request.Action);
+	if (ActionDef && !ActionDef->Places.IsNone())
+	{
+		return ValidateSeed(Request, *ActionDef);
+	}
+	if (Request.Action == LRNames::Feed)
+	{
+		if (!Data.Host.IsDefined()) { return ReasonNoHost; }
+		if (HostMass >= 1.0) { return ReasonHostFull; }
+	}
+	else if (Request.Action == LRNames::Craft)
 	{
 		const FLRRecipeDef* Recipe = Data.FindRecipe(Request.Choice);
 		if (!Recipe) { return ReasonUnknownRecipe; }
@@ -646,7 +913,10 @@ FName FLRSimulation::ValidateRequest(const FLRActionRequest& Request) const
 	else if (Request.Action == LRNames::Recall)
 	{
 		if (!Request.bHasCell) { return ReasonNoCell; }
-		if (!Placed.Contains(Request.Cell)) { return ReasonNothingPlaced; }
+		const FLRPlacedEntity* Entity = Placed.Find(Request.Cell);
+		if (!Entity) { return ReasonNothingPlaced; }
+		const FLRItemDef* EntityDef = Data.FindItem(Entity->Item);
+		if (EntityDef && EntityDef->IsStructure()) { return ReasonCantRecall; }
 	}
 	else if (Request.Action == LRNames::Load)
 	{
@@ -704,6 +974,8 @@ FLRActionResult FLRSimulation::Execute(const FLRActionRequest& Request)
 	if (Request.Action == LRNames::Unload)        { return ExecuteUnload(Request); }
 	if (Request.Action == LRNames::Annihilate)    { return ExecuteAnnihilate(Request); }
 	if (Request.Action == LRNames::SortInventory) { return ExecuteSort(); }
+	if (Request.Action == LRNames::Feed)          { return ExecuteFeed(Request); }
+	if (!Def->Places.IsNone())                    { return ExecuteSeed(Request, *Def); }
 	if (!Def->LootTable.IsNone())                 { return ExecuteLootAction(*Def); }
 
 	return MakeFailure(Request.Action, ReasonUnknownAction,
@@ -712,7 +984,7 @@ FLRActionResult FLRSimulation::Execute(const FLRActionRequest& Request)
 
 FLRActionResult FLRSimulation::ExecuteLootAction(const FLRActionDef& Def)
 {
-	// Rails: InventoryItem.scavenge_item - now just a roll on a loot table (e.g. "inject").
+	// Rails: InventoryItem.scavenge_item - now just a roll on a loot table (any action with a lootTable).
 	const FLRLootTableDef* Table = Data.FindLootTable(Def.LootTable);
 	if (!Table)
 	{
@@ -902,6 +1174,11 @@ FLRActionResult FLRSimulation::ExecuteRecall(const FLRActionRequest& Request)
 		return MakeFailure(Request.Action, ReasonNothingPlaced, TEXT("Can't recall: nothing deployed in that cell"));
 	}
 	const FLRPlacedEntity Entity = *Found;
+	const FLRItemDef* EntityDef = Data.FindItem(Entity.Item);
+	if (EntityDef && EntityDef->IsStructure())
+	{
+		return MakeFailure(Request.Action, ReasonCantRecall, FString::Printf(TEXT("Can't recall: %s"), *DescribeReason(ReasonCantRecall)));
+	}
 
 	// The entity comes back with whatever it was holding, all or nothing.
 	FLRInventorySlot EntityItem;
@@ -1015,6 +1292,73 @@ FLRActionResult FLRSimulation::ExecuteAnnihilate(const FLRActionRequest& Request
 	Result.bSuccess = true;
 	Result.Spent.Emplace(Slot.Item, Slot.Count);
 	Result.Message = FString::Printf(TEXT("Annihilated %d %s"), Slot.Count, *Data.GetDisplayName(Slot.Item));
+	return Result;
+}
+
+FName FLRSimulation::ValidateSeed(const FLRActionRequest& Request, const FLRActionDef& Def) const
+{
+	const FLRItemDef* StructureDef = Data.FindItem(Def.Places);
+	if (!StructureDef || !StructureDef->IsOverdensity()) { return ReasonUnknownAction; }
+	if (!Request.bHasCell) { return ReasonNoCell; }
+	if (const FLRPlacedEntity* Existing = Placed.Find(Request.Cell))
+	{
+		if (Existing->Item != Def.Places) { return ReasonOccupied; }
+		if (Existing->Amplitude >= StructureDef->MaxAmplitude) { return ReasonRippleAtMax; }
+	}
+	// Every ripple's energy comes out of the host, and a perturbation never finishes it off.
+	if (Data.Host.PerturbCost > 0.f && HostMass <= Data.Host.PerturbCost) { return ReasonHorizonWeak; }
+	return NAME_None;
+}
+
+FLRActionResult FLRSimulation::ExecuteSeed(const FLRActionRequest& Request, const FLRActionDef& Def)
+{
+	// Re-check: the cell or the host may have changed during the cast.
+	const FName Invalid = ValidateSeed(Request, Def);
+	if (!Invalid.IsNone())
+	{
+		return MakeFailure(Request.Action, Invalid, FString::Printf(TEXT("Can't %s: %s"), *Def.Label.ToLower(), *DescribeReason(Invalid)));
+	}
+
+	const FString StructureName = Data.GetDisplayName(Def.Places);
+	FLRActionResult Result;
+	if (FLRPlacedEntity* Existing = Placed.Find(Request.Cell))
+	{
+		++Existing->Amplitude;
+		Result.Message = FString::Printf(TEXT("%s at %s deepened to amplitude %d"), *StructureName, *DescribeCell(Request.Cell), Existing->Amplitude);
+	}
+	else
+	{
+		FLRPlacedEntity Entity;
+		Entity.InstanceId = AllocateInstanceId();
+		Entity.Item = Def.Places;
+		Entity.Cell = Request.Cell;
+		Entity.PlacedAt = Now;
+		Entity.Amplitude = 1;
+		Placed.Add(Entity.Cell, Entity);
+		Result.Message = FString::Printf(TEXT("%s seeded at %s (amplitude 1)"), *StructureName, *DescribeCell(Request.Cell));
+	}
+	HostMass = FMath::Max(0.0, HostMass - static_cast<double>(Data.Host.PerturbCost));
+
+	Result.Action = Request.Action;
+	Result.bSuccess = true;
+	return Result;
+}
+
+FLRActionResult FLRSimulation::ExecuteFeed(const FLRActionRequest& Request)
+{
+	if (!Data.Host.IsDefined() || HostMass >= 1.0)
+	{
+		const FName Reason = Data.Host.IsDefined() ? ReasonHostFull : ReasonNoHost;
+		return MakeFailure(Request.Action, Reason, FString::Printf(TEXT("Can't feed: %s"), *DescribeReason(Reason)));
+	}
+	const bool bWasFrozen = IsFrozen();
+	HostMass = FMath::Min(1.0, HostMass + static_cast<double>(Data.Host.FeedAmount));
+
+	FLRActionResult Result;
+	Result.Action = Request.Action;
+	Result.bSuccess = true;
+	Result.Message = FString::Printf(TEXT("Fed the horizon: the host black hole is at %d%% of its mass%s"),
+		FMath::FloorToInt32(HostMass * 100.0), bWasFrozen && !IsFrozen() ? TEXT(". The pocket universe stirs again.") : TEXT(""));
 	return Result;
 }
 

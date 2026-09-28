@@ -33,7 +33,7 @@ class LOOTBOXRECURSION_API ALRPlayerController : public APlayerController
 public:
 	ALRPlayerController();
 
-	// ---- Console commands: press ~ in game and type e.g. "LRGive carbon 500" -----------
+	// ---- Console commands: press ~ in game and type e.g. "LRGive hydrogen 500" ---------
 	UFUNCTION(Exec)
 	void LRGive(FName Item, int32 Count);
 

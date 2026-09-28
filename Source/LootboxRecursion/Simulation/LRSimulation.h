@@ -20,9 +20,11 @@ class LOOTBOXRECURSION_API FLRSimulation
 {
 public:
 	static constexpr int32 PlayerInventorySlots = 50; // Rails: User::BASE_INVENTORY_SLOTS
-	static constexpr int32 SaveVersion = 4; // 2: 3D grid, wood -> carbon. 3: enclosure contents. 4: unlocks + stats
-	/** Oldest save that still loads (newer fields just start empty). */
-	static constexpr int32 MinCompatibleSaveVersion = 3;
+	static constexpr int32 SaveVersion = 5; // 2: 3D grid, wood -> carbon. 3: enclosure contents. 4: unlocks + stats. 5: epochs, host, primordial materials
+	/** Oldest save that still loads (newer fields just start empty). 5 reworked the materials and tech tree, so older saves start fresh. */
+	static constexpr int32 MinCompatibleSaveVersion = 5;
+	/** Simulation seconds the sky takes to fade to a new epoch's plasma opacity. */
+	static constexpr double PlasmaFadeSeconds = 6.0;
 
 	DECLARE_MULTICAST_DELEGATE(FOnChanged);
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnActionCompleted, const FLRActionResult& /*Result*/);
@@ -59,10 +61,30 @@ public:
 	/** A recipe with no reveal requirements is always unlocked; otherwise once they've been met. */
 	bool IsRecipeUnlocked(FName RecipeId) const;
 	bool IsActionUnlocked(FName ActionName) const;
+	/** Retired actions (retireRequirements met once) are hidden and refused for good. */
+	bool IsActionRetired(FName ActionName) const;
 	bool IsUnlocked(FName Key) const { return Unlocked.Contains(Key); }
 	int32 GetStat(FName Key) const;
 	const TMap<FName, int32>& GetStats() const { return Stats; }
 	static FName StatKey(const TCHAR* Prefix, FName Id);
+
+	// ---- Cosmos: epochs, the cosmic clock and the host black hole -----------------------
+	/** Index into GetData().Epochs (0 when there are no epochs). */
+	int32 GetEpochIndex() const { return EpochIndex; }
+	/** The current epoch, or null if the data defines none. */
+	const FLREpochDef* GetEpoch() const { return Data.Epochs.IsValidIndex(EpochIndex) ? &Data.Epochs[EpochIndex] : nullptr; }
+	/** Simulation seconds since the current epoch began. */
+	double GetEpochAge() const { return Now - EpochStartedAt; }
+	/** Cosmic seconds since the pocket universe's Big Bang. */
+	double GetCosmicTime() const { return CosmicTime; }
+	/** How opaque the primordial plasma is right now (0..1), fading between epochs. */
+	float GetPlasmaOpacity() const;
+	/** The host black hole's mass as a fraction of its starting mass (1.0). */
+	double GetHostMass() const { return HostMass; }
+	/** The host has evaporated: nothing in the pocket universe advances until it's fed. */
+	bool IsFrozen() const { return HostMass <= 0.0; }
+	/** "10^-36 s", "3 min", "380 thousand years", "13.8 billion years". */
+	static FString FormatCosmicTime(double Seconds);
 
 	// ---- Commands ---------------------------------------------------------------------
 	/**
@@ -121,6 +143,19 @@ private:
 	FLRActionResult ExecuteUnload(const FLRActionRequest& Request);
 	FLRActionResult ExecuteAnnihilate(const FLRActionRequest& Request);
 	FName ValidateLoad(const FLRActionRequest& Request) const;
+	/** Seeding actions (Def.Places set, e.g. perturb): create or deepen an overdensity. */
+	FLRActionResult ExecuteSeed(const FLRActionRequest& Request, const FLRActionDef& Def);
+	FName ValidateSeed(const FLRActionRequest& Request, const FLRActionDef& Def) const;
+	FLRActionResult ExecuteFeed(const FLRActionRequest& Request);
+
+	/** Host evaporation and the cosmic clock. */
+	void AdvanceCosmos(double DeltaSeconds);
+	/** Overdensities: yield matter into the inventory and, in later epochs, deepen on their own. */
+	void AdvanceStructures(double DeltaSeconds);
+	/** Make Index the current epoch (clock, start time). */
+	void EnterEpoch(int32 Index);
+	/** Broadcast event messages (host warnings) through OnActionCompleted. */
+	void AnnounceEvents(FName Event, const TArray<FString>& Messages);
 
 	/** Irradiation: advance every loaded enclosure and apply exposures that completed. */
 	void AdvanceIrradiation(double DeltaSeconds);
@@ -163,7 +198,7 @@ private:
 	static FLRActionResult MakeFailure(FName Action, FName Reason, const FString& Message);
 
 	void AddStat(FName Key, int32 Delta = 1);
-	/** Latch every reveal requirement that is now met; returns "unlocked" log messages. */
+	/** Latch every reveal / retire requirement and advance epochs that are now met; returns log messages. */
 	TArray<FString> RefreshUnlocks();
 	void AnnounceUnlocks(const TArray<FString>& Messages);
 
@@ -177,4 +212,8 @@ private:
 	TMap<int32, FLRLootBoxInstance> LootBoxes; // by instance id
 	TMap<FIntVector, FLRPlacedEntity> Placed;  // by grid cell
 	TMap<FName, FLRActionState> ActionStates;  // by action name
+	int32 EpochIndex = 0;
+	double EpochStartedAt = 0.0;
+	double CosmicTime = 0.0;
+	double HostMass = 1.0;
 };

@@ -74,6 +74,10 @@ private:
 	UPROPERTY()
 	TObjectPtr<UStaticMesh> CubeMesh;
 
+	/** Overdensities (ripples in the pocket universe) are drawn as spheres. */
+	UPROPERTY()
+	TObjectPtr<UStaticMesh> SphereMesh;
+
 	/** Lit, with a "Color" parameter: entities and the placement ghost. */
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> BaseMaterial;

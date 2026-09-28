@@ -11,6 +11,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
+#include "Game/LRGameSubsystem.h"
 #include "Game/LRWorldGridActor.h"
 #include "GameFramework/Pawn.h"
 #include "Kismet/GameplayStatics.h"
@@ -81,6 +82,48 @@ void ALRCosmosActor::BeginPlay()
 
 	BuildStars();
 	BuildBlackHole();
+	BuildPlasmaVeil();
+}
+
+void ALRCosmosActor::BuildPlasmaVeil()
+{
+	if (!SphereMesh || !UnlitTranslucentMaterial)
+	{
+		return;
+	}
+	// Half the sky's radius: in front of the stars and the black hole, far behind the grid.
+	// The engine materials used here are two-sided, so it shows from the inside.
+	PlasmaVeil = NewObject<UStaticMeshComponent>(this);
+	PlasmaVeil->SetStaticMesh(SphereMesh);
+	PlasmaVeil->SetupAttachment(RootComponent);
+	PlasmaVeil->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	PlasmaVeil->SetCastShadow(false);
+	LRUnlit::ExcludeFromLighting(PlasmaVeil);
+	PlasmaVeil->SetRelativeScale3D(FVector(0.5f * SkyRadius / 50.f)); // engine sphere radius is 50
+	// Draw after the black hole plane, which is also translucent.
+	PlasmaVeil->TranslucencySortPriority = 10;
+	PlasmaVeil->SetVisibility(false);
+	PlasmaVeil->RegisterComponent();
+	PlasmaMaterial = LRUnlit::MakeMaterial(UnlitTranslucentMaterial, this, WhiteTexture, FLinearColor(PlasmaColor.R, PlasmaColor.G, PlasmaColor.B, 0.f));
+	PlasmaVeil->SetMaterial(0, PlasmaMaterial);
+	UpdatePlasmaVeil();
+}
+
+void ALRCosmosActor::UpdatePlasmaVeil()
+{
+	if (!PlasmaVeil)
+	{
+		return;
+	}
+	const ULRGameSubsystem* Subsystem = ULRGameSubsystem::Get(this);
+	const float Opacity = Subsystem ? FMath::Clamp(Subsystem->GetPlasmaOpacity(), 0.f, 1.f) * MaxPlasmaOpacity : 0.f;
+	if (FMath::IsNearlyEqual(Opacity, ShownPlasmaOpacity, 0.002f))
+	{
+		return;
+	}
+	ShownPlasmaOpacity = Opacity;
+	PlasmaVeil->SetVisibility(Opacity > 0.002f);
+	LRUnlit::SetTint(PlasmaMaterial, FLinearColor(PlasmaColor.R, PlasmaColor.G, PlasmaColor.B, Opacity));
 }
 
 UInstancedStaticMeshComponent* ALRCosmosActor::MakeStarLayer(const FLinearColor& Tint)
@@ -207,6 +250,8 @@ void ALRCosmosActor::Tick(float DeltaSeconds)
 	{
 		SetActorLocation(CameraManager->GetCameraLocation());
 	}
+
+	UpdatePlasmaVeil();
 
 	AnimationTime += DeltaSeconds;
 	SinceLastFrame += DeltaSeconds;

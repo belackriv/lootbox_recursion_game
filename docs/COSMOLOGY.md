@@ -1,8 +1,8 @@
 # Cosmology background
 
-Design notes for the theme. Nothing in this file is implemented yet; it's the physics the
-game borrows and how each piece maps onto a mechanic. [DESIGN.md](DESIGN.md) describes what
-the code does today.
+Design notes for the theme: the physics the game borrows and how each piece maps onto a
+mechanic. Phase 1 (genesis) and Hawking evaporation are implemented; *The pocket universe* in
+[DESIGN.md](DESIGN.md) describes what the code does today. The rest is still design notes.
 
 The arc: the player is a scientist who has made a mini black hole and nucleated a pocket
 universe inside it. The early game plays like the Big Bang, the mid game like structure

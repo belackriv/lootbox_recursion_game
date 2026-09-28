@@ -76,6 +76,11 @@ private:
 	TOptional<float> GetSelectedExposureFraction() const;
 	FString DescribeEnclosure(const FLRPlacedEntity& Enclosure) const;
 	bool HasSelectedCell(bool bWantOccupied) const;
+	/** Perturb can seed or deepen a ripple in the selected cell. */
+	bool CanPerturbSelectedCell() const;
+	/** The selected cell holds something that Recall can pick up (not a structure). */
+	bool IsSelectedCellRecallable() const;
+	FString DescribeOverdensity(const FLRPlacedEntity& Overdensity) const;
 
 	// Hover / info panel
 	void SetHover(EHoverKind Kind, FName Name, int32 Index = 0, const FIntVector& Cell = FIntVector::ZeroValue);

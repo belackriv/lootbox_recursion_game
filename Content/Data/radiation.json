@@ -12,7 +12,7 @@
 			"effect": {
 				"kind": "item_count_mult",
 				"item": "carbon",
-				"value": 1.25
+				"value": 1.35
 			}
 		},
 		{
@@ -48,7 +48,7 @@
 			"effect": {
 				"kind": "item_count_mult",
 				"item": "iron",
-				"value": 1.35
+				"value": 1.8
 			}
 		},
 		{

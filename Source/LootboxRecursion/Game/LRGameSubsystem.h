@@ -70,6 +70,23 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Quantum Recursion")
 	double GetSimTime() const;
 
+	// ---- Cosmos (epochs, cosmic clock, host black hole) --------------------------------
+	/** Display name of the current epoch ("Reheating"), or empty if the data defines none. */
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Cosmos")
+	FString GetEpochName() const;
+
+	/** Cosmic time since the pocket universe's Big Bang, formatted ("380 thousand years"). */
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Cosmos")
+	FString GetCosmicTimeText() const;
+
+	/** The host black hole's mass as a fraction of its starting mass (0..1). */
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Cosmos")
+	float GetHostMass() const;
+
+	/** How opaque the primordial plasma is right now (0..1). */
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Cosmos")
+	float GetPlasmaOpacity() const;
+
 	// ---- Selection, hover, build layer & camera focus (UI state, not saved) -----------
 	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Selection")
 	void SelectSlot(int32 SlotIndex);

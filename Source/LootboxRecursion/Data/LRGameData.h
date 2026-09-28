@@ -18,7 +18,8 @@
 namespace LRNames
 {
 	// Actions (actions.json "name")
-	inline const FName Inject(TEXT("inject"));
+	inline const FName Perturb(TEXT("perturb"));
+	inline const FName Feed(TEXT("feed"));
 	inline const FName Craft(TEXT("craft"));
 	inline const FName Use(TEXT("use"));
 	inline const FName Deploy(TEXT("deploy"));
@@ -34,6 +35,8 @@ namespace LRNames
 	inline const FName CategoryLootBox(TEXT("lootbox"));
 	inline const FName CategoryPlaceable(TEXT("placeable"));
 	inline const FName CategorySource(TEXT("source"));
+	/** Part of the pocket universe itself (overdensities): created by actions, never held. */
+	inline const FName CategoryStructure(TEXT("structure"));
 
 	// Loot modifier kinds (see FLRLootModifier)
 	inline const FName ModifierExtraRolls(TEXT("extra_rolls"));
@@ -47,6 +50,8 @@ namespace LRNames
 	inline const FName CheckPlaced(TEXT("placed"));
 	inline const FName CheckStat(TEXT("stat"));
 	inline const FName CheckUnlocked(TEXT("unlocked"));
+	inline const FName CheckEpoch(TEXT("epoch"));
+	inline const FName CheckHost(TEXT("host"));
 
 	// Loot table used when a loot box's own table is missing (mirrors LootTable.for fallback)
 	inline const FName DefaultLootTable(TEXT("default"));
@@ -87,7 +92,7 @@ struct LOOTBOXRECURSION_API FLRItemDef
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FString Tooltip;
 
-	/** material | lootbox | placeable */
+	/** material | lootbox | placeable | source | structure */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FName Category;
 
@@ -118,10 +123,20 @@ struct LOOTBOXRECURSION_API FLRItemDef
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	float ExposureSeconds = 10.f;
 
+	/** Overdensities: the deepest a ripple can get. 0 = not an overdensity. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	int32 MaxAmplitude = 0;
+
+	/** Overdensities: seconds between yields (each yield rolls the epoch's yieldTable). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float YieldSeconds = 10.f;
+
 	bool IsLootBox() const { return !LootTable.IsNone(); }
 	bool IsPlaceable() const { return Category == LRNames::CategoryPlaceable; }
 	bool IsSource() const { return !Radiation.IsNone(); }
 	bool IsEnclosure() const { return IsPlaceable() && MaxExposureStacks > 0; }
+	bool IsStructure() const { return Category == LRNames::CategoryStructure; }
+	bool IsOverdensity() const { return IsStructure() && MaxAmplitude > 0; }
 	bool IsUnique() const { return StackSize <= 1; }
 	FLinearColor GetLinearColor() const;
 };
@@ -142,11 +157,13 @@ struct LOOTBOXRECURSION_API FLRRequirement
 	 * stat      - a lifetime counter named by Id, e.g. "crafted:loot_box", "opened:loot_box",
 	 *             "gained:iron", "exposed:x_rays", "done:inject"
 	 * unlocked  - 1 if Id ("recipe:<id>" or "action:<name>") is unlocked, else 0
+	 * epoch     - 1 if the epoch named by Id has been reached (or passed), else 0
+	 * host      - the host black hole's mass, in whole percent of its starting mass
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FName Check = LRNames::CheckInventory;
 
-	/** For stat / unlocked checks: the counter or unlock key. */
+	/** For stat / unlocked / epoch checks: the counter, unlock key or epoch id. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FName Id;
 
@@ -268,6 +285,20 @@ struct LOOTBOXRECURSION_API FLRActionDef
 	/** Tech tree: the action is hidden until all of these have been met once (then it stays unlocked). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	TArray<FLRRequirement> RevealRequirements;
+
+	/**
+	 * Tech tree: once all of these have been met, the action is retired for good (hidden and
+	 * refused). Empty = never retires. Perturb retires at recombination.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	TArray<FLRRequirement> RetireRequirements;
+
+	/**
+	 * Seeding actions (perturb): the overdensity item created in the selected cell. Acting on a
+	 * cell that already holds one deepens it by one amplitude instead.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FName Places;
 };
 
 /**
@@ -345,6 +376,83 @@ struct LOOTBOXRECURSION_API FLRRadiationDef
 };
 
 /**
+ * One era of the pocket universe's history (universe.json). Epochs run in order: the first is
+ * where a new game starts, and each later one begins once its advanceRequirements are met.
+ * Times are cosmic seconds since the pocket universe's Big Bang.
+ */
+USTRUCT(BlueprintType)
+struct LOOTBOXRECURSION_API FLREpochDef
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FName Id;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FString Name;
+
+	/** Announced in the log when the epoch begins. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FString Description;
+
+	/** Cosmic time at which the epoch begins. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	double StartTime = 0.0;
+
+	/** Where the cosmic clock stops if the next epoch isn't reached. 0 = the next epoch's startTime. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	double EndTime = 0.0;
+
+	/** Simulation seconds the clock takes to sweep from startTime to the end, on a log scale. 0 = the clock stands still. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float ClockSeconds = 0.f;
+
+	/** What overdensities yield during this epoch. None = nothing (there is no matter yet). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FName YieldTable;
+
+	/** Seconds for gravity to deepen a ripple by one amplitude on its own. 0 = only Perturb deepens ripples. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float RippleGrowthSeconds = 0.f;
+
+	/** How opaque the primordial plasma is (0..1). The sky fades to the new value when the epoch begins. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float Plasma = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	TArray<FLRRequirement> AdvanceRequirements;
+};
+
+/**
+ * The host black hole that the pocket universe lives in (universe.json "host"). It evaporates
+ * by Hawking radiation: its mass cubed falls linearly, so the loss speeds up as it shrinks.
+ * Masses are fractions of the starting mass (1.0). At zero the pocket universe freezes until fed.
+ */
+USTRUCT(BlueprintType)
+struct LOOTBOXRECURSION_API FLRHostDef
+{
+	GENERATED_BODY()
+
+	/** Seconds a full-mass host takes to evaporate completely if it's never fed. 0 = it never evaporates. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float LifetimeSeconds = 0.f;
+
+	/** Mass each perturbation draws from the host. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float PerturbCost = 0.f;
+
+	/** Mass one Feed restores (never above 1.0). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float FeedAmount = 0.f;
+
+	/** The log warns once when the mass drops below this. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float WarningMass = 0.25f;
+
+	bool IsDefined() const { return LifetimeSeconds > 0.f || PerturbCost > 0.f || FeedAmount > 0.f; }
+};
+
+/**
  * The shape of one JSON file. Each file fills in whichever arrays it has
  * (items.json -> Items, recipes.json -> Recipes, ...); the loader merges them.
  */
@@ -367,6 +475,12 @@ struct LOOTBOXRECURSION_API FLRDataFile
 
 	UPROPERTY()
 	TArray<FLRRadiationDef> Radiation;
+
+	UPROPERTY()
+	TArray<FLREpochDef> Epochs;
+
+	UPROPERTY()
+	FLRHostDef Host;
 };
 
 /** All definitions, indexed for lookup. Plain C++ (no reflection needed). */
@@ -377,12 +491,16 @@ struct LOOTBOXRECURSION_API FLRGameData
 	TMap<FName, FLRLootTableDef> LootTables;
 	TArray<FLRActionDef> Actions;       // ordered as authored (UI order)
 	TArray<FLRRadiationDef> Radiation;
+	TArray<FLREpochDef> Epochs;         // in cosmic order
+	FLRHostDef Host;
 
 	const FLRItemDef* FindItem(FName Id) const { return Items.Find(Id); }
 	const FLRLootTableDef* FindLootTable(FName Id) const { return LootTables.Find(Id); }
 	const FLRRecipeDef* FindRecipe(FName Id) const;
 	const FLRActionDef* FindAction(FName Name) const;
 	const FLRRadiationDef* FindRadiation(FName Id) const;
+	/** Position of an epoch in Epochs, or INDEX_NONE. */
+	int32 FindEpochIndex(FName Id) const;
 
 	/** Stack size for an item (1 if unknown, so unknown items never merge). */
 	int32 GetStackSize(FName Item) const;
@@ -395,6 +513,8 @@ struct LOOTBOXRECURSION_API FLRGameData
 	/** Unlock keys used by the tech tree: "recipe:<id>" / "action:<name>". */
 	static FName RecipeUnlockKey(FName RecipeId);
 	static FName ActionUnlockKey(FName ActionName);
+	/** Latch key for a retired action: "retired:<name>". */
+	static FName ActionRetiredKey(FName ActionName);
 
 	/** Cross-reference checks (unknown ids, bad ranges...). Empty = valid. */
 	TArray<FString> Validate() const;

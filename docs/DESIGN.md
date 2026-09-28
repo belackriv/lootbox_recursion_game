@@ -12,8 +12,10 @@ You are the **operator**, working from a facility outside the horizon. The horiz
 hangs in the sky of the pocket universe: the animated black hole backdrop. You can't go in, so
 there is no player character and the camera is a free "god view". What you *can* do:
 
-- **Inject** elementary matter (carbon, iron) through the horizon. The link has limited
-  bandwidth, which is what the cast time and cooldown represent.
+- **Perturb** the vacuum: stretch a quantum fluctuation across a grid cell, seeding a ripple
+  (an overdensity) there. Ripples gather matter on their own and send it through the horizon
+  link. The link has limited bandwidth, which is what the cast time and cooldown represent.
+- **Feed** the host black hole, which is slowly evaporating.
 - **Compress** matter into **Quantum Caches** (the Rails "loot boxes"; code and data ids
   still say `loot_box`). A cache's contents are in superposition: nothing is decided until
   it's observed. Opening it collapses it. X-rays observe it early, so you see the result and
@@ -22,18 +24,22 @@ there is no player character and the camera is a free "god view". What you *can*
 - **Assemble and place** machines on the pocket universe's grid, starting with irradiation
   enclosures.
 
-The progression arc is Factorio-shaped. Early on, you inject everything by hand. Later,
-machines inside the pocket universe produce, transform and move matter for you, and your
-direct powers matter less.
+The progression arc is Factorio-shaped. Early on, you perturb the vacuum by hand. Later,
+the pocket universe's own structures and machines produce, transform and move matter for
+you, and your direct powers matter less.
 
-[COSMOLOGY.md](COSMOLOGY.md) has the physics behind the theme and the proposed three-phase
-arc (Big Bang, structure formation, stars), including the plan to replace Inject Matter with
-a perturbation ability and reorder the materials so hydrogen comes first.
+[COSMOLOGY.md](COSMOLOGY.md) has the physics behind the theme and the three-phase arc (Big
+Bang, structure formation, stars). The first phase is implemented: see *The pocket universe*
+below.
 
 ## Core loop (implemented)
 
-1. **Inject Matter** to receive carbon or iron. It takes a cast time and has a cooldown.
-2. **Craft** materials into loot boxes and irradiation enclosures.
+1. **Perturb** a grid cell to seed a ripple, or deepen one. Ripples yield matter into the
+   inventory every few seconds, depending on the epoch: nothing during inflation, then
+   hydrogen, then hydrogen and helium.
+2. **Craft** materials into loot boxes and irradiation enclosures. A cache crushes hydrogen
+   and helium, and collapses back into them plus some fused carbon and a little iron. Caches
+   are the only source of carbon and iron until there are stars.
 3. **Open** loot boxes (the Use action) for randomized loot from weighted loot tables.
    A loot box can contain other loot boxes: that's the recursion.
 4. **Deploy** placeable items into cells of the 3D grid, and **Recall** them back.
@@ -46,6 +52,43 @@ Loot boxes carry **modifiers**, which rewrite their loot table before it's rolle
 - multiplied counts for one item
 
 Irradiation enclosures create them (see below).
+
+## The pocket universe (implemented)
+
+The early game follows the real early universe ([COSMOLOGY.md](COSMOLOGY.md)). The data is in
+`Content/Data/universe.json`; numbers are placeholder tuning.
+
+**Epochs** run in order. A new game starts in the first, and each later one begins once its
+`advanceRequirements` are met (the same requirement format as the tech tree). The log
+announces each one.
+
+| Epoch | Cosmic time | Begins when | Ripples gather | Sky |
+|---|---|---|---|---|
+| Inflation | 10^-36 s | a new game starts | nothing: there is no matter yet | faint plasma |
+| Reheating | 10^-32 s | 3 perturbations | hydrogen | opaque, glowing plasma |
+| Nucleosynthesis | 3 min | 100 hydrogen gathered | hydrogen and helium; caches unlock | glowing plasma |
+| Recombination | 380 thousand years | 3 ripples and 3 opened caches | hydrogen and helium; gravity deepens ripples | clears: the fog lifts |
+
+- **The cosmic clock** sweeps from an epoch's start to the next one's over `clockSeconds` of
+  play, on a log scale, then waits there. The HUD shows the epoch and the cosmic time.
+- **Ripples** (the `overdensity` structure) are created by Perturb in an empty cell, and
+  deepened by Perturb up to amplitude 5. Each yield rolls the epoch's `yieldTable` once per
+  amplitude. Before recombination, radiation pressure stops matter clumping, so only Perturb
+  deepens them. From recombination on, gravity deepens them every `rippleGrowthSeconds`,
+  which is what makes the early game self-sustaining. Structures can't be recalled.
+- **Perturb retires** at recombination (`retireRequirements`): it's hidden and refused for
+  good, and the ripples carry on without it.
+- **The host black hole evaporates** by Hawking radiation. Its mass cubed falls linearly,
+  so a full-mass host lasts `lifetimeSeconds` (an hour) and the loss speeds up as it
+  shrinks. Each perturbation draws 2% of its mass, and a perturbation is refused if it
+  would take the last of it. **Feed the Horizon** (revealed at 90%) restores 15%. At zero
+  the pocket universe freezes: ripples, enclosures and the clock stop until you feed it.
+  That's the soft fail; nothing is lost.
+- **The plasma** is a glowing veil in the sky whose opacity comes from the epoch, fading over
+  a few seconds between epochs. It clears at recombination.
+
+Overdensity yields go straight into the inventory, and whatever doesn't fit is lost. That's
+the interim until gas becomes a per-cell quantity (roadmap M7).
 
 ## The grid (implemented)
 
@@ -101,8 +144,10 @@ Irradiation enclosures create them (see below).
 
 Recipes and actions can have `revealRequirements`. Until those have all been met once, the
 recipe or action is hidden (and refused). After that it is **unlocked for good**, saved,
-and announced in the log. There's no separate research system: the tree *is* these
-requirements, so it lives entirely in `recipes.json` and `actions.json`.
+and announced in the log. Actions can also have `retireRequirements`: once those are met,
+the action is **retired for good** (hidden and refused again). There's no separate research
+system: the tree *is* these requirements, so it lives entirely in `recipes.json`,
+`actions.json` and the epochs in `universe.json`.
 
 Requirement checks:
 
@@ -112,11 +157,13 @@ Requirement checks:
 | `placed` | entities deployed in the grid | `{"check":"placed","condition":"gt","value":0}` |
 | `stat` | lifetime counters the game records | `{"check":"stat","id":"exposed:x_rays","condition":"gte","value":1}` |
 | `unlocked` | 1 if another recipe/action is unlocked | `{"check":"unlocked","id":"recipe:grow_lamp","condition":"eq","value":1}` |
+| `epoch` | 1 once an epoch has been reached | `{"check":"epoch","id":"nucleosynthesis","condition":"eq","value":1}` |
+| `host` | the host black hole's mass, in whole percent | `{"check":"host","condition":"lte","value":90}` |
 
 Stats recorded automatically:
 
 - `done:<action>` for each completed action
-- `gained:<item>` for items received through actions
+- `gained:<item>` for items received through actions and from ripples
 - `crafted:<recipe>`
 - `opened:<loot box item>`
 - `exposed:<radiation>` for each irradiation exposure
@@ -127,8 +174,9 @@ Cheat items (`LRGive`) don't count.
 
 | Unlocks | When |
 |---|---|
-| Inject Matter, Loot Box recipe, Sort | from the start |
-| Craft | after 2 injections |
+| Perturb, Sort, Annihilate | from the start |
+| Feed the Horizon | when the host is down to 90% of its mass |
+| Craft, Quantum Cache recipe | at nucleosynthesis |
 | Use | when you first hold a loot box |
 | Carbon Irradiation Enclosure | after opening a loot box |
 | Deploy, then Recall | when you first hold a deployable, then once Deploy is unlocked |
@@ -139,9 +187,10 @@ Cheat items (`LRGive`) don't count.
 | Iron Irradiation Enclosure | after 2 microwave exposures |
 | X-Ray Tube | after crafting an iron enclosure |
 | Gamma Source | after your first X-ray |
+| Perturb retires | at recombination |
 
-The `TechTree.ShippedTreeIsPlayable` automation test plays this tree from a new game to
-the last unlock, so a data change that creates a dead end fails a test.
+The `TechTree.ShippedTreeIsPlayable` automation test plays this tree and the epochs from a
+new game to the last unlock, so a data change that creates a dead end fails a test.
 
 **Later:** a tech tree viewer (locked entries shown as "???" with hints), branching choices,
 and requirements with OR.
@@ -169,18 +218,19 @@ Irradiation is how loot boxes get better. Numbers are placeholder tuning in
 
 | Source | Radiation (tier) | Effect per stack | From the notes |
 |---|---|---|---|
-| Grow Lamp | Visible light (1) | Carbon amounts ×1.25 | photosynthesis |
+| Grow Lamp | Visible light (1) | Carbon amounts ×1.35 | photosynthesis |
 | Infrared Emitter | Infrared (2) | +1 roll | heating, curing |
-| Microwave Emitter | Microwaves (4) | Iron amounts ×1.35 | ore extraction |
+| Microwave Emitter | Microwaves (4) | Iron amounts ×1.8 | ore extraction |
 | X-Ray Tube | X-rays (5) | Reveals the contents and **locks** them | inspection |
 | Gamma Source | Gamma (7) | Box may contain Loot Boxes (+15 weight per stack) | mutation |
 
 **Balance target** (check with `python Tools/balance.py`):
 
-- A plain cache returns about 90% of its cost: a small gamble, not a farm.
+- A plain cache returns about 90% of its cost by value: a small gamble, not a farm. The
+  tool values a unit of hydrogen at 1, helium 2, carbon 4 and iron 8, by rarity.
 - Each exposure stack adds roughly 15–25% value, so a full carbon enclosure is +40–60% and
   a full iron enclosure roughly doubles a cache.
-- Enclosures are the scaling: many of them work in parallel, while Inject is manual.
+- Enclosures are the scaling: many of them work in parallel, while Perturb is manual.
 
 **How it plays:**
 

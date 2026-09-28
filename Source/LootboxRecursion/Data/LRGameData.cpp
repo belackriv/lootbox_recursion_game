@@ -59,6 +59,16 @@ FName FLRGameData::ActionUnlockKey(FName ActionName)
 	return FName(*FString::Printf(TEXT("action:%s"), *ActionName.ToString()));
 }
 
+FName FLRGameData::ActionRetiredKey(FName ActionName)
+{
+	return FName(*FString::Printf(TEXT("retired:%s"), *ActionName.ToString()));
+}
+
+int32 FLRGameData::FindEpochIndex(FName Id) const
+{
+	return Epochs.IndexOfByPredicate([Id](const FLREpochDef& Epoch) { return Epoch.Id == Id; });
+}
+
 const FLRRecipeDef* FLRGameData::FindRecipe(FName Id) const
 {
 	return Recipes.FindByPredicate([Id](const FLRRecipeDef& Recipe) { return Recipe.Id == Id; });
@@ -107,6 +117,22 @@ void FLRGameData::AddFrom(const FLRDataFile& File)
 		Actions.Add(Action);
 	}
 	Radiation.Append(File.Radiation);
+	for (const FLREpochDef& Epoch : File.Epochs)
+	{
+		const int32 Existing = FindEpochIndex(Epoch.Id);
+		if (Existing != INDEX_NONE)
+		{
+			Epochs[Existing] = Epoch;
+		}
+		else
+		{
+			Epochs.Add(Epoch);
+		}
+	}
+	if (File.Host.IsDefined())
+	{
+		Host = File.Host;
+	}
 }
 
 TArray<FString> FLRGameData::Validate() const
@@ -130,7 +156,8 @@ TArray<FString> FLRGameData::Validate() const
 		for (const FLRRequirement& Req : Requirements)
 		{
 			if (Req.Check != LRNames::CheckInventory && Req.Check != LRNames::CheckPlaced
-				&& Req.Check != LRNames::CheckStat && Req.Check != LRNames::CheckUnlocked)
+				&& Req.Check != LRNames::CheckStat && Req.Check != LRNames::CheckUnlocked
+				&& Req.Check != LRNames::CheckEpoch && Req.Check != LRNames::CheckHost)
 			{
 				Errors.Add(FString::Printf(TEXT("%s: unknown requirement check '%s'"), *Where, *Req.Check.ToString()));
 			}
@@ -155,6 +182,10 @@ TArray<FString> FLRGameData::Validate() const
 					Errors.Add(FString::Printf(TEXT("%s: unknown unlock '%s' (use recipe:<id> or action:<name>)"), *Where, *Req.Id.ToString()));
 				}
 			}
+			if (Req.Check == LRNames::CheckEpoch && FindEpochIndex(Req.Id) == INDEX_NONE)
+			{
+				Errors.Add(FString::Printf(TEXT("%s: unknown epoch '%s'"), *Where, *Req.Id.ToString()));
+			}
 		}
 	};
 
@@ -171,7 +202,8 @@ TArray<FString> FLRGameData::Validate() const
 			Errors.Add(FString::Printf(TEXT("%s: stackSize must be >= 1"), *Where));
 		}
 		if (Item.Category != LRNames::CategoryMaterial && Item.Category != LRNames::CategoryLootBox
-			&& Item.Category != LRNames::CategoryPlaceable && Item.Category != LRNames::CategorySource)
+			&& Item.Category != LRNames::CategoryPlaceable && Item.Category != LRNames::CategorySource
+			&& Item.Category != LRNames::CategoryStructure)
 		{
 			Errors.Add(FString::Printf(TEXT("%s: unknown category '%s'"), *Where, *Item.Category.ToString()));
 		}
@@ -183,9 +215,13 @@ TArray<FString> FLRGameData::Validate() const
 		{
 			Errors.Add(FString::Printf(TEXT("%s: lootbox items need a lootTable"), *Where));
 		}
-		if ((Item.IsPlaceable() || Item.IsLootBox() || Item.IsSource()) && Item.StackSize != 1)
+		if ((Item.IsPlaceable() || Item.IsLootBox() || Item.IsSource() || Item.IsStructure()) && Item.StackSize != 1)
 		{
-			Errors.Add(FString::Printf(TEXT("%s: placeable, lootbox and source items must have stackSize 1"), *Where));
+			Errors.Add(FString::Printf(TEXT("%s: placeable, lootbox, source and structure items must have stackSize 1"), *Where));
+		}
+		if (Item.MaxAmplitude < 0 || (Item.MaxAmplitude > 0 && (!Item.IsStructure() || Item.YieldSeconds <= 0.f)))
+		{
+			Errors.Add(FString::Printf(TEXT("%s: maxAmplitude is for structure items, and needs yieldSeconds > 0"), *Where));
 		}
 		if (Item.Category == LRNames::CategorySource && !FindRadiation(Item.Radiation))
 		{
@@ -255,6 +291,57 @@ TArray<FString> FLRGameData::Validate() const
 		}
 		CheckRequirements(Action.Requirements, Where);
 		CheckRequirements(Action.RevealRequirements, Where);
+		CheckRequirements(Action.RetireRequirements, Where);
+		if (!Action.Places.IsNone())
+		{
+			const FLRItemDef* Placed = FindItem(Action.Places);
+			if (!Placed || !Placed->IsOverdensity())
+			{
+				Errors.Add(FString::Printf(TEXT("%s: places '%s', which is not an overdensity (a structure with maxAmplitude > 0)"),
+					*Where, *Action.Places.ToString()));
+			}
+		}
+	}
+
+	for (int32 Index = 0; Index < Epochs.Num(); ++Index)
+	{
+		const FLREpochDef& Epoch = Epochs[Index];
+		const FString Where = FString::Printf(TEXT("epoch '%s'"), *Epoch.Id.ToString());
+		if (Epoch.Id.IsNone())
+		{
+			Errors.Add(TEXT("epoch with no id"));
+		}
+		else if (FindEpochIndex(Epoch.Id) != Index)
+		{
+			Errors.Add(FString::Printf(TEXT("%s: duplicate id"), *Where));
+		}
+		if (Epoch.StartTime <= 0.0 || (Index > 0 && Epoch.StartTime <= Epochs[Index - 1].StartTime))
+		{
+			Errors.Add(FString::Printf(TEXT("%s: startTime must be > 0 and later than the previous epoch's"), *Where));
+		}
+		if (Epoch.EndTime != 0.0 && Epoch.EndTime <= Epoch.StartTime)
+		{
+			Errors.Add(FString::Printf(TEXT("%s: endTime must be 0 or later than startTime"), *Where));
+		}
+		if (Epoch.ClockSeconds < 0.f || Epoch.RippleGrowthSeconds < 0.f || Epoch.Plasma < 0.f || Epoch.Plasma > 1.f)
+		{
+			Errors.Add(FString::Printf(TEXT("%s: need clockSeconds >= 0, rippleGrowthSeconds >= 0 and 0 <= plasma <= 1"), *Where));
+		}
+		if (!Epoch.YieldTable.IsNone() && !LootTables.Contains(Epoch.YieldTable))
+		{
+			Errors.Add(FString::Printf(TEXT("%s: unknown yieldTable '%s'"), *Where, *Epoch.YieldTable.ToString()));
+		}
+		if (Index == 0 && !Epoch.AdvanceRequirements.IsEmpty())
+		{
+			Errors.Add(FString::Printf(TEXT("%s: the first epoch is where a game starts, so it can't have advanceRequirements"), *Where));
+		}
+		CheckRequirements(Epoch.AdvanceRequirements, Where);
+	}
+
+	if (Host.LifetimeSeconds < 0.f || Host.PerturbCost < 0.f || Host.PerturbCost > 1.f
+		|| Host.FeedAmount < 0.f || Host.FeedAmount > 1.f || Host.WarningMass < 0.f || Host.WarningMass > 1.f)
+	{
+		Errors.Add(TEXT("host: need lifetimeSeconds >= 0, and perturbCost, feedAmount and warningMass between 0 and 1"));
 	}
 
 	TSet<FName> RadiationIds;

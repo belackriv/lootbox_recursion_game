@@ -98,6 +98,18 @@ struct LOOTBOXRECURSION_API FLRPlacedEntity
 	/** Seconds of exposure accumulated toward the next modifier stack. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	double ExposureProgress = 0.0;
+
+	/** Overdensities: how deep the ripple is (1..MaxAmplitude). Each yield rolls this many times. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	int32 Amplitude = 0;
+
+	/** Overdensities: seconds accumulated toward the next yield. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	double YieldProgress = 0.0;
+
+	/** Overdensities: seconds accumulated toward gravity deepening the ripple by one. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	double GrowthProgress = 0.0;
 };
 
 /**
@@ -274,4 +286,20 @@ struct LOOTBOXRECURSION_API FLRSaveData
 	/** Lifetime counters ("crafted:loot_box", "gained:iron", ...). */
 	UPROPERTY()
 	TMap<FName, int32> Stats;
+
+	/** Current epoch id (universe.json). */
+	UPROPERTY()
+	FName Epoch;
+
+	/** Simulation time the current epoch began. */
+	UPROPERTY()
+	double EpochStartedAt = 0.0;
+
+	/** Cosmic seconds since the pocket universe's Big Bang. */
+	UPROPERTY()
+	double CosmicTime = 0.0;
+
+	/** The host black hole's mass as a fraction of its starting mass. */
+	UPROPERTY()
+	double HostMass = 1.0;
 };

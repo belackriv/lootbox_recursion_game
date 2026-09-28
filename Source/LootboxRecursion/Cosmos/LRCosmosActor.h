@@ -69,6 +69,18 @@ public:
 	int32 StarCount = 3000;
 
 	/**
+	 * Glow of the primordial plasma that fills the sky before recombination (HDR: above 1
+	 * blooms). Its opacity comes from the current epoch; it clears when the universe turns
+	 * transparent.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Cosmos")
+	FLinearColor PlasmaColor = FLinearColor(1.6f, 0.75f, 0.35f);
+
+	/** Opacity of the plasma at its thickest, so the black hole stays faintly visible through it. */
+	UPROPERTY(Config, EditAnywhere, Category = "Cosmos")
+	float MaxPlasmaOpacity = 0.92f;
+
+	/**
 	 * While playing, hide everything visible the level brings: sky atmosphere, clouds, fog,
 	 * floors, landscapes and props (template levels have all of them). The game happens in the
 	 * void; lights keep working and the level asset itself is untouched. Turn this off to build
@@ -85,6 +97,8 @@ private:
 	UInstancedStaticMeshComponent* MakeStarLayer(const FLinearColor& Tint);
 	void BuildStars();
 	void BuildBlackHole();
+	void BuildPlasmaVeil();
+	void UpdatePlasmaVeil();
 	void UploadFrame();
 	void HideLevelEnvironment();
 	void HandleLevelAdded(ULevel* Level, UWorld* World);
@@ -116,6 +130,16 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UStaticMeshComponent> BlackHole;
+
+	/** A sphere inside the stars that glows with the primordial plasma (see PlasmaColor). */
+	UPROPERTY()
+	TObjectPtr<UStaticMeshComponent> PlasmaVeil;
+
+	UPROPERTY()
+	TObjectPtr<UMaterialInstanceDynamic> PlasmaMaterial;
+
+	/** Opacity last applied to the veil (-1 = never), so the material only updates on change. */
+	float ShownPlasmaOpacity = -1.f;
 
 	UPROPERTY()
 	TObjectPtr<UTexture2D> WhiteTexture;

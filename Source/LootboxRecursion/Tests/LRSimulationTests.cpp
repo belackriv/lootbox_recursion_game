@@ -25,6 +25,8 @@ namespace LRTest
 	const FName Lamp(TEXT("lamp"));
 	const FName XRayTube(TEXT("xray_tube"));
 	const FName GammaSource(TEXT("gamma_source"));
+	/** A plain loot action: any action with a lootTable just rolls it. */
+	const FName Gather(TEXT("gather"));
 
 	void AddItemDef(FLRGameData& Data, FName Id, const TCHAR* Name, FName Category, int32 StackSize, FName LootTable = NAME_None)
 	{
@@ -99,7 +101,7 @@ namespace LRTest
 		Data.Items[GammaSource].Radiation = TEXT("gamma");
 
 		AddTable(Data, TEXT("box"), 2, Carbon, 10);       // always 2 x 10 carbon
-		AddTable(Data, TEXT("inject"), 1, Carbon, 30);    // always 30 carbon
+		AddTable(Data, TEXT("gather"), 1, Carbon, 30);    // always 30 carbon
 		AddTable(Data, TEXT("nested"), 1, Box, 1);        // a box inside a box
 
 		FLRRecipeDef BoxRecipe;
@@ -109,7 +111,7 @@ namespace LRTest
 		BoxRecipe.Cost = { FLRItemAmount(Carbon, 50), FLRItemAmount(Iron, 50) };
 		Data.Recipes.Add(BoxRecipe);
 
-		Data.Actions.Add(MakeAction(LRNames::Inject, 5.f, 5.f, TEXT("inject")));
+		Data.Actions.Add(MakeAction(Gather, 5.f, 5.f, TEXT("gather")));
 		Data.Actions.Add(MakeAction(LRNames::Craft, 5.f, 5.f));
 
 		FLRActionDef Use = MakeAction(LRNames::Use, 5.f, 5.f);
@@ -164,7 +166,7 @@ namespace LRTest
 		Chained.RevealRequirements.Add(AfterGated);
 		Data.Recipes.Add(Chained);
 
-		FLRActionDef Scan = MakeAction(TEXT("scan"), 1.f, 0.f, TEXT("inject"));
+		FLRActionDef Scan = MakeAction(TEXT("scan"), 1.f, 0.f, TEXT("gather"));
 		FLRRequirement HoldsBox;
 		HoldsBox.Category = LRNames::CategoryLootBox;
 		Scan.RevealRequirements.Add(HoldsBox);
@@ -208,18 +210,114 @@ namespace LRTest
 		Deploy.Slot = SlotOf(Sim, Enclosure);
 		Sim.RequestAction(Deploy);
 	}
+
+	const FName Hydrogen(TEXT("hydrogen"));
+	const FName Ripple(TEXT("ripple"));
+	/** An instant seeding action (like perturb) that places Ripple and retires in the last epoch. */
+	const FName Seed(TEXT("seed"));
+
+	/**
+	 * MakeData plus a pocket universe: a ripple that yields 5 hydrogen per roll, three epochs and
+	 * a host black hole. Epochs: "empty" (no yield) -> "hot" after two seeds (yields) -> "clear"
+	 * after 20 hydrogen gained (yields, ripples grow every 30s, the seed action retires).
+	 */
+	FLRGameData MakeCosmosData()
+	{
+		FLRGameData Data = MakeData();
+		AddItemDef(Data, Hydrogen, TEXT("Hydrogen"), LRNames::CategoryMaterial, 100);
+		AddItemDef(Data, Ripple, TEXT("Ripple"), LRNames::CategoryStructure, 1);
+		Data.Items[Ripple].MaxAmplitude = 3;
+		Data.Items[Ripple].YieldSeconds = 10.f;
+		AddTable(Data, TEXT("plasma"), 1, Hydrogen, 5); // always 5 hydrogen per roll
+
+		auto MakeStat = [](const TCHAR* Id, int32 Value)
+		{
+			FLRRequirement Requirement;
+			Requirement.Check = LRNames::CheckStat;
+			Requirement.Id = Id;
+			Requirement.Condition = TEXT("gte");
+			Requirement.Value = Value;
+			return Requirement;
+		};
+		auto AddEpoch = [&Data](const TCHAR* Id, double Start, FName YieldTable, float Growth, float Plasma) -> FLREpochDef&
+		{
+			FLREpochDef Epoch;
+			Epoch.Id = Id;
+			Epoch.Name = Id;
+			Epoch.Description = TEXT("Test epoch.");
+			Epoch.StartTime = Start;
+			Epoch.ClockSeconds = 10.f;
+			Epoch.YieldTable = YieldTable;
+			Epoch.RippleGrowthSeconds = Growth;
+			Epoch.Plasma = Plasma;
+			return Data.Epochs.Add_GetRef(Epoch);
+		};
+		AddEpoch(TEXT("empty"), 1e-36, NAME_None, 0.f, 0.2f);
+		AddEpoch(TEXT("hot"), 1e-32, TEXT("plasma"), 0.f, 1.f).AdvanceRequirements.Add(MakeStat(TEXT("done:seed"), 2));
+		FLREpochDef& Clear = AddEpoch(TEXT("clear"), 100.0, TEXT("plasma"), 30.f, 0.f);
+		Clear.EndTime = 1e4;
+		Clear.AdvanceRequirements.Add(MakeStat(TEXT("gained:hydrogen"), 20));
+
+		FLRActionDef SeedAction = MakeAction(Seed, 0.f, 0.f);
+		SeedAction.Places = Ripple;
+		FLRRequirement InClear;
+		InClear.Check = LRNames::CheckEpoch;
+		InClear.Id = TEXT("clear");
+		InClear.Condition = TEXT("eq");
+		InClear.Value = 1;
+		SeedAction.RetireRequirements.Add(InClear);
+		Data.Actions.Add(SeedAction);
+		Data.Actions.Add(MakeAction(LRNames::Feed, 0.f, 0.f));
+
+		Data.Host.LifetimeSeconds = 1000.f;
+		Data.Host.PerturbCost = 0.1f;
+		Data.Host.FeedAmount = 0.3f;
+		Data.Host.WarningMass = 0.25f;
+		return Data;
+	}
+
+	/** The cosmos data with a host that never evaporates (perturbations still cost mass). */
+	FLRGameData MakeStableCosmosData()
+	{
+		FLRGameData Data = MakeCosmosData();
+		Data.Host.LifetimeSeconds = 0.f;
+		return Data;
+	}
+
+	bool SeedAt(FLRSimulation& Sim, const FIntVector& Cell)
+	{
+		return Sim.RequestAction(AtCell(Seed, Cell)).bSuccess;
+	}
+
+	/** Collects every message the sim broadcasts while it is alive (it unbinds itself). */
+	struct FMessageLog
+	{
+		explicit FMessageLog(FLRSimulation& InSim) : Sim(InSim)
+		{
+			Handle = Sim.OnActionCompleted.AddLambda([this](const FLRActionResult& Result) { Messages.Add(Result.Message); });
+		}
+		~FMessageLog() { Sim.OnActionCompleted.Remove(Handle); }
+		bool Contains(const TCHAR* Text) const
+		{
+			return Messages.ContainsByPredicate([Text](const FString& Message) { return Message.Contains(Text); });
+		}
+
+		FLRSimulation& Sim;
+		FDelegateHandle Handle;
+		TArray<FString> Messages;
+	};
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimInjectTest, "LootboxRecursion.Simulation.InjectCastAndCooldown", LR_TEST_FLAGS)
-bool FLRSimInjectTest::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimLootActionTest, "LootboxRecursion.Simulation.LootActionCastAndCooldown", LR_TEST_FLAGS)
+bool FLRSimLootActionTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 42);
 
-	const FLRActionResult Started = Sim.RequestAction(FLRActionRequest::Make(LRNames::Inject));
+	const FLRActionResult Started = Sim.RequestAction(FLRActionRequest::Make(LRTest::Gather));
 	TestTrue(TEXT("request accepted"), Started.bSuccess && Started.bStarted);
-	TestTrue(TEXT("status shows casting"), Sim.GetActionStatus(LRNames::Inject).bCasting);
+	TestTrue(TEXT("status shows casting"), Sim.GetActionStatus(LRTest::Gather).bCasting);
 
-	const FLRActionResult Again = Sim.RequestAction(FLRActionRequest::Make(LRNames::Inject));
+	const FLRActionResult Again = Sim.RequestAction(FLRActionRequest::Make(LRTest::Gather));
 	TestFalse(TEXT("second request rejected while casting"), Again.bSuccess);
 
 	Sim.Advance(4.9);
@@ -230,7 +328,7 @@ bool FLRSimInjectTest::RunTest(const FString& Parameters)
 	Sim.Advance(0.2);
 	TestTrue(TEXT("completion broadcast"), bCompleted);
 	TestEqual(TEXT("carbon after cast"), Sim.CountItem(LRTest::Carbon), 30);
-	TestFalse(TEXT("cooldown over (cooldown == cast time)"), Sim.GetActionStatus(LRNames::Inject).bOnCooldown);
+	TestFalse(TEXT("cooldown over (cooldown == cast time)"), Sim.GetActionStatus(LRTest::Gather).bOnCooldown);
 	return true;
 }
 
@@ -471,7 +569,7 @@ bool FLRSimSaveLoadTest::RunTest(const FString& Parameters)
 	FLRSimulation Sim(LRTest::MakeData(), 7);
 	Sim.GiveItem(LRTest::Enclosure, 1);
 	Sim.RequestAction(LRTest::AtCell(LRNames::Deploy, FIntVector(12, -1, 3)));
-	Sim.RequestAction(FLRActionRequest::Make(LRNames::Inject)); // mid-cast when saved
+	Sim.RequestAction(FLRActionRequest::Make(LRTest::Gather)); // mid-cast when saved
 	Sim.Advance(2.0);
 
 	const FLRSaveData Save = Sim.Save();
@@ -479,7 +577,7 @@ bool FLRSimSaveLoadTest::RunTest(const FString& Parameters)
 	FLRSimulation Loaded(LRTest::MakeData(), 0);
 	TestTrue(TEXT("load"), Loaded.Load(Save));
 	TestNotNull(TEXT("placed entity restored"), Loaded.FindPlaced(FIntVector(12, -1, 3)));
-	TestTrue(TEXT("cast restored"), Loaded.GetActionStatus(LRNames::Inject).bCasting);
+	TestTrue(TEXT("cast restored"), Loaded.GetActionStatus(LRTest::Gather).bCasting);
 
 	Loaded.Advance(3.0);
 	TestEqual(TEXT("pending cast completes after load"), Loaded.CountItem(LRTest::Carbon), 30);
@@ -502,7 +600,8 @@ bool FLRGameDataShippedTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("Content/Data loads cleanly"), bLoaded);
 
-	for (const FName Action : { LRNames::Inject, LRNames::Craft, LRNames::Use, LRNames::Deploy, LRNames::Recall, LRNames::SortInventory })
+	for (const FName Action : { LRNames::Perturb, LRNames::Feed, LRNames::Craft, LRNames::Use, LRNames::Deploy, LRNames::Recall,
+		LRNames::SortInventory, LRNames::Load, LRNames::Unload, LRNames::Annihilate })
 	{
 		TestNotNull(*FString::Printf(TEXT("action '%s' defined"), *Action.ToString()), Data.FindAction(Action));
 	}
@@ -521,6 +620,29 @@ bool FLRGameDataValidationTest::RunTest(const FString& Parameters)
 	Broken.Output = TEXT("unobtainium");
 	Data.Recipes.Add(Broken);
 	TestTrue(TEXT("unknown output reported"), Data.Validate().Num() > 0);
+
+	const FLRGameData Cosmos = LRTest::MakeCosmosData();
+	TestEqual(TEXT("cosmos test data is valid"), Cosmos.Validate().Num(), 0);
+
+	FLRGameData UnknownEpoch = Cosmos;
+	FLRRequirement& Requirement = UnknownEpoch.Epochs[1].AdvanceRequirements[0];
+	Requirement.Check = LRNames::CheckEpoch;
+	Requirement.Id = TEXT("big_crunch");
+	TestTrue(TEXT("unknown epoch reported"), UnknownEpoch.Validate().Num() > 0);
+
+	FLRGameData OutOfOrder = Cosmos;
+	OutOfOrder.Epochs[2].StartTime = 1e-40;
+	TestTrue(TEXT("epochs out of order reported"), OutOfOrder.Validate().Num() > 0);
+
+	FLRGameData PlacesMaterial = Cosmos;
+	for (FLRActionDef& Action : PlacesMaterial.Actions)
+	{
+		if (Action.Name == LRTest::Seed)
+		{
+			Action.Places = LRTest::Hydrogen;
+		}
+	}
+	TestTrue(TEXT("seeding something that isn't an overdensity reported"), PlacesMaterial.Validate().Num() > 0);
 	return true;
 }
 
@@ -734,9 +856,10 @@ bool FLRTechTreeActionTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRTechTreePlaythroughTest, "LootboxRecursion.TechTree.ShippedTreeIsPlayable", LR_TEST_FLAGS)
 bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 {
-	// Walks the real Content/Data tech tree from a new game to the last unlock, so a data
-	// change that creates a dead end fails here. Materials are cheated in (GiveItem doesn't
-	// count toward stats); everything else is played through real actions.
+	// Walks the real Content/Data tech tree and epochs from a new game to the last unlock, so a
+	// data change that creates a dead end fails here. The early game is played for real: the
+	// ripples' yields are what reach nucleosynthesis. After that, materials are cheated in
+	// (GiveItem doesn't count toward stats) and everything else is played through real actions.
 	FLRGameData Data;
 	TArray<FString> Errors;
 	if (!FLRGameData::LoadFromDirectory(FLRGameData::GetDefaultDataDirectory(), Data, Errors))
@@ -748,10 +871,17 @@ bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	FLRSimulation Sim(Data, 7);
+	const FName Hydrogen(TEXT("hydrogen"));
+	const FName Helium(TEXT("helium"));
 	const FName Carbon(TEXT("carbon"));
 	const FName Iron(TEXT("iron"));
 	const FName LootBox(TEXT("loot_box"));
 
+	auto EpochIs = [&Sim](const TCHAR* Id)
+	{
+		const FLREpochDef* Epoch = Sim.GetEpoch();
+		return Epoch && Epoch->Id == FName(Id);
+	};
 	auto Act = [&Sim](const FLRActionRequest& Request)
 	{
 		const bool bOk = Sim.RequestAction(Request).bSuccess;
@@ -779,7 +909,7 @@ bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 	auto Irradiate = [&Sim, &Act, &Craft, &AtCell, &OpenFirstBox, LootBox](const FIntVector& Cell, FName Source, double Seconds)
 	{
 		// A fresh box: open any leftover one first so the new one is the only box.
-		while (Sim.CountItem(LootBox) > 0 && OpenFirstBox()) {}
+		for (int32 Guard = 0; Guard < 10 && Sim.CountItem(LootBox) > 0 && OpenFirstBox(); ++Guard) {}
 		Craft(TEXT("loot_box"));
 		const bool bBox = Act(AtCell(LRNames::Load, Cell, LRTest::SlotOf(Sim, LootBox)));
 		const bool bSource = Act(AtCell(LRNames::Load, Cell, LRTest::SlotOf(Sim, Source)));
@@ -788,20 +918,36 @@ bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 		return bBox && bSource;
 	};
 
-	TestTrue(TEXT("inject available from the start"), Sim.GetActionStatus(LRNames::Inject).bRevealed);
+	// Genesis: three perturbations end inflation, and the ripples' yields reach nucleosynthesis.
+	TestTrue(TEXT("starts in inflation"), EpochIs(TEXT("inflation")));
+	TestTrue(TEXT("perturb available from the start"), Sim.GetActionStatus(LRNames::Perturb).bRevealed);
 	TestFalse(TEXT("craft hidden at the start"), Sim.GetActionStatus(LRNames::Craft).bRevealed);
-	Act(FLRActionRequest::Make(LRNames::Inject));
-	Act(FLRActionRequest::Make(LRNames::Inject));
-	TestTrue(TEXT("craft revealed after injecting"), Sim.GetActionStatus(LRNames::Craft).bRevealed);
+	for (int32 X = 0; X < 3; ++X)
+	{
+		TestTrue(*FString::Printf(TEXT("perturb ripple %d"), X + 1), Act(AtCell(LRNames::Perturb, FIntVector(X, 0, 0))));
+	}
+	TestTrue(TEXT("reheating after three perturbations"), EpochIs(TEXT("reheating")));
+	Sim.Advance(120.0);
+	TestTrue(TEXT("nucleosynthesis once the ripples gathered enough hydrogen"), EpochIs(TEXT("nucleosynthesis")));
+	TestTrue(TEXT("craft revealed"), Sim.GetActionStatus(LRNames::Craft).bRevealed);
 
-	Sim.GiveItem(Carbon, 1000);
-	Sim.GiveItem(Iron, 1000);
-	TestTrue(TEXT("craft a loot box"), Craft(TEXT("loot_box")));
+	// The host evaporates, and perturbing drew on it too: Feed appears once it's below 90%.
+	for (int32 Wait = 0; Wait < 100 && !Sim.GetActionStatus(LRNames::Feed).bRevealed; ++Wait)
+	{
+		Sim.Advance(30.0);
+	}
+	TestTrue(TEXT("feed revealed"), Sim.GetActionStatus(LRNames::Feed).bRevealed);
+	TestTrue(TEXT("feed the horizon"), Act(FLRActionRequest::Make(LRNames::Feed)));
+
+	TestTrue(TEXT("cheat in materials"), Sim.GiveItem(Hydrogen, 300) && Sim.GiveItem(Helium, 400)
+		&& Sim.GiveItem(Carbon, 400) && Sim.GiveItem(Iron, 200));
+	TestTrue(TEXT("craft a cache"), Craft(TEXT("loot_box")));
 	TestTrue(TEXT("use revealed"), Sim.GetActionStatus(LRNames::Use).bRevealed);
 	TestTrue(TEXT("open it"), OpenFirstBox());
 
+	// The ripples sit at (0..2, 0, 0), so the enclosures go on the next row.
 	TestTrue(TEXT("carbon enclosure"), Craft(TEXT("carbon_irradiation_enclosure")));
-	const FIntVector CarbonCell(0, 0, 0);
+	const FIntVector CarbonCell(0, 2, 0);
 	TestTrue(TEXT("deploy it"), Act(AtCell(LRNames::Deploy, CarbonCell, LRTest::SlotOf(Sim, TEXT("carbon_irradiation_enclosure")))));
 
 	TestTrue(TEXT("grow lamp"), Craft(TEXT("grow_lamp")));
@@ -813,11 +959,20 @@ bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("microwave run"), Irradiate(CarbonCell, TEXT("microwave_emitter"), 25.0));
 
 	TestTrue(TEXT("iron enclosure"), Craft(TEXT("iron_irradiation_enclosure")));
-	const FIntVector IronCell(1, 0, 0);
+	const FIntVector IronCell(1, 2, 0);
 	TestTrue(TEXT("deploy iron enclosure"), Act(AtCell(LRNames::Deploy, IronCell, LRTest::SlotOf(Sim, TEXT("iron_irradiation_enclosure")))));
 	TestTrue(TEXT("x-ray tube"), Craft(TEXT("xray_tube")));
 	TestTrue(TEXT("x-ray run"), Irradiate(IronCell, TEXT("xray_tube"), 13.0));
 	TestTrue(TEXT("gamma source"), Craft(TEXT("gamma_source")));
+
+	// Three ripples and three opened caches: recombination, and the ripples grow on their own.
+	TestTrue(TEXT("recombination"), EpochIs(TEXT("recombination")));
+	TestTrue(TEXT("perturb retired"), Sim.IsActionRetired(LRNames::Perturb));
+	TestFalse(TEXT("perturb hidden"), Sim.GetActionStatus(LRNames::Perturb).bRevealed);
+	Sim.Advance(61.0);
+	const FLRPlacedEntity* Ripple = Sim.FindPlaced(FIntVector(0, 0, 0));
+	TestTrue(TEXT("gravity deepens the ripples after recombination"), Ripple && Ripple->Amplitude >= 2);
+	TestFalse(TEXT("the host never ran out"), Sim.IsFrozen());
 
 	for (const FLRRecipeDef& Recipe : Data.Recipes)
 	{
@@ -826,6 +981,10 @@ bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 	for (const FLRActionDef& Action : Data.Actions)
 	{
 		TestTrue(*FString::Printf(TEXT("action '%s' reachable"), *Action.Name.ToString()), Sim.IsActionUnlocked(Action.Name));
+	}
+	for (const FLREpochDef& Epoch : Data.Epochs)
+	{
+		TestTrue(*FString::Printf(TEXT("epoch '%s' reached"), *Epoch.Id.ToString()), Sim.GetEpochIndex() >= Data.FindEpochIndex(Epoch.Id));
 	}
 	return true;
 }
@@ -853,6 +1012,201 @@ bool FLRSimAnnihilateTest::RunTest(const FString& Parameters)
 
 	Request.Slot = 0;
 	TestFalse(TEXT("empty slot refused"), Sim.RequestAction(Request).bSuccess);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRCosmosEpochTest, "LootboxRecursion.Cosmos.EpochsAdvanceAndTheClockRuns", LR_TEST_FLAGS)
+bool FLRCosmosEpochTest::RunTest(const FString& Parameters)
+{
+	FLRSimulation Sim(LRTest::MakeStableCosmosData(), 1);
+	LRTest::FMessageLog Log(Sim);
+	TestEqual(TEXT("starts in the first epoch"), Sim.GetEpochIndex(), 0);
+	TestTrue(TEXT("the clock starts at the first epoch's start"), Sim.GetCosmicTime() == 1e-36);
+
+	// The clock sweeps four decades (1e-36 to 1e-32 s) in 10 seconds, on a log scale.
+	Sim.Advance(5.0);
+	TestTrue(TEXT("halfway there is 1e-34 s"), FMath::IsNearlyEqual(FMath::Loge(Sim.GetCosmicTime()) / FMath::Loge(10.0), -34.0, 1e-6));
+	Sim.Advance(60.0);
+	TestTrue(TEXT("then it waits at the next epoch's start"), Sim.GetCosmicTime() == 1e-32);
+	TestEqual(TEXT("still the first epoch"), Sim.GetEpochIndex(), 0);
+
+	TestTrue(TEXT("seed a ripple"), LRTest::SeedAt(Sim, FIntVector(0, 0, 0)));
+	TestTrue(TEXT("seed another"), LRTest::SeedAt(Sim, FIntVector(1, 0, 0)));
+	TestEqual(TEXT("two seeds begin the second epoch"), Sim.GetEpochIndex(), 1);
+	TestTrue(TEXT("the new epoch is announced"), Log.Contains(TEXT("New epoch: hot")));
+	TestTrue(TEXT("the clock is at the new epoch's start or later"), Sim.GetCosmicTime() >= 1e-32);
+	TestFalse(TEXT("the seed action retires only in the last epoch"), Sim.IsActionRetired(LRTest::Seed));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRCosmosTimeFormatTest, "LootboxRecursion.Cosmos.FormatCosmicTime", LR_TEST_FLAGS)
+bool FLRCosmosTimeFormatTest::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("inflation"), FLRSimulation::FormatCosmicTime(1e-36), FString(TEXT("10^-36 s")));
+	TestEqual(TEXT("reheating"), FLRSimulation::FormatCosmicTime(1e-32), FString(TEXT("10^-32 s")));
+	TestEqual(TEXT("under a second"), FLRSimulation::FormatCosmicTime(0.5), FString(TEXT("0.50 s")));
+	TestEqual(TEXT("nucleosynthesis"), FLRSimulation::FormatCosmicTime(180.0), FString(TEXT("3 min")));
+	TestEqual(TEXT("recombination"), FLRSimulation::FormatCosmicTime(1.2e13), FString(TEXT("380 thousand years")));
+	TestEqual(TEXT("first stars"), FLRSimulation::FormatCosmicTime(3.156e15), FString(TEXT("100 million years")));
+	TestEqual(TEXT("today"), FLRSimulation::FormatCosmicTime(4.35e17), FString(TEXT("13.8 billion years")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRStructureSeedTest, "LootboxRecursion.Structures.SeedingCreatesAndDeepensRipples", LR_TEST_FLAGS)
+bool FLRStructureSeedTest::RunTest(const FString& Parameters)
+{
+	FLRSimulation Sim(LRTest::MakeStableCosmosData(), 1);
+	const FIntVector Cell(0, 0, 0);
+	auto AmplitudeAt = [&Sim](const FIntVector& At)
+	{
+		const FLRPlacedEntity* Entity = Sim.FindPlaced(At);
+		return Entity ? Entity->Amplitude : 0;
+	};
+
+	TestFalse(TEXT("needs a cell"), Sim.RequestAction(FLRActionRequest::Make(LRTest::Seed)).bSuccess);
+	TestTrue(TEXT("seed a ripple"), LRTest::SeedAt(Sim, Cell));
+	const FLRPlacedEntity* Seeded = Sim.FindPlaced(Cell);
+	TestTrue(TEXT("a ripple at amplitude 1"), Seeded && Seeded->Item == LRTest::Ripple && Seeded->Amplitude == 1);
+	TestTrue(TEXT("deepen it"), LRTest::SeedAt(Sim, Cell));
+	TestTrue(TEXT("and again"), LRTest::SeedAt(Sim, Cell));
+	TestEqual(TEXT("amplitude 3"), AmplitudeAt(Cell), 3);
+	TestFalse(TEXT("no deeper than maxAmplitude"), LRTest::SeedAt(Sim, Cell));
+	TestTrue(TEXT("each perturbation drew on the host"), FMath::IsNearlyEqual(Sim.GetHostMass(), 0.7, 1e-6));
+
+	Sim.GiveItem(LRTest::Enclosure, 1);
+	FLRActionRequest Deploy = LRTest::AtCell(LRNames::Deploy, FIntVector(1, 0, 0));
+	Deploy.Slot = LRTest::SlotOf(Sim, LRTest::Enclosure);
+	TestTrue(TEXT("deploy an enclosure next door"), Sim.RequestAction(Deploy).bSuccess);
+	TestFalse(TEXT("can't seed into an occupied cell"), LRTest::SeedAt(Sim, FIntVector(1, 0, 0)));
+	TestFalse(TEXT("ripples can't be recalled"), Sim.RequestAction(LRTest::AtCell(LRNames::Recall, Cell)).bSuccess);
+	TestNotNull(TEXT("the ripple is still there"), Sim.FindPlaced(Cell));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRStructureYieldTest, "LootboxRecursion.Structures.RipplesYieldPerEpochAndGrowLater", LR_TEST_FLAGS)
+bool FLRStructureYieldTest::RunTest(const FString& Parameters)
+{
+	FLRSimulation Sim(LRTest::MakeStableCosmosData(), 1);
+	const FIntVector Cell(0, 0, 0);
+	auto AmplitudeAt = [&Sim](const FIntVector& At)
+	{
+		const FLRPlacedEntity* Entity = Sim.FindPlaced(At);
+		return Entity ? Entity->Amplitude : 0;
+	};
+
+	TestTrue(TEXT("seed"), LRTest::SeedAt(Sim, Cell));
+	Sim.Advance(30.0);
+	TestEqual(TEXT("no matter yet in the first epoch"), Sim.CountItem(LRTest::Hydrogen), 0);
+
+	TestTrue(TEXT("deepen it (the second seed begins the hot epoch)"), LRTest::SeedAt(Sim, Cell));
+	TestEqual(TEXT("hot epoch"), Sim.GetEpochIndex(), 1);
+	Sim.Advance(10.0);
+	TestEqual(TEXT("one yield, one roll per amplitude"), Sim.CountItem(LRTest::Hydrogen), 10);
+	TestEqual(TEXT("yields count as gained"), Sim.GetStat(TEXT("gained:hydrogen")), 10);
+	TestEqual(TEXT("no growth before the clear epoch"), AmplitudeAt(Cell), 2);
+
+	Sim.Advance(10.0);
+	TestEqual(TEXT("20 hydrogen gained: the clear epoch"), Sim.GetEpochIndex(), 2);
+	TestTrue(TEXT("the seed action retired"), Sim.IsActionRetired(LRTest::Seed));
+	TestFalse(TEXT("retired actions are hidden"), Sim.GetActionStatus(LRTest::Seed).bRevealed);
+	TestFalse(TEXT("and refused"), LRTest::SeedAt(Sim, FIntVector(2, 0, 0)));
+
+	// Growth comes first in a tick, so all three yields here are at amplitude 3 (15 each).
+	Sim.Advance(30.0);
+	TestEqual(TEXT("gravity deepened the ripple"), AmplitudeAt(Cell), 3);
+	TestEqual(TEXT("three yields at amplitude 3"), Sim.CountItem(LRTest::Hydrogen), 20 + 3 * 15);
+	Sim.Advance(60.0);
+	TestEqual(TEXT("no deeper than maxAmplitude"), AmplitudeAt(Cell), 3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostTest, "LootboxRecursion.Cosmos.HostEvaporatesFreezesAndFeeds", LR_TEST_FLAGS)
+bool FLRHostTest::RunTest(const FString& Parameters)
+{
+	FLRGameData Data = LRTest::MakeCosmosData(); // lifetime 1000s, perturb 0.1, feed 0.3
+	FLRRequirement Low;
+	Low.Check = LRNames::CheckHost;
+	Low.Condition = TEXT("lte");
+	Low.Value = 90;
+	FLRActionDef* FeedDef = Data.Actions.FindByPredicate([](const FLRActionDef& Action) { return Action.Name == LRNames::Feed; });
+	if (!TestNotNull(TEXT("fixture has feed"), FeedDef))
+	{
+		return false;
+	}
+	FeedDef->RevealRequirements.Add(Low);
+
+	// Mass cubed falls linearly: 27.1% of the lifetime leaves 0.729 = 0.9^3, whatever the step size.
+	FLRSimulation Stepped(Data, 1);
+	for (int32 Step = 0; Step < 271; ++Step)
+	{
+		Stepped.Advance(1.0);
+	}
+	FLRSimulation Sim(Data, 1);
+	LRTest::FMessageLog Log(Sim);
+	TestFalse(TEXT("feed hidden at full mass"), Sim.GetActionStatus(LRNames::Feed).bRevealed);
+	Sim.Advance(271.0);
+	TestTrue(TEXT("0.9 of the mass left"), FMath::IsNearlyEqual(Sim.GetHostMass(), 0.9, 1e-9));
+	TestTrue(TEXT("independent of the step size"), FMath::IsNearlyEqual(Stepped.GetHostMass(), Sim.GetHostMass(), 1e-9));
+	TestTrue(TEXT("the host check reveals feed at 90%"), Sim.GetActionStatus(LRNames::Feed).bRevealed);
+
+	TestTrue(TEXT("seed"), LRTest::SeedAt(Sim, FIntVector(0, 0, 0)));
+	TestTrue(TEXT("seed again (hot epoch: the ripple yields)"), LRTest::SeedAt(Sim, FIntVector(0, 0, 0)));
+	Sim.Advance(400.0); // 0.7^3 = 0.343 is less than 400/1000
+	TestTrue(TEXT("evaporated"), Sim.IsFrozen());
+	TestTrue(TEXT("announced"), Log.Contains(TEXT("evaporated")));
+	TestEqual(TEXT("nothing yields while frozen"), Sim.CountItem(LRTest::Hydrogen), 0);
+	Sim.Advance(50.0);
+	TestEqual(TEXT("still nothing"), Sim.CountItem(LRTest::Hydrogen), 0);
+	TestFalse(TEXT("perturbing needs a host"), LRTest::SeedAt(Sim, FIntVector(1, 0, 0)));
+
+	TestTrue(TEXT("feed"), Sim.RequestAction(FLRActionRequest::Make(LRNames::Feed)).bSuccess);
+	TestFalse(TEXT("no longer frozen"), Sim.IsFrozen());
+	TestTrue(TEXT("the universe stirs"), Log.Contains(TEXT("stirs again")));
+	Sim.Advance(10.0);
+	TestEqual(TEXT("yields resume"), Sim.CountItem(LRTest::Hydrogen), 10);
+
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		Sim.RequestAction(FLRActionRequest::Make(LRNames::Feed));
+	}
+	TestTrue(TEXT("never above full mass"), Sim.GetHostMass() == 1.0);
+	TestFalse(TEXT("feeding a full host is refused"), Sim.RequestAction(FLRActionRequest::Make(LRNames::Feed)).bSuccess);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRCosmosPlasmaTest, "LootboxRecursion.Cosmos.PlasmaFadesBetweenEpochs", LR_TEST_FLAGS)
+bool FLRCosmosPlasmaTest::RunTest(const FString& Parameters)
+{
+	FLRSimulation Sim(LRTest::MakeStableCosmosData(), 1);
+	TestEqual(TEXT("the first epoch's plasma"), Sim.GetPlasmaOpacity(), 0.2f);
+	LRTest::SeedAt(Sim, FIntVector(0, 0, 0));
+	LRTest::SeedAt(Sim, FIntVector(0, 0, 0));
+	TestEqual(TEXT("hot epoch"), Sim.GetEpochIndex(), 1);
+	TestEqual(TEXT("the fade starts from the old value"), Sim.GetPlasmaOpacity(), 0.2f);
+	Sim.Advance(FLRSimulation::PlasmaFadeSeconds / 2.0);
+	TestEqual(TEXT("halfway"), Sim.GetPlasmaOpacity(), 0.6f, 1e-4f);
+	Sim.Advance(FLRSimulation::PlasmaFadeSeconds);
+	TestEqual(TEXT("then the new epoch's plasma"), Sim.GetPlasmaOpacity(), 1.f, 1e-4f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRCosmosSaveTest, "LootboxRecursion.Cosmos.SurvivesSaveLoad", LR_TEST_FLAGS)
+bool FLRCosmosSaveTest::RunTest(const FString& Parameters)
+{
+	const FLRGameData Data = LRTest::MakeCosmosData();
+	FLRSimulation Sim(Data, 3);
+	LRTest::SeedAt(Sim, FIntVector(0, 0, 0));
+	LRTest::SeedAt(Sim, FIntVector(0, 0, 0));
+	Sim.Advance(5.0);
+
+	FLRSimulation Loaded(Data, 0);
+	TestTrue(TEXT("load"), Loaded.Load(Sim.Save()));
+	TestEqual(TEXT("epoch"), Loaded.GetEpochIndex(), 1);
+	TestTrue(TEXT("host mass"), Loaded.GetHostMass() == Sim.GetHostMass());
+	TestTrue(TEXT("cosmic time"), Loaded.GetCosmicTime() == Sim.GetCosmicTime());
+	TestEqual(TEXT("plasma fade"), Loaded.GetPlasmaOpacity(), Sim.GetPlasmaOpacity());
+	const FLRPlacedEntity* Ripple = Loaded.FindPlaced(FIntVector(0, 0, 0));
+	TestTrue(TEXT("ripple amplitude"), Ripple && Ripple->Amplitude == 2);
 	return true;
 }
 

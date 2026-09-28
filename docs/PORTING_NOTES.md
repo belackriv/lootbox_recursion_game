@@ -48,9 +48,10 @@ because an online multi-user web app became a local single-player desktop game.
    slot in slot order that was either empty or a matching partial stack.
 5. **Craft checks for space after paying the cost, inside one transaction.** If paying frees
    the only slot, the craft still succeeds. Rails looked for a slot first.
-6. **Scavenge became Inject Matter, and it's a loot table** (`inject` in
-   `loot_tables.json`). The numbers are the same (25–34 of one material) and the rest is
-   data.
+6. **Scavenge became Inject Matter, and it was a loot table** (`inject` in
+   `loot_tables.json`, 25–34 of one material, as in Rails). Since then the theme has
+   replaced it: Perturb seeds ripples that gather matter on their own (see *The pocket
+   universe* in [DESIGN.md](DESIGN.md)). Any action with a `lootTable` still just rolls it.
 7. **Loot tables belong to the item** (`lootTable` on the item def), not to a `LootBox`
    STI subclass. The `carbon_loot_box` (Rails `WoodLootBox`) and `iron_loot_box` tables were ported but no item uses
    them yet. In Rails, crafting made a plain `LootBox`, which used `default`.

@@ -11,17 +11,19 @@ import sys
 from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "Content" / "Data"
-CATEGORIES = {"material", "lootbox", "placeable", "source"}
+CATEGORIES = {"material", "lootbox", "placeable", "source", "structure"}
 MODIFIER_KINDS = {"extra_rolls", "item_weight_mult", "item_count_mult", "add_entry", "reveal"}
 KINDS_NEEDING_ITEM = {"item_weight_mult", "item_count_mult", "add_entry"}
 CONDITIONS = {"gt", "gte", "lt", "lte", "eq"}
-CHECKS = {"inventory", "placed", "stat", "unlocked"}
-REQUIRED_ACTIONS = {"inject", "craft", "use", "deploy", "recall", "sort_inventory", "load", "unload", "annihilate"}
+CHECKS = {"inventory", "placed", "stat", "unlocked", "epoch", "host"}
+REQUIRED_ACTIONS = {"perturb", "feed", "craft", "use", "deploy", "recall", "sort_inventory", "load", "unload", "annihilate"}
+HOST_DEFAULTS = {"lifetimeSeconds": 0, "perturbCost": 0, "feedAmount": 0, "warningMass": 0.25}
 
 
 def main() -> int:
     errors: list[str] = []
-    items, recipes, tables, actions, radiation = {}, [], {}, [], []
+    items, recipes, tables, actions, radiation, epochs = {}, [], {}, [], [], []
+    host = dict(HOST_DEFAULTS)
 
     files = sorted(DATA_DIR.glob("*.json"))
     if not files:
@@ -41,6 +43,16 @@ def main() -> int:
             tables[table.get("id")] = table
         actions += doc.get("actions", [])
         radiation += doc.get("radiation", [])
+        for epoch in doc.get("epochs", []):
+            # Later files replace an epoch with the same id in place (FLRGameData::AddFrom).
+            existing = next((i for i, e in enumerate(epochs) if e.get("id") == epoch.get("id")), None)
+            if existing is None:
+                epochs.append(epoch)
+            else:
+                epochs[existing] = epoch
+        file_host = doc.get("host")
+        if file_host and any(file_host.get(k, 0) > 0 for k in ("lifetimeSeconds", "perturbCost", "feedAmount")):
+            host = {**HOST_DEFAULTS, **file_host}
 
     def check_item(item_id, where):
         if not item_id:
@@ -49,6 +61,7 @@ def main() -> int:
             errors.append(f"{where}: unknown item '{item_id}'")
 
     radiation_ids = {rad.get("id") for rad in radiation}
+    epoch_ids = {e.get("id") for e in epochs}
 
     for item_id, item in items.items():
         where = f"item '{item_id}'"
@@ -64,8 +77,11 @@ def main() -> int:
             errors.append(f"{where}: unknown lootTable '{table}'")
         if item.get("category") == "lootbox" and not table:
             errors.append(f"{where}: lootbox items need a lootTable")
-        if (item.get("category") in ("placeable", "source") or table) and stack != 1:
-            errors.append(f"{where}: placeable, lootbox and source items must have stackSize 1")
+        if (item.get("category") in ("placeable", "source", "structure") or table) and stack != 1:
+            errors.append(f"{where}: placeable, lootbox, source and structure items must have stackSize 1")
+        amplitude = item.get("maxAmplitude", 0)
+        if amplitude < 0 or (amplitude > 0 and (item.get("category") != "structure" or item.get("yieldSeconds", 10) <= 0)):
+            errors.append(f"{where}: maxAmplitude is for structure items, and needs yieldSeconds > 0")
         if item.get("category") == "source" and item.get("radiation") not in radiation_ids:
             errors.append(f"{where}: unknown radiation '{item.get('radiation')}'")
         stacks, tier = item.get("maxExposureStacks", 0), item.get("maxRadiationTier", 0)
@@ -87,6 +103,8 @@ def main() -> int:
                 errors.append(f"{where}: stat requirement needs an id")
             if check == "unlocked" and req.get("id") not in unlock_keys:
                 errors.append(f"{where}: unknown unlock '{req.get('id')}' (use recipe:<id> or action:<name>)")
+            if check == "epoch" and req.get("id") not in epoch_ids:
+                errors.append(f"{where}: unknown epoch '{req.get('id')}'")
 
     for recipe in recipes:
         where = f"recipe '{recipe.get('id')}'"
@@ -122,7 +140,13 @@ def main() -> int:
         table = action.get("lootTable")
         if table and table not in tables:
             errors.append(f"{where}: unknown lootTable '{table}'")
-        check_requirements(action.get("requirements", []) + action.get("revealRequirements", []), where)
+        check_requirements(action.get("requirements", []) + action.get("revealRequirements", [])
+                           + action.get("retireRequirements", []), where)
+        places = action.get("places")
+        if places:
+            placed = items.get(places, {})
+            if placed.get("category") != "structure" or placed.get("maxAmplitude", 0) <= 0:
+                errors.append(f"{where}: places '{places}', which is not an overdensity (a structure with maxAmplitude > 0)")
     for missing in sorted(REQUIRED_ACTIONS - names):
         errors.append(f"action '{missing}' is required by the code but not defined")
 
@@ -141,6 +165,29 @@ def main() -> int:
             if effect.get("kind") in KINDS_NEEDING_ITEM:
                 check_item(effect.get("item"), f"{where} effect")
 
+    for index, epoch in enumerate(epochs):
+        where = f"epoch '{epoch.get('id')}'"
+        start, end = epoch.get("startTime", 0), epoch.get("endTime", 0)
+        if not epoch.get("id"):
+            errors.append("epoch with no id")
+        if start <= 0 or (index > 0 and start <= epochs[index - 1].get("startTime", 0)):
+            errors.append(f"{where}: startTime must be > 0 and later than the previous epoch's")
+        if end != 0 and end <= start:
+            errors.append(f"{where}: endTime must be 0 or later than startTime")
+        plasma = epoch.get("plasma", 0)
+        if epoch.get("clockSeconds", 0) < 0 or epoch.get("rippleGrowthSeconds", 0) < 0 or not 0 <= plasma <= 1:
+            errors.append(f"{where}: need clockSeconds >= 0, rippleGrowthSeconds >= 0 and 0 <= plasma <= 1")
+        table = epoch.get("yieldTable")
+        if table and table not in tables:
+            errors.append(f"{where}: unknown yieldTable '{table}'")
+        if index == 0 and epoch.get("advanceRequirements"):
+            errors.append(f"{where}: the first epoch is where a game starts, so it can't have advanceRequirements")
+        check_requirements(epoch.get("advanceRequirements", []), where)
+
+    if (host["lifetimeSeconds"] < 0 or not 0 <= host["perturbCost"] <= 1 or not 0 <= host["feedAmount"] <= 1
+            or not 0 <= host["warningMass"] <= 1):
+        errors.append("host: need lifetimeSeconds >= 0, and perturbCost, feedAmount and warningMass between 0 and 1")
+
     if errors:
         print(f"{len(errors)} problem(s) in {DATA_DIR}:")
         for error in errors:
@@ -148,7 +195,7 @@ def main() -> int:
         return 1
 
     print(f"OK: {len(items)} items, {len(recipes)} recipes, {len(tables)} loot tables, "
-          f"{len(actions)} actions, {len(radiation)} radiation types")
+          f"{len(actions)} actions, {len(radiation)} radiation types, {len(epochs)} epochs")
     return 0
 
 

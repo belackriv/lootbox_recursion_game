@@ -1,13 +1,35 @@
 {
-	"_comment": "Ported from app/data/player_actions.yml. cooldown and castTime are in simulation seconds. Requirement: check = inventory | placed, filtered by item or category, condition = gt | gte | lt | lte | eq. 'craft' is enabled when any recipe is affordable and 'sort_inventory' when the inventory is unsorted (special-cased in code, like PlayerAction#update_disabled). revealRequirements unlock an action for good once met (tech tree); requirements are checked every time.",
+	"_comment": "cooldown and castTime are in simulation seconds. Requirement: check = inventory | placed | stat | unlocked | epoch | host, filtered by item or category, condition = gt | gte | lt | lte | eq. 'craft' is enabled when any recipe is affordable and 'sort_inventory' when the inventory is unsorted (special-cased in code, like PlayerAction#update_disabled). revealRequirements unlock an action for good once met (tech tree), retireRequirements retire it for good, and requirements are checked every time. 'places' makes a seeding action: it creates that overdensity in the selected cell or deepens the one there. Any other action with a lootTable just rolls it.",
 	"actions": [
 		{
-			"name": "inject",
-			"label": "Inject Matter",
-			"tooltip": "Channel elementary matter through the event horizon into the pocket universe. Yields carbon or iron.",
+			"name": "perturb",
+			"label": "Perturb",
+			"tooltip": "Stretch a quantum fluctuation across the selected cell. It seeds a ripple (an overdensity) there, or deepens the one already there. The energy comes out of the host black hole.",
 			"cooldown": 5,
+			"castTime": 3,
+			"places": "overdensity",
+			"retireRequirements": [
+				{
+					"check": "epoch",
+					"id": "recombination",
+					"condition": "eq",
+					"value": 1
+				}
+			]
+		},
+		{
+			"name": "feed",
+			"label": "Feed the Horizon",
+			"tooltip": "Pour matter from the facility across the event horizon. The host black hole regains mass, and the heavier it is, the slower it evaporates.",
+			"cooldown": 30,
 			"castTime": 5,
-			"lootTable": "inject"
+			"revealRequirements": [
+				{
+					"check": "host",
+					"condition": "lte",
+					"value": 90
+				}
+			]
 		},
 		{
 			"name": "craft",
@@ -17,10 +39,10 @@
 			"castTime": 5,
 			"revealRequirements": [
 				{
-					"check": "stat",
-					"id": "done:inject",
-					"condition": "gte",
-					"value": 2
+					"check": "epoch",
+					"id": "nucleosynthesis",
+					"condition": "eq",
+					"value": 1
 				}
 			]
 		},

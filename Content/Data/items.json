@@ -1,11 +1,29 @@
 {
-	"_comment": "Item definitions. Ported from the Rails InventoryItem STI subclasses (wood became carbon). category: material | lootbox | placeable | source. Items with a lootTable can be opened with the Use action. Items with stackSize 1 get a unique instance id. Enclosures (placeable with maxExposureStacks > 0) hold one loot box and one radiation source; sources name a radiation id from radiation.json. The loot_box item is shown to players as the Quantum Cache (ids keep the old name).",
+	"_comment": "Item definitions. category: material | lootbox | placeable | source | structure. Materials follow the cosmology: hydrogen and helium are primordial, while carbon and iron only come out of collapsing caches for now. Items with a lootTable can be opened with the Use action. Items with stackSize 1 get a unique instance id. Enclosures (placeable with maxExposureStacks > 0) hold one loot box and one radiation source; sources name a radiation id from radiation.json. Structures are part of the pocket universe: actions create them in grid cells and they can't be recalled. An overdensity (structure with maxAmplitude > 0) yields the current epoch's yieldTable every yieldSeconds, one roll per amplitude. The loot_box item is shown to players as the Quantum Cache (ids keep the old name).",
 	"items": [
+		{
+			"id": "hydrogen",
+			"displayName": "Hydrogen",
+			"abbrev": "H",
+			"tooltip": "Primordial hydrogen: a lone proton, and three quarters of all the matter there will ever be.",
+			"category": "material",
+			"stackSize": 100,
+			"color": "#8FB8FF"
+		},
+		{
+			"id": "helium",
+			"displayName": "Helium",
+			"abbrev": "He",
+			"tooltip": "Primordial helium, fused in the first few minutes. A quarter of all the matter there will ever be.",
+			"category": "material",
+			"stackSize": 100,
+			"color": "#F2C879"
+		},
 		{
 			"id": "carbon",
 			"displayName": "Carbon",
 			"abbrev": "C",
-			"tooltip": "Elementary carbon, injected through the event horizon. Light, versatile, and the backbone of most structures.",
+			"tooltip": "Forged when three helium nuclei fuse. No star has shone yet, so only the crush inside a collapsing cache is enough to make it.",
 			"category": "material",
 			"stackSize": 100,
 			"color": "#6E6E78"
@@ -14,7 +32,7 @@
 			"id": "iron",
 			"displayName": "Iron",
 			"abbrev": "Fe",
-			"tooltip": "Elementary iron, injected through the event horizon. Dense and strong.",
+			"tooltip": "The end of the fusion road: fusing iron costs energy instead of releasing it. Only the most compressed caches collapse this far.",
 			"category": "material",
 			"stackSize": 100,
 			"color": "#A8745A"
@@ -23,11 +41,22 @@
 			"id": "loot_box",
 			"displayName": "Quantum Cache",
 			"abbrev": "QC",
-			"tooltip": "A sealed cache of compressed matter in superposition: what's inside isn't decided until it's observed. Use it to open it and collapse it.",
+			"tooltip": "Primordial gas crushed into a sealed cache in superposition: what's inside isn't decided until it's observed. Use it to open it and collapse it. The crush fuses some of the gas into carbon and, rarely, iron.",
 			"category": "lootbox",
 			"stackSize": 1,
 			"lootTable": "default",
 			"color": "#E8A020"
+		},
+		{
+			"id": "overdensity",
+			"displayName": "Overdensity",
+			"abbrev": "OD",
+			"tooltip": "A quantum ripple stretched to cosmic size. It's a little denser than its surroundings, so it gathers whatever matter the epoch has to offer and sends it through the horizon link to you. Each amplitude adds a roll to its yield.",
+			"category": "structure",
+			"stackSize": 1,
+			"color": "#B48CFF",
+			"maxAmplitude": 5,
+			"yieldSeconds": 10
 		},
 		{
 			"id": "carbon_irradiation_enclosure",

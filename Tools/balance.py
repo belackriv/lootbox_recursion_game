@@ -2,7 +2,7 @@
 """Expected-value calculator for quantum caches (loot tables + irradiation modifiers).
 
 Mirrors FLRSimulation::ApplyModifiers / RollLootTable on the data in Content/Data, so you can
-tune loot_tables.json, recipes.json and radiation.json without playing hundreds of rounds.
+tune loot_tables.json, recipes.json, radiation.json and universe.json without playing hundreds of rounds.
 
     python Tools/balance.py                                  # plain cache + common irradiation combos
     python Tools/balance.py infrared infrared microwaves     # a specific combo (radiation ids)
@@ -55,33 +55,48 @@ def expected(table, modifiers):
     return out
 
 
+# Rough worth of one unit of each material, by rarity: hydrogen is 3/4 of all matter, helium most of
+# the rest, and carbon and iron only come out of collapsing caches for now.
+VALUES = {"hydrogen": 1, "helium": 2, "carbon": 4, "iron": 8}
+
+
 def main():
     tables = {t["id"]: t for t in load("loot_tables.json", "lootTables")}
     radiation = {r["id"]: r for r in load("radiation.json", "radiation")}
     items = {i["id"]: i for i in load("items.json", "items")}
     recipes = {r["id"]: r for r in load("recipes.json", "recipes")}
+    epochs = load("universe.json", "epochs")
 
     cache = items["loot_box"]
     table = tables[cache["lootTable"]]
     cost = {c["item"]: c["count"] for c in recipes["loot_box"]["cost"]}
-    cost_total = sum(cost.values())
+    cost_value = sum(VALUES[item] * count for item, count in cost.items())
+    values = {**VALUES, "loot_box": cost_value}  # gamma can put a whole cache inside a cache
+
+    print(f"Cache cost: {cost} = {cost_value} value (H {VALUES['hydrogen']}, He {VALUES['helium']}, "
+          f"C {VALUES['carbon']}, Fe {VALUES['iron']} each).")
+    overdensity = items["overdensity"]
+    for epoch in epochs:
+        if not epoch.get("yieldTable"):
+            continue
+        ev = expected(tables[epoch["yieldTable"]], [])
+        per_yield = ", ".join(f"{v:.1f} {k}" for k, v in ev.items())
+        print(f"Overdensity in {epoch['name']}: {per_yield} per amplitude every {overdensity['yieldSeconds']}s "
+              f"(amplitude 1 to {overdensity['maxAmplitude']}).")
+    print()
 
     combos = [sys.argv[1:]] if len(sys.argv) > 1 else [
         [], ["visible_light"] * 3, ["infrared"] * 3, ["microwaves"] * 3,
         ["infrared", "infrared", "microwaves"], ["infrared"] * 5, ["gamma_rays"] * 2,
     ]
-    inject = tables["inject"]
-    inject_ev = sum(expected(inject, []).values())
-    print(f"Cache cost: {cost} = {cost_total}.  Inject Matter: ~{inject_ev:.0f} per use (free, 5s).\n")
-    print(f"{'irradiation':<50}{'expected yield':<44}{'total':>7}{'vs cost':>9}")
+    print(f"{'irradiation':<50}{'expected yield':<52}{'value':>7}{'vs cost':>9}")
     for combo in combos:
         mods = [radiation[r]["effect"] for r in combo if radiation[r].get("effect", {}).get("kind") not in (None, "reveal")]
         ev = expected(table, mods)
-        total = sum(v for k, v in ev.items() if k in ("carbon", "iron"))
-        extra = "".join(f", {v:.2f} {k}" for k, v in ev.items() if k not in ("carbon", "iron"))
+        total = sum(values.get(k, 0) * v for k, v in ev.items())
         label = " + ".join(combo) or "(plain cache)"
-        yield_text = f"{ev.get('carbon', 0):.0f} C, {ev.get('iron', 0):.0f} Fe{extra}"
-        print(f"{label:<50}{yield_text:<44}{total:>7.0f}{(total / cost_total - 1) * 100:>+8.0f}%")
+        yield_text = ", ".join(f"{v:.1f} {items[k]['abbrev']}" for k, v in ev.items())
+        print(f"{label:<50}{yield_text:<52}{total:>7.0f}{(total / cost_value - 1) * 100:>+8.0f}%")
 
 
 if __name__ == "__main__":

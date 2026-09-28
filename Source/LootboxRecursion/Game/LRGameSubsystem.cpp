@@ -212,6 +212,27 @@ double ULRGameSubsystem::GetSimTime() const
 	return Simulation ? Simulation->GetNow() : 0.0;
 }
 
+FString ULRGameSubsystem::GetEpochName() const
+{
+	const FLREpochDef* Epoch = Simulation ? Simulation->GetEpoch() : nullptr;
+	return Epoch ? Epoch->Name : FString();
+}
+
+FString ULRGameSubsystem::GetCosmicTimeText() const
+{
+	return Simulation ? FLRSimulation::FormatCosmicTime(Simulation->GetCosmicTime()) : FString();
+}
+
+float ULRGameSubsystem::GetHostMass() const
+{
+	return Simulation ? static_cast<float>(Simulation->GetHostMass()) : 1.f;
+}
+
+float ULRGameSubsystem::GetPlasmaOpacity() const
+{
+	return Simulation ? Simulation->GetPlasmaOpacity() : 0.f;
+}
+
 // ---- Selection ------------------------------------------------------------------------
 
 void ULRGameSubsystem::SelectSlot(int32 SlotIndex)

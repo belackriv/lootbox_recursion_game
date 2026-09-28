@@ -1,0 +1,78 @@
+{
+	"_comment": "The pocket universe's history and its host black hole (see docs/COSMOLOGY.md). Epochs run in order: a new game starts in the first, and each later one begins once its advanceRequirements are met (requirements work like revealRequirements). Times are cosmic seconds since the Big Bang. The cosmic clock sweeps from startTime to endTime (default: the next epoch's startTime) over clockSeconds of play, on a log scale, and waits there. yieldTable is what overdensities gather during the epoch; rippleGrowthSeconds > 0 lets gravity deepen them on its own; plasma is the sky's opacity. The host evaporates by Hawking radiation (its mass cubed falls linearly, so a full-mass host lasts lifetimeSeconds); masses are fractions of the starting mass. At zero the pocket universe freezes until fed.",
+	"host": {
+		"lifetimeSeconds": 3600,
+		"perturbCost": 0.02,
+		"feedAmount": 0.15,
+		"warningMass": 0.25
+	},
+	"epochs": [
+		{
+			"id": "inflation",
+			"name": "Inflation",
+			"description": "Space is expanding faster than light. Every quantum ripple you stretch now will become a structure later, but there is no matter yet.",
+			"startTime": 1e-36,
+			"clockSeconds": 60,
+			"plasma": 0.25
+		},
+		{
+			"id": "reheating",
+			"name": "Reheating",
+			"description": "Inflation has ended and its energy is pouring out as a hot plasma. Your ripples are denser than their surroundings, so they gather hydrogen nuclei.",
+			"startTime": 1e-32,
+			"clockSeconds": 240,
+			"yieldTable": "overdensity_plasma",
+			"plasma": 1.0,
+			"advanceRequirements": [
+				{
+					"check": "stat",
+					"id": "done:perturb",
+					"condition": "gte",
+					"value": 3
+				}
+			]
+		},
+		{
+			"id": "nucleosynthesis",
+			"name": "Nucleosynthesis",
+			"description": "The plasma has cooled enough for protons and neutrons to fuse. Your ripples now gather helium as well as hydrogen, and matter can be crushed into caches.",
+			"startTime": 180,
+			"clockSeconds": 600,
+			"yieldTable": "overdensity_primordial",
+			"plasma": 0.9,
+			"advanceRequirements": [
+				{
+					"check": "stat",
+					"id": "gained:hydrogen",
+					"condition": "gte",
+					"value": 100
+				}
+			]
+		},
+		{
+			"id": "recombination",
+			"name": "Recombination",
+			"description": "The plasma has cooled into neutral gas and the universe is transparent: the fog has lifted. The dark ages have begun, and gravity now deepens your ripples on its own.",
+			"startTime": 1.2e13,
+			"endTime": 3.156e15,
+			"clockSeconds": 1800,
+			"yieldTable": "overdensity_primordial",
+			"rippleGrowthSeconds": 60,
+			"plasma": 0.0,
+			"advanceRequirements": [
+				{
+					"check": "placed",
+					"item": "overdensity",
+					"condition": "gte",
+					"value": 3
+				},
+				{
+					"check": "stat",
+					"id": "opened:loot_box",
+					"condition": "gte",
+					"value": 3
+				}
+			]
+		}
+	]
+}

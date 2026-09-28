@@ -85,9 +85,11 @@ ALRWorldGridActor::ALRWorldGridActor()
 	// ConstructorHelpers may only be used in constructors. These are engine assets that
 	// ship with every Unreal install, so the project needs no art to run.
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeFinder(TEXT("/Engine/BasicShapes/Cube.Cube"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> SphereFinder(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MaterialFinder(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> UnlitFinder(LRUnlit::OpaqueMaterialPath);
 	CubeMesh = CubeFinder.Object;
+	SphereMesh = SphereFinder.Object;
 	BaseMaterial = MaterialFinder.Object;
 	UnlitMaterial = UnlitFinder.Object;
 }
@@ -485,18 +487,28 @@ void ALRWorldGridActor::RebuildEntities()
 		const FLRItemDef* Def = Simulation->GetData().FindItem(Entity.Item);
 		const FVector Floor = CellToLocal(Entity.Cell);
 
+		// Overdensities are spheres that swell with their amplitude (the engine sphere is 100cm
+		// across, pivot at its centre); everything else is a cube sitting on the cell floor.
+		const bool bOverdensity = Def && Def->IsOverdensity() && SphereMesh;
+		const float SphereSize = bOverdensity
+			? 0.35f + 0.55f * FMath::Clamp(static_cast<float>(Entity.Amplitude) / FMath::Max(1, Def->MaxAmplitude), 0.f, 1.f)
+			: 0.f;
 		UMaterialInstanceDynamic* Material = nullptr;
-		UStaticMeshComponent* Mesh = CreateMesh(CubeMesh, Material, /*bTraceable*/ true);
-		Mesh->SetRelativeLocation(Floor + FVector(0.f, 0.f, 40.f * Scale));
-		Mesh->SetRelativeScale3D(FVector(0.8f * Scale));
+		UStaticMeshComponent* Mesh = CreateMesh(bOverdensity ? SphereMesh.Get() : CubeMesh.Get(), Material, /*bTraceable*/ true);
+		Mesh->SetRelativeLocation(Floor + FVector(0.f, 0.f, (bOverdensity ? 50.f * SphereSize : 40.f) * Scale));
+		Mesh->SetRelativeScale3D(FVector((bOverdensity ? SphereSize : 0.8f) * Scale));
 		if (Material)
 		{
 			Material->SetVectorParameterValue(ColorParam, Def ? Def->GetLinearColor() : FLinearColor::Gray);
 		}
 
 		// Irradiation enclosures: a small cube in the radiation's colour on top when a source is
-		// loaded, and chamber progress in the label.
+		// loaded, and chamber progress in the label. Overdensities show their amplitude.
 		FString LabelText = Def ? Def->Abbrev : Entity.Item.ToString();
+		if (bOverdensity)
+		{
+			LabelText += FString::Printf(TEXT(" (%d)"), Entity.Amplitude);
+		}
 		if (Def && Def->IsEnclosure())
 		{
 			const FLRItemDef* SourceDef = Entity.Source.IsEmpty() ? nullptr : Simulation->GetData().FindItem(Entity.Source.Item);

@@ -201,9 +201,55 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 			.Padding(FMargin(16.f, 0.f))
 			[
 				SNew(STextBlock)
-				.Text(LOCTEXT("Help", "Click a cell to select it  |  WASD pan, wheel zoom, hold right mouse to look, Q/E orbit, PgUp/PgDn layer, R reset view, H home  |  ~ console: LRGive carbon 500, LRTimeScale 10"))
+				.Text(LOCTEXT("Help", "Click a cell to select it  |  WASD pan, wheel zoom, hold right mouse to look, Q/E orbit, PgUp/PgDn layer, R reset view, H home  |  ~ console: LRGive hydrogen 500, LRTimeScale 10"))
 				.Font(Style.SmallFont)
 				.ColorAndOpacity(Style.TextDim)
+			]
+			// The cosmic clock: epoch and time since the pocket universe's Big Bang.
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(FMargin(0.f, 0.f, 16.f, 0.f))
+			[
+				SNew(STextBlock)
+				.Font(Style.HeadingFont)
+				.ColorAndOpacity(Style.Orange)
+				.Text_Lambda([this]()
+				{
+					const ULRGameSubsystem* Sub = GetSubsystem();
+					if (!Sub || Sub->GetEpochName().IsEmpty())
+					{
+						return FText::GetEmpty();
+					}
+					return AsText(FString::Printf(TEXT("%s  |  %s after the Big Bang"), *Sub->GetEpochName(), *Sub->GetCosmicTimeText()));
+				})
+			]
+			// The host black hole's mass: red once it's low, and while the universe is frozen.
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(FMargin(0.f, 0.f, 16.f, 0.f))
+			[
+				SNew(STextBlock)
+				.Font(Style.BodyFont)
+				.Text_Lambda([this]()
+				{
+					const FLRSimulation* Sim = GetSimulation();
+					if (!Sim || !Sim->GetData().Host.IsDefined())
+					{
+						return FText::GetEmpty();
+					}
+					return Sim->IsFrozen()
+						? LOCTEXT("HostFrozen", "Host evaporated: universe frozen, feed the horizon!")
+						: AsText(FString::Printf(TEXT("Host mass %d%%"), FMath::FloorToInt32(Sim->GetHostMass() * 100.0)));
+				})
+				.ColorAndOpacity_Lambda([this]() -> FSlateColor
+				{
+					const FLRHudStyle& S = FLRHudStyle::Get();
+					const FLRSimulation* Sim = GetSimulation();
+					const bool bLow = Sim && Sim->GetHostMass() <= Sim->GetData().Host.WarningMass;
+					return bLow ? S.Red : S.TextDim;
+				})
 			]
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
@@ -274,11 +320,27 @@ TSharedRef<SWidget> SLRGameHud::BuildActionsPanel()
 	.AutoHeight()
 	.Padding(FMargin(0.f, 0.f, 0.f, 6.f))
 	[
-		MakeActionButton(LRNames::Inject, [this]()
+		MakeActionButton(LRNames::Perturb,
+			[this]()
+			{
+				if (ULRGameSubsystem* Sub = GetSubsystem())
+				{
+					Sub->RequestActionWithSelection(LRNames::Perturb);
+				}
+			},
+			// Needs a selected cell that is empty or holds a ripple that can still deepen.
+			[this]() { return CanPerturbSelectedCell(); })
+	];
+
+	Box->AddSlot()
+	.AutoHeight()
+	.Padding(FMargin(0.f, 0.f, 0.f, 6.f))
+	[
+		MakeActionButton(LRNames::Feed, [this]()
 		{
 			if (ULRGameSubsystem* Sub = GetSubsystem())
 			{
-				Sub->RequestSimpleAction(LRNames::Inject);
+				Sub->RequestSimpleAction(LRNames::Feed);
 			}
 		})
 	];
@@ -532,7 +594,7 @@ TSharedRef<SWidget> SLRGameHud::BuildWorldPanel()
 				{
 					if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->RequestActionWithSelection(LRNames::Recall); }
 				},
-				[this]() { return HasSelectedCell(/*bWantOccupied*/ true); })
+				[this]() { return IsSelectedCellRecallable(); })
 		]
 	];
 
@@ -653,7 +715,7 @@ void SLRGameHud::RebuildDeployedList()
 			.Font(Style.SmallFont)
 			.ColorAndOpacity(Style.TextDark)
 			.AutoWrapText(true)
-			.Text(LOCTEXT("NothingDeployed", "Nothing deployed yet. Craft an enclosure, select it in the inventory, click a cell, then Deploy."))
+			.Text(LOCTEXT("NothingDeployed", "The pocket universe is empty. Click a cell, then Perturb to seed a ripple there."))
 		];
 		return;
 	}
@@ -1146,6 +1208,81 @@ bool SLRGameHud::IsCellSelected(const FIntVector& Cell) const
 	return Sub && Sub->GetSelectedCell(Selected) && Selected == Cell;
 }
 
+bool SLRGameHud::CanPerturbSelectedCell() const
+{
+	const ULRGameSubsystem* Sub = GetSubsystem();
+	const FLRSimulation* Sim = GetSimulation();
+	const FLRActionDef* Perturb = Sim ? Sim->GetData().FindAction(LRNames::Perturb) : nullptr;
+	FIntVector Selected;
+	if (!Sub || !Perturb || !Sub->GetSelectedCell(Selected))
+	{
+		return false;
+	}
+	const FLRPlacedEntity* Entity = Sim->FindPlaced(Selected);
+	if (!Entity)
+	{
+		return true;
+	}
+	const FLRItemDef* Def = Sim->GetData().FindItem(Entity->Item);
+	return Entity->Item == Perturb->Places && Def && Entity->Amplitude < Def->MaxAmplitude;
+}
+
+bool SLRGameHud::IsSelectedCellRecallable() const
+{
+	const ULRGameSubsystem* Sub = GetSubsystem();
+	const FLRSimulation* Sim = GetSimulation();
+	FIntVector Selected;
+	const FLRPlacedEntity* Entity = (Sub && Sim && Sub->GetSelectedCell(Selected)) ? Sim->FindPlaced(Selected) : nullptr;
+	const FLRItemDef* Def = Entity ? Sim->GetData().FindItem(Entity->Item) : nullptr;
+	return Entity && !(Def && Def->IsStructure());
+}
+
+FString SLRGameHud::DescribeOverdensity(const FLRPlacedEntity& Overdensity) const
+{
+	const FLRSimulation* Sim = GetSimulation();
+	const FLRItemDef* Def = Sim ? Sim->GetData().FindItem(Overdensity.Item) : nullptr;
+	if (!Def)
+	{
+		return FString();
+	}
+	FString Text = FString::Printf(TEXT("Amplitude %d of %d: %d roll(s) every %.0fs."),
+		Overdensity.Amplitude, Def->MaxAmplitude, Overdensity.Amplitude, Def->YieldSeconds);
+
+	const FLREpochDef* Epoch = Sim->GetEpoch();
+	const FLRLootTableDef* Table = (Epoch && !Epoch->YieldTable.IsNone()) ? Sim->GetData().FindLootTable(Epoch->YieldTable) : nullptr;
+	if (Table)
+	{
+		TArray<FString> Items;
+		for (const FLRLootEntry& Entry : Table->Entries)
+		{
+			Items.AddUnique(Sim->GetData().GetDisplayName(Entry.Item));
+		}
+		Text += FString::Printf(TEXT("\nGathering: %s"), *FString::Join(Items, TEXT(", ")));
+	}
+	else
+	{
+		Text += TEXT("\nNothing to gather yet: there is no matter in this epoch.");
+	}
+
+	if (Sim->IsFrozen())
+	{
+		Text += TEXT("\nFrozen: the host black hole has evaporated.");
+	}
+	else if (Overdensity.Amplitude >= Def->MaxAmplitude)
+	{
+		Text += TEXT("\nAs deep as it gets.");
+	}
+	else if (Epoch && Epoch->RippleGrowthSeconds > 0.f)
+	{
+		Text += FString::Printf(TEXT("\nGravity deepens it in %.0fs."), Epoch->RippleGrowthSeconds - Overdensity.GrowthProgress);
+	}
+	else if (Sim->GetActionStatus(LRNames::Perturb).bRevealed)
+	{
+		Text += TEXT("\nPerturb it again to deepen it.");
+	}
+	return Text;
+}
+
 bool SLRGameHud::HasSelectedCell(bool bWantOccupied) const
 {
 	const ULRGameSubsystem* Sub = GetSubsystem();
@@ -1342,10 +1479,16 @@ FText SLRGameHud::GetHoverBody() const
 			{
 				return AsText(FString::Printf(TEXT("%s\n\n%s"), Def ? *Def->Tooltip : TEXT(""), *DescribeEnclosure(*Entity)));
 			}
+			if (Def && Def->IsOverdensity())
+			{
+				return AsText(FString::Printf(TEXT("%s\n\n%s"), *Def->Tooltip, *DescribeOverdensity(*Entity)));
+			}
 			return AsText(FString::Printf(TEXT("%s\n%s\n\nDeployed at t=%.0fs. Select it, then Recall to pick it up."),
 				*Sim->GetData().GetDisplayName(Entity->Item), Def ? *Def->Tooltip : TEXT(""), Entity->PlacedAt));
 		}
-		return LOCTEXT("EmptyCell", "Empty cell. Click to select it, pick a deployable item in the inventory, then Deploy.");
+		return GetStatus(LRNames::Perturb).bRevealed
+			? LOCTEXT("EmptyCellPerturb", "Empty cell. Click to select it, then Perturb to seed a ripple here, or pick a deployable item in the inventory and Deploy it.")
+			: LOCTEXT("EmptyCell", "Empty cell. Click to select it, pick a deployable item in the inventory, then Deploy.");
 	}
 	return LOCTEXT("InfoHint", "Hover an action, item or cell to see details.");
 }

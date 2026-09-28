@@ -134,7 +134,7 @@ zero assets. To move them to assets:
    editor and rebuild.
 3. **Logs.** Use `UE_LOG(LogLootbox, Log, TEXT("..."))` and read them in
    Window > Output Log. Filter by `LogLootbox`.
-4. **Console** (`~`): `LRGive carbon 500`, `LRTimeScale 10`, `LRReset`, `LRItems`, `stat fps`.
+4. **Console** (`~`): `LRGive hydrogen 500`, `LRTimeScale 10`, `LRReset`, `LRItems`, `stat fps`.
 5. **Tests.** Open Tools > Session Frontend > Automation, filter `LootboxRecursion`, and
    run them.
 

@@ -6,10 +6,12 @@ A sci-fi crafting, loot box and radiation-processing game on a 3D grid, built wi
 **Unreal Engine 5.8** and C++.
 
 Humanity has learned to harness a black hole as a *universe inside a universe*. From a
-facility outside the event horizon, you inject elementary matter (carbon, iron) into the
-pocket universe. There you compress it into **Quantum Caches**, sealed packages whose
-contents stay undecided until they're observed, and build machines on its grid. There's no
-character: you are the operator, looking in from outside.
+facility outside the event horizon, you perturb the newborn pocket universe: the ripples you
+stretch during its Big Bang gather hydrogen and helium on their own. You compress that
+matter into **Quantum Caches**, sealed packages whose contents stay undecided until they're
+observed, build machines on the grid, and keep the slowly evaporating host black hole fed.
+There's no character: you are the operator, looking in from outside. See
+[docs/COSMOLOGY.md](docs/COSMOLOGY.md) for the physics behind it.
 
 ![The black hole backdrop, ray-traced with gravitational lensing and animated in game](docs/images/black_hole_preview.gif)
 
@@ -17,13 +19,14 @@ It's a port of the Rails/Vue prototype
 [`belackriv/lootbox_recursion`](https://github.com/belackriv/lootbox_recursion). All the game
 rules are ported:
 
-- injecting matter (Rails "scavenge")
+- gathering matter (Rails "scavenge"), now from ripples you seed in the pocket universe
 - crafting
 - loot tables with modifiers
 - opening boxes, including boxes inside boxes
 - deploying and recalling entities, now on a 3D grid
 - **new:** irradiating loot boxes in enclosures with radiation sources
 - **new:** a data-driven tech tree: recipes and actions unlock as you play
+- **new:** cosmic epochs from inflation to recombination, and a host black hole that evaporates
 - inventory sort and compress
 
 It also adds save/load, a 3D view of the grid, and carbon and iron irradiation enclosures.
@@ -84,11 +87,12 @@ In the editor, press **Play** (Alt+P).
 
 | Input | Does |
 |---|---|
-| Click **Inject Matter** | Receive 25–34 carbon or iron (5s cast) |
-| Click a **Craft** recipe | Quantum Cache (50/50), enclosures, radiation sources (as they unlock) |
+| Click a grid cell, then **Perturb** | Seed a ripple there, or deepen the one there. Ripples gather matter into your inventory every 10s. |
+| Click **Feed the Horizon** | Restore the host black hole's mass. At zero, the pocket universe freezes until fed. |
+| Click a **Craft** recipe | Quantum Cache (hydrogen and helium), enclosures, radiation sources (as they unlock) |
 | Click a Quantum Cache in the inventory, then **Use** | Open it (collapse it) |
 | Click a grid cell, then **Deploy** | Place the selected (or first) enclosure there. With an enclosure selected in the inventory, the cursor shows a preview. |
-| Select an occupied cell, then **Recall** | Pick it back up |
+| Select an occupied cell, then **Recall** | Pick it back up (ripples are part of the universe and stay) |
 | Select an enclosure, select a cache or radiation source in the inventory, then **Load** | Irradiate the cache. Each exposure adds a modifier; X-rays observe it (revealing and fixing the contents). **Unload** when done. |
 | **Sort** (inventory title bar) | Compress and alphabetize stacks |
 | Select a slot, then **Annihilate** (inventory title bar) | Destroy that whole stack |
@@ -100,9 +104,11 @@ In the editor, press **Play** (Alt+P).
 | Click a row in the **Grid** panel's list | Select that entity and fly the camera to it |
 | `R` | Reset camera angle and zoom |
 | `H` / **Home** | Fly to the first deployed entity (or the origin) |
-| `~` | Console: `LRGive carbon 500`, `LRTimeScale 10`, `LRItems`, `LRSave`, `LRReset` |
+| `~` | Console: `LRGive hydrogen 500`, `LRTimeScale 10`, `LRItems`, `LRSave`, `LRReset` |
 
-New games start with just **Inject Matter**. Everything else unlocks as you play (see *Tech tree* in [docs/DESIGN.md](docs/DESIGN.md)); the log announces each unlock.
+New games start during inflation, with just **Perturb**. Everything else unlocks as you play
+and as the epochs advance (see *The pocket universe* and *Tech tree* in
+[docs/DESIGN.md](docs/DESIGN.md)); the log announces each unlock and each new epoch.
 
 The game autosaves every 30s and on exit to `Saved/SaveGames/LootboxRecursion.sav`. Use
 `LRReset` to start over.

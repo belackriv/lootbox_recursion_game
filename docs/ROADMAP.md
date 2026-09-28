@@ -45,7 +45,7 @@ See [DESIGN.md](DESIGN.md#irradiation-implemented-v1).
 
 - [x] Reveal requirements on recipes and actions latch into permanent unlocks (saved).
 - [x] Lifetime stats (`crafted:`, `opened:`, `gained:`, `exposed:`, `done:`) and `unlocked` chains.
-- [x] Starter tree from Inject to Gamma, with a playthrough test.
+- [x] Starter tree from Perturb to Gamma, with a playthrough test.
 - [ ] Tech tree viewer panel with hints for locked entries.
 
 ## M2.5: Game menu
@@ -77,17 +77,20 @@ See [DESIGN.md](DESIGN.md#irradiation-implemented-v1).
 
 See [COSMOLOGY.md](COSMOLOGY.md) for the physics behind each item.
 
-- [ ] Cosmic clock: an epoch counter on a log scale, shown in the HUD by epoch name, with an
-      `epoch` check for `revealRequirements`, tested like the other checks.
-- [ ] Reorder the materials: hydrogen and helium first, carbon and iron as mid-game
-      unlocks. Update `items.json`, `recipes.json`, `loot_tables.json`, `Tools/balance.py`
-      and the tech tree playthrough test together.
-- [ ] Perturb replaces Inject Matter: a quantum perturbation seeds an overdensity node at a
-      grid cell. Nodes keep growing on their own, so Perturb retires by the end of the phase.
-- [ ] Recombination as the phase boundary: the world starts as an opaque glowing plasma and
-      clears when the epoch is reached. This is the reveal of the god view.
-- [ ] Hawking evaporation on the host black hole as a slow, accelerating mass drain that the
-      operator has to feed. Decide whether the player can lose (a pause until fed is kinder).
+- [x] Cosmic clock: epochs in `universe.json` with a log-scale clock, shown in the HUD by
+      epoch name, and an `epoch` check for requirements.
+- [x] Reorder the materials: hydrogen and helium first. Carbon and iron come out of
+      collapsing caches (fused by the crush) until there are stars.
+- [x] Perturb replaces Inject Matter: it seeds or deepens a ripple (an overdensity) in a
+      grid cell. Ripples yield matter; after recombination gravity deepens them, and Perturb
+      retires (`retireRequirements`).
+- [x] Recombination as the phase boundary: a glowing plasma veil in the sky, driven by the
+      epoch, clears when it's reached.
+- [x] Hawking evaporation on the host black hole, with Feed the Horizon and a `host` check.
+      Decision: a soft fail. At zero the universe freezes until fed.
+- [ ] Play it in the engine: compile, run the automation tests, and tune the host lifetime,
+      perturbation cost, ripple yields and epoch thresholds by feel.
+- [ ] A visible hint for the next epoch (what it needs), like the tech tree viewer's hints.
 
 ## M7: Structure (mid game as the cosmic web)
 
