@@ -26,6 +26,10 @@ The progression arc is Factorio-shaped. Early on, you inject everything by hand.
 machines inside the pocket universe produce, transform and move matter for you, and your
 direct powers matter less.
 
+[COSMOLOGY.md](COSMOLOGY.md) has the physics behind the theme and the proposed three-phase
+arc (Big Bang, structure formation, stars), including the plan to replace Inject Matter with
+a perturbation ability and reorder the materials so hydrogen comes first.
+
 ## Core loop (implemented)
 
 1. **Inject Matter** to receive carbon or iron. It takes a cast time and has a cooldown.
