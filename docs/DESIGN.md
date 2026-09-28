@@ -56,12 +56,13 @@ Irradiation enclosures create them (see below).
 
 **Ideas, not implemented:**
 
-- **Structural rules:** things above layer 0 need support, or the pocket universe has no
-  gravity at all, which is a nice sci-fi excuse.
+- **One level.** Play happens on a single layer. The other Z layers are reserved for a
+  later idea, such as extra dimensions, and not for stacking, so there are no support or
+  structural rules.
 - **Logistics:** moving matter between cells takes time proportional to distance, so layout
   becomes the puzzle. Keep the enclosure next to the injection point and the power source
-  next to the enclosure. Vertical stacking could be a way to keep distances short.
-- **Multi-cell machines** (2x2x2 and so on), as the machines get more complex.
+  next to the enclosure.
+- **Multi-cell machines** (2x2 and so on), as the machines get more complex.
 - **Gravity as a field on the grid** ([COSMOLOGY.md](COSMOLOGY.md#gravity-on-the-grid)):
   every massive body (overdensity, dark matter halo, star, remnant) adds a softened 1/r
   potential. Loose gas is a per-cell quantity that drifts downhill each tick; bodies don't
