@@ -7,6 +7,8 @@ Rails app `belackriv/lootbox_recursion`.
 
 - `Source/LootboxRecursion/Simulation/FLRSimulation` holds all the game rules as plain C++,
   with no UWorld or actors. Keep it engine-light so it stays testable.
+- `Simulation/FLRHexGrid` is the grid's geometry: hexagonal cells `(Q, R, Layer)`. Go through
+  it for neighbours, distance, radius and world positions rather than doing cell maths inline.
 - `Data/LRGameData` covers the JSON definitions in `Content/Data/*.json` and their
   validation. `Tools/validate_data.py` mirrors `FLRGameData::Validate()`, so update both
   together.

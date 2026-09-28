@@ -10,6 +10,7 @@
 #include "Data/LRGameData.h"
 #include "Cosmos/LRBlackHoleRenderer.h"
 #include "Misc/Paths.h"
+#include "Simulation/LRHexGrid.h"
 #include "Simulation/LRSimulation.h"
 
 #define LR_TEST_FLAGS (EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
@@ -1207,6 +1208,77 @@ bool FLRCosmosSaveTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("plasma fade"), Loaded.GetPlasmaOpacity(), Sim.GetPlasmaOpacity());
 	const FLRPlacedEntity* Ripple = Loaded.FindPlaced(FIntVector(0, 0, 0));
 	TestTrue(TEXT("ripple amplitude"), Ripple && Ripple->Amplitude == 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHexDistanceTest, "LootboxRecursion.Grid.HexDistanceAndRadius", LR_TEST_FLAGS)
+bool FLRHexDistanceTest::RunTest(const FString& Parameters)
+{
+	const FIntVector Origin(0, 0, 0);
+	const TArray<FIntVector> Neighbors = FLRHexGrid::Neighbors(Origin);
+	TestEqual(TEXT("six neighbours"), Neighbors.Num(), 6);
+	for (const FIntVector& Neighbor : Neighbors)
+	{
+		TestEqual(TEXT("each one step away"), FLRHexGrid::Distance(Origin, Neighbor), 1);
+	}
+	TestEqual(TEXT("a known distance"), FLRHexGrid::Distance(Origin, FIntVector(3, -1, 0)), 3);
+	TestEqual(TEXT("distance is symmetric"), FLRHexGrid::Distance(FIntVector(3, -1, 0), Origin), 3);
+	TestEqual(TEXT("layers add steps"), FLRHexGrid::Distance(Origin, FIntVector(1, 0, 2)), 3);
+
+	for (int32 Radius = 0; Radius <= 4; ++Radius)
+	{
+		const FIntVector Center(5, -2, 1);
+		const TArray<FIntVector> Cells = FLRHexGrid::CellsInRadius(Center, Radius);
+		TestEqual(*FString::Printf(TEXT("radius %d count"), Radius), Cells.Num(), FLRHexGrid::CountInRadius(Radius));
+		TSet<FIntVector> Unique(Cells);
+		TestEqual(*FString::Printf(TEXT("radius %d has no repeats"), Radius), Unique.Num(), Cells.Num());
+		const bool bAllInside = !Cells.ContainsByPredicate([&Center, Radius](const FIntVector& Cell)
+		{
+			return Cell.Z != Center.Z || FLRHexGrid::Distance(Center, Cell) > Radius;
+		});
+		TestTrue(*FString::Printf(TEXT("radius %d stays in range and in the layer"), Radius), bAllInside);
+	}
+	TestEqual(TEXT("radius 2 is 19 cells"), FLRHexGrid::CountInRadius(2), 19);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHexLayoutTest, "LootboxRecursion.Grid.HexLayoutAndPicking", LR_TEST_FLAGS)
+bool FLRHexLayoutTest::RunTest(const FString& Parameters)
+{
+	constexpr double Spacing = 100.0;
+	const FIntVector Origin(0, 0, 0);
+	for (const FIntVector& Neighbor : FLRHexGrid::Neighbors(Origin))
+	{
+		const double Gap = FVector::Dist(FLRHexGrid::ToLocal(Origin, Spacing), FLRHexGrid::ToLocal(Neighbor, Spacing));
+		TestTrue(TEXT("neighbouring centres are Spacing apart"), FMath::IsNearlyEqual(Gap, Spacing, 1e-6));
+	}
+	TestTrue(TEXT("+Q runs along +X"), FLRHexGrid::ToLocal(FIntVector(1, 0, 0), Spacing).Equals(FVector(Spacing, 0.0, 0.0), 1e-6));
+	TestTrue(TEXT("layers are Spacing apart"), FMath::IsNearlyEqual(FLRHexGrid::ToLocal(FIntVector(0, 0, 3), Spacing).Z, 3.0 * Spacing, 1e-6));
+	for (int32 Index = 0; Index < 6; ++Index)
+	{
+		TestTrue(TEXT("corners are one edge length from the centre"),
+			FMath::IsNearlyEqual(FLRHexGrid::Corner(Index, Spacing).Size(), FLRHexGrid::CornerRadius(Spacing), 1e-6));
+	}
+	TestTrue(TEXT("corner indices wrap"), FLRHexGrid::Corner(7, Spacing).Equals(FLRHexGrid::Corner(1, Spacing), 1e-6));
+
+	// Every cell's centre, and points well inside its hexagon, pick that cell.
+	const double Apothem = 0.5 * Spacing;
+	for (const FIntVector& Cell : FLRHexGrid::CellsInRadius(FIntVector(0, 0, 2), 5))
+	{
+		const FVector Centre = FLRHexGrid::ToLocal(Cell, Spacing);
+		bool bAllPicked = FLRHexGrid::FromLocal(Centre, Spacing, Cell.Z) == Cell;
+		for (int32 Index = 0; Index < 6; ++Index)
+		{
+			const FVector Towards = FLRHexGrid::ToLocal(Cell + FLRHexGrid::Directions[Index], Spacing) - Centre;
+			bAllPicked &= FLRHexGrid::FromLocal(Centre + Towards * 0.45, Spacing, Cell.Z) == Cell;
+			bAllPicked &= FLRHexGrid::FromLocal(Centre + FLRHexGrid::Corner(Index, Spacing) * 0.9, Spacing, Cell.Z) == Cell;
+		}
+		TestTrue(*FString::Printf(TEXT("cell %s picks itself"), *FLRSimulation::DescribeCell(Cell)), bAllPicked);
+	}
+
+	// Just past a flat side is the neighbour on the other side.
+	const FVector PastEdge = FLRHexGrid::ToLocal(Origin, Spacing) + FVector(Apothem + 1.0, 0.0, 0.0);
+	TestTrue(TEXT("past the +X side is the +Q neighbour"), FLRHexGrid::FromLocal(PastEdge, Spacing, 0) == FIntVector(1, 0, 0));
 	return true;
 }
 

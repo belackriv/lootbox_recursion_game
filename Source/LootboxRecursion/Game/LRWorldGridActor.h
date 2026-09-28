@@ -14,14 +14,14 @@ class UTextRenderComponent;
 class UTexture2D;
 
 /**
- * 3D view of the pocket universe's build grid. Every cell is an integer (X, Y, Z); Z is the
- * build layer. Rails/Vue equivalent: WorldGrid.vue + WorldCellSlot.vue, now in three
- * dimensions.
+ * 3D view of the pocket universe's build grid: hexagonal cells in layers, addressed as
+ * (Q, R, Layer) (see FLRHexGrid for the geometry). Rails/Vue equivalent: WorldGrid.vue +
+ * WorldCellSlot.vue, now hexagonal and layered.
  *
- * - Draws the current build layer's grid around the camera focus as thin, glowing beams of
- *   light (unlit instanced cubes, one draw call per brightness step), brighter every 4/16
- *   cells and fading out towards the edge. The patch is built once and only moved, in whole
- *   ruler periods, as the camera pans; it is rebuilt when zooming changes the beam width.
+ * - Draws the current build layer's hexagons around the camera focus as thin, glowing beams
+ *   of light (unlit instanced cubes, one draw call per brightness step), fading out towards
+ *   the edge. The patch is built once and only moved, a whole cell at a time, when the camera
+ *   has panned a few cells; it is rebuilt when zooming changes the beam width.
  * - Draws one mesh per deployed entity, on every layer.
  * - Works out the hovered cell every frame (cursor ray vs. deployed entities and the build
  *   layer's plane) and shows hover / selection markers. Clicking is handled by the player
@@ -42,11 +42,11 @@ public:
 	/** Grid-space position (cm, relative to this actor) of a cell's floor centre. */
 	FVector CellToLocal(const FIntVector& Cell) const;
 
-	/** Size of one cell in Unreal units (cm). */
+	/** Distance between neighbouring cell centres (across a hexagon's flat sides), and between layers, in cm. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Grid")
 	float CellSize = 100.f;
 
-	/** Grid cells drawn in each direction around the patch centre (the lines fade out before it). */
+	/** Rings of cells drawn around the patch centre (the lines fade out before the last one). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Grid")
 	int32 TileRadius = 32;
 
@@ -119,8 +119,9 @@ private:
 
 	TArray<FIntVector> EntityCells;
 
-	/** Where the tile patch is currently centred (a multiple of the ruler period in X/Y). */
-	FIntVector TileAnchor = FIntVector(TNumericLimits<int32>::Max(), 0, 0);
+	/** The cell the tile patch is currently centred on. */
+	FIntVector TileAnchor = FIntVector::ZeroValue;
+	bool bTilesPlaced = false;
 
 	/** Beam width multiplier for the current zoom (a power of LineWidthStep). */
 	float LineWidthScale = 1.f;

@@ -97,8 +97,9 @@ See [COSMOLOGY.md](COSMOLOGY.md) for the physics behind each item.
 Matter moves into the pocket universe first (see *Matter lives in the pocket universe* in
 [DESIGN.md](DESIGN.md)), then gravity moves it around.
 
-- [ ] Grid geometry behind one plain C++ type (neighbours, distance, cells within a radius,
-      world position), and pick the cell shape: cubes, or hexagons (see *Cell shape*).
+- [x] Grid geometry behind one plain C++ type (`FLRHexGrid`), with hexagonal cells. The
+      grid draws, picks and outlines hexagons. See *The grid* in DESIGN.md for the path to
+      rhombic dodecahedra in true 3D.
 - [ ] Cells hold matter: an amount per material next to the entity. Ripples deposit into
       their own cell.
 - [ ] Costs are paid from cells within `reachRadius` (data, in cells) of the build site.

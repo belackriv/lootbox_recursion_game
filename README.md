@@ -2,7 +2,7 @@
 
 *(Repository, module and code names still say `LootboxRecursion` from the original Rails prototype. Renaming those isn't worth the churn.)*
 
-A sci-fi crafting, loot box and radiation-processing game on a 3D grid, built with
+A sci-fi crafting, loot box and radiation-processing game on a layered hexagonal grid, built with
 **Unreal Engine 5.8** and C++.
 
 Humanity has learned to harness a black hole as a *universe inside a universe*. From a
@@ -23,7 +23,7 @@ rules are ported:
 - crafting
 - loot tables with modifiers
 - opening boxes, including boxes inside boxes
-- deploying and recalling entities, now on a 3D grid
+- deploying and recalling entities, now on a layered hexagonal grid
 - **new:** irradiating loot boxes in enclosures with radiation sources
 - **new:** a data-driven tech tree: recipes and actions unlock as you play
 - **new:** cosmic epochs from inflation to recombination, and a host black hole that evaporates
@@ -208,7 +208,7 @@ The architecture in one breath:
   behaviour changes.
 - [docs/UNREAL_PRIMER.md](docs/UNREAL_PRIMER.md): modern Unreal for someone who last touched
   UnrealScript.
-- [docs/DESIGN.md](docs/DESIGN.md): game design, radiation tables, 3D grid and logistics
+- [docs/DESIGN.md](docs/DESIGN.md): game design, radiation tables, the hex grid and logistics
   ideas.
 - [docs/COSMOLOGY.md](docs/COSMOLOGY.md): the cosmology behind the theme and how each epoch
   maps onto a game phase.

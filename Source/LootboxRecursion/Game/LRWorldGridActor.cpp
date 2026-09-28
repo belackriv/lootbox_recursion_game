@@ -12,6 +12,7 @@
 #include "GameFramework/Pawn.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Rendering/LRUnlit.h"
+#include "Simulation/LRHexGrid.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace
@@ -28,15 +29,12 @@ namespace
 		return FLinearColor(Color.R * Intensity, Color.G * Intensity, Color.B * Intensity, 1.f);
 	}
 
-	/** Plain line, every 4th, every 16th (the ruler rhythm from WorldGrid.vue). */
-	constexpr float LineKindBrightness[] = { 0.3f, 0.7f, 2.2f };
+	constexpr float LineBrightness = 0.7f;
 	/** Beam widths as a fraction of a cell, before scaling up with camera distance. */
-	constexpr float LineKindWidth[] = { 0.015f, 0.02f, 0.03f };
+	constexpr float LineWidth = 0.02f;
 	constexpr float HoverWidth = 0.04f;
 	constexpr float SelectionWidth = 0.05f;
 
-	/** Lines are cut into segments this many cells long, so they can fade towards the patch edge. */
-	constexpr float SegmentCells = 4.f;
 	/** Fraction of the patch radius where the fade-out starts. */
 	constexpr float FadeStart = 0.45f;
 
@@ -66,14 +64,17 @@ namespace
 	constexpr float LineWidthStep = 1.3f;
 	const FColor EntityLabelColor = FColor::FromHex(TEXT("D6DCE8"));
 
-	/** Major ruler line spacing; the grid patch moves in steps of this so the pattern lines up. */
-	constexpr int32 RulerPeriod = 16;
+	/** The patch re-centres on the focus once the camera has panned this many cells from its centre. */
+	constexpr int32 PatchRecentreCells = 4;
 
-	/** Positive modulo, so ruler lines stay regular across negative cells. */
-	int32 Mod(int32 Value, int32 Divisor)
+	/** A beam along one hexagon edge: from corner Index to corner Index + 1, around Centre. */
+	FTransform EdgeBeam(const FVector& Centre, int32 Index, float Spacing, float Thickness)
 	{
-		const int32 Result = Value % Divisor;
-		return Result < 0 ? Result + Divisor : Result;
+		const FVector From = Centre + FLRHexGrid::Corner(Index, Spacing);
+		const FVector To = Centre + FLRHexGrid::Corner(Index + 1, Spacing);
+		// The engine cube is 100cm; overlap the corners by one beam width.
+		const float Length = static_cast<float>(FLRHexGrid::CornerRadius(Spacing)) / 100.f + Thickness;
+		return FTransform((To - From).Rotation(), 0.5 * (From + To), FVector(Length, Thickness, Thickness));
 	}
 }
 
@@ -96,7 +97,7 @@ ALRWorldGridActor::ALRWorldGridActor()
 
 FVector ALRWorldGridActor::CellToLocal(const FIntVector& Cell) const
 {
-	return FVector(Cell.X * CellSize, Cell.Y * CellSize, Cell.Z * CellSize);
+	return FLRHexGrid::ToLocal(Cell, CellSize);
 }
 
 void ALRWorldGridActor::BeginPlay()
@@ -141,16 +142,13 @@ void ALRWorldGridActor::Tick(float DeltaSeconds)
 
 	UpdateLineWidth();
 
-	// Snap the patch to whole ruler periods: moving 3 components now and then is cheap,
-	// rebuilding ~2500 instances every time the camera crosses a cell is not.
+	// Any whole-cell shift maps the hexagon pattern onto itself, so the patch just follows the
+	// focus a few cells at a time: moving a few components now and then is cheap, rebuilding
+	// thousands of instances every time the camera crosses a cell is not.
 	const FIntVector Focus = GetFocusCell();
-	const FIntVector Anchor(
-		FMath::RoundToInt(static_cast<float>(Focus.X) / RulerPeriod) * RulerPeriod,
-		FMath::RoundToInt(static_cast<float>(Focus.Y) / RulerPeriod) * RulerPeriod,
-		Focus.Z);
-	if (Anchor != TileAnchor)
+	if (!bTilesPlaced || Focus.Z != TileAnchor.Z || FLRHexGrid::Distance(Focus, TileAnchor) > PatchRecentreCells)
 	{
-		MoveTiles(Anchor);
+		MoveTiles(Focus);
 	}
 	UpdateHover();
 	UpdateMarkers();
@@ -218,42 +216,35 @@ FIntVector ALRWorldGridActor::GetFocusCell() const
 		return FIntVector(0, 0, Layer);
 	}
 	const FVector Local = GetActorTransform().InverseTransformPosition(Pawn->GetActorLocation());
-	return FIntVector(FMath::RoundToInt(Local.X / CellSize), FMath::RoundToInt(Local.Y / CellSize), Layer);
+	return FLRHexGrid::FromLocal(Local, CellSize, Layer);
 }
 
 void ALRWorldGridActor::BuildTilePattern()
 {
-	// Beams on the cell boundaries; the cells themselves are empty, so the cosmos shows through.
-	// Each line is cut into short segments that fade out towards the edge of the patch, and each
-	// segment goes into the beam layer closest to its brightness.
-	const float Scale = CellSize / 100.f; // the engine cube is 100cm
-	const float Start = -(TileRadius + 0.5f); // in cells, relative to the patch centre
-	const float End = TileRadius + 0.5f;
+	// Beams on the hexagons' edges; the cells themselves are empty, so the cosmos shows through.
+	// Each cell draws three of its six edges (its neighbours draw the other three). Each edge
+	// fades out towards the edge of the patch and goes into the beam layer closest to its
+	// brightness.
+	const float Thickness = LineWidth * (CellSize / 100.f) * LineWidthScale; // the engine cube is 100cm
+	// Fade out by the patch's inscribed circle (the outer ring's flat sides are sqrt(3)/2 as far
+	// as its corners), so the patch's own hexagonal outline never shows.
+	const float PatchRadius = FMath::Max(TileRadius, 1) * CellSize * 0.85f;
 
 	TArray<TArray<FTransform>> PerLayer;
 	PerLayer.SetNum(TileLayers.Num());
-	for (int32 Index = -TileRadius; Index <= TileRadius + 1; ++Index)
+	for (const FIntVector& Cell : FLRHexGrid::CellsInRadius(FIntVector::ZeroValue, TileRadius))
 	{
-		int32 Kind = 0;
-		if (Mod(Index, RulerPeriod) == 0)  { Kind = 2; }
-		else if (Mod(Index, 4) == 0)       { Kind = 1; }
-
-		const float Width = LineKindWidth[Kind] * Scale * LineWidthScale;
-		const float Across = Index - 0.5f;
-		for (float From = Start; From < End - 0.01f; From += SegmentCells)
+		const FVector Centre = FLRHexGrid::ToLocal(Cell, CellSize);
+		for (int32 Edge = 0; Edge < 3; ++Edge)
 		{
-			const float To = FMath::Min(From + SegmentCells, End);
-			const float Along = 0.5f * (From + To);
-			const float Distance = FMath::Sqrt(Along * Along + Across * Across) / FMath::Max(TileRadius, 1);
-			const float Brightness = LineKindBrightness[Kind] * (1.f - FMath::SmoothStep(FadeStart, 1.f, Distance));
+			const FTransform Beam = EdgeBeam(Centre, Edge, CellSize, Thickness);
+			const float Distance = static_cast<float>(Beam.GetLocation().Size2D()) / PatchRadius;
+			const float Brightness = LineBrightness * (1.f - FMath::SmoothStep(FadeStart, 1.f, Distance));
 			const int32 Layer = StepForBrightness(Brightness);
-			if (!PerLayer.IsValidIndex(Layer))
+			if (PerLayer.IsValidIndex(Layer))
 			{
-				continue;
+				PerLayer[Layer].Add(Beam);
 			}
-			const float Length = (To - From) * Scale;
-			PerLayer[Layer].Add(FTransform(FRotator::ZeroRotator, FVector(Along, Across, 0.f) * CellSize, FVector(Length, Width, Width)));
-			PerLayer[Layer].Add(FTransform(FRotator::ZeroRotator, FVector(Across, Along, 0.f) * CellSize, FVector(Width, Length, Width)));
 		}
 	}
 
@@ -266,17 +257,13 @@ void ALRWorldGridActor::BuildTilePattern()
 
 void ALRWorldGridActor::BuildOutline(UInstancedStaticMeshComponent* Outline, float Width)
 {
-	// Four beams around one cell, centred on the component (which sits on the cell's floor).
-	const float Scale = CellSize / 100.f;
-	const float Thickness = Width * Scale * LineWidthScale;
-	const float Length = Scale + Thickness; // overlap at the corners
-	const float Half = 0.5f * CellSize;
-	const TArray<FTransform> Beams = {
-		FTransform(FRotator::ZeroRotator, FVector(0.f, -Half, 0.f), FVector(Length, Thickness, Thickness)),
-		FTransform(FRotator::ZeroRotator, FVector(0.f, Half, 0.f), FVector(Length, Thickness, Thickness)),
-		FTransform(FRotator::ZeroRotator, FVector(-Half, 0.f, 0.f), FVector(Thickness, Length, Thickness)),
-		FTransform(FRotator::ZeroRotator, FVector(Half, 0.f, 0.f), FVector(Thickness, Length, Thickness)),
-	};
+	// Six beams around one hexagon, centred on the component (which sits on the cell's centre).
+	const float Thickness = Width * (CellSize / 100.f) * LineWidthScale;
+	TArray<FTransform> Beams;
+	for (int32 Edge = 0; Edge < 6; ++Edge)
+	{
+		Beams.Add(EdgeBeam(FVector::ZeroVector, Edge, CellSize, Thickness));
+	}
 	Outline->ClearInstances();
 	Outline->AddInstances(Beams, /*bShouldReturnIndices*/ false);
 }
@@ -311,6 +298,7 @@ void ALRWorldGridActor::UpdateLineWidth()
 void ALRWorldGridActor::MoveTiles(const FIntVector& Anchor)
 {
 	TileAnchor = Anchor;
+	bTilesPlaced = true;
 	for (const TObjectPtr<UInstancedStaticMeshComponent>& Tiles : TileLayers)
 	{
 		Tiles->SetRelativeLocation(CellToLocal(Anchor));
@@ -370,7 +358,7 @@ void ALRWorldGridActor::UpdateHover()
 			const FVector Point = LocalOrigin + LocalDirection * RayT;
 			bHitPlane = true;
 			PlaneDistance = RayT;
-			PlaneCell = FIntVector(FMath::RoundToInt(Point.X / CellSize), FMath::RoundToInt(Point.Y / CellSize), Subsystem->GetBuildLayer());
+			PlaneCell = FLRHexGrid::FromLocal(Point, CellSize, Subsystem->GetBuildLayer());
 		}
 	}
 
@@ -495,8 +483,10 @@ void ALRWorldGridActor::RebuildEntities()
 			: 0.f;
 		UMaterialInstanceDynamic* Material = nullptr;
 		UStaticMeshComponent* Mesh = CreateMesh(bOverdensity ? SphereMesh.Get() : CubeMesh.Get(), Material, /*bTraceable*/ true);
-		Mesh->SetRelativeLocation(Floor + FVector(0.f, 0.f, (bOverdensity ? 50.f * SphereSize : 40.f) * Scale));
-		Mesh->SetRelativeScale3D(FVector((bOverdensity ? SphereSize : 0.8f) * Scale));
+		// A cube this size fits inside the hexagon (its diagonal is under the flat-to-flat width).
+		constexpr float CubeSize = 0.65f;
+		Mesh->SetRelativeLocation(Floor + FVector(0.f, 0.f, (bOverdensity ? 50.f * SphereSize : 50.f * CubeSize) * Scale));
+		Mesh->SetRelativeScale3D(FVector((bOverdensity ? SphereSize : CubeSize) * Scale));
 		if (Material)
 		{
 			Material->SetVectorParameterValue(ColorParam, Def ? Def->GetLinearColor() : FLinearColor::Gray);

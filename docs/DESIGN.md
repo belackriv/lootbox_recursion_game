@@ -42,7 +42,7 @@ below.
    are the only source of carbon and iron until there are stars.
 3. **Open** loot boxes (the Use action) for randomized loot from weighted loot tables.
    A loot box can contain other loot boxes: that's the recursion.
-4. **Deploy** placeable items into cells of the 3D grid, and **Recall** them back.
+4. **Deploy** placeable items into cells of the hexagonal grid, and **Recall** them back.
 5. **Sort** to compress and order the 50-slot inventory.
 
 Loot boxes carry **modifiers**, which rewrite their loot table before it's rolled:
@@ -117,10 +117,37 @@ contained in the pocket universe instead, and the inventory goes away (roadmap M
 
 ## The grid (implemented)
 
-- Integer cells `(X, Y, Z)`, unbounded in every direction, one deployed entity per cell.
-- You build on one **layer** (Z) at a time. The grid lines, hover outline and placement
-  preview show that layer; entities on every layer stay visible.
+- **Hexagonal cells in layers**, unbounded in every direction, one deployed entity per cell.
+  A cell is `(Q, R, Layer)`: axial hex coordinates plus the layer. `FLRHexGrid` holds all the
+  geometry (neighbours, distance, cells within a radius, world position, picking), and the
+  simulation and world view both go through it, so the shape can still change in one place.
+- Hexagons because all six neighbours are equally far away: a radius is a round ring, and
+  flow has six clean directions with no diagonals.
+- You build on one **layer** at a time. The grid lines, hover outline and placement preview
+  show that layer; entities on every layer stay visible. Layers are stacked like hexagonal
+  prisms for now.
 - There's no support or gravity rule yet: anything can be placed on any layer.
+
+**Going truly 3D (rhombic dodecahedra).** Each hexagon is the middle slice of a rhombic
+dodecahedron standing on a three-faced vertex, so the true-3D version keeps `(Q, R, Layer)`
+and the flat game plays exactly the same. Only the stacking changes:
+
+- Shift layer k in the plane by k × (1/3, 1/3) in axial units, so each cell sits over a
+  dimple between three cells below, like stacked oranges. The pattern repeats every three
+  layers.
+- Space the layers `Spacing × √(2/3)` apart instead of `Spacing`.
+- Each cell then has 12 neighbours, all the same distance away: 6 in its layer, 3 above at
+  `(Q, R, k+1)`, `(Q−1, R, k+1)`, `(Q, R−1, k+1)`, and 3 below at `(Q, R, k−1)`,
+  `(Q+1, R, k−1)`, `(Q, R+1, k−1)`.
+- Distance, radius and picking become their 3D versions in `FLRHexGrid`. Code written
+  against those functions carries over; code that reads raw coordinates doesn't.
+
+Other shapes that tile space, for the record:
+
+| Shape | Neighbours | Why not |
+|---|---|---|
+| Cube (the old grid) | 6 faces, 26 touching | Diagonals are ambiguous, and a radius is a square. |
+| Truncated octahedron | 14: 8 hexagons, 6 squares | Kelvin's foam cell, a nice tie-in with the cosmic web as a foam of voids, but two kinds of neighbour and harder to read. |
 
 **Ideas, not implemented:**
 
@@ -132,7 +159,7 @@ contained in the pocket universe instead, and the inventory goes away (roadmap M
 
   Making 3D navigable, in order of expected payoff:
 
-  1. *Face placement.* Raycast onto an existing entity's cube and place on the face that was
+  1. *Face placement.* Raycast onto an existing entity's cell and place on the face that was
      hit. Most things go next to other things, and this has no depth ambiguity.
   2. *A placement plane that follows you.* The current single-plane cursor, but the plane
      passes through the hovered or last-placed cell and faces the camera's dominant axis. A
@@ -146,24 +173,14 @@ contained in the pocket universe instead, and the inventory goes away (roadmap M
   The universe helps: anything that spins flattens (solar systems, galaxies, accretion
   discs), so a net spin from the first perturbations settles structure toward a plane. That
   plane is the ecliptic, a natural reference without being a cheat, and most builds sit near
-  it while stars and remnants stray. The sim already stores unbounded `(X, Y, Z)`, so the
-  prototype is picking and rendering only. Its test: a fresh player builds a 3x3x3 block
-  and a ten-cell line along each axis without misplacing.
+  it while stars and remnants stray. The sim already stores unbounded `(Q, R, Layer)`, and
+  the rhombic dodecahedron stacking above is the 3D grid, so the prototype is picking and
+  rendering only. Its test: a fresh player builds a solid three-layer cluster and a ten-cell
+  line in each direction without misplacing.
 - **Logistics:** moving matter between cells takes time proportional to distance, so layout
   becomes the puzzle. Keep the enclosure next to the injection point and the power source
   next to the enclosure.
 - **Multi-cell machines** (2x2 or 2x2x2 and so on), as the machines get more complex.
-- **Cell shape.** Cubes work, but other shapes tile space and may play better. Put the grid's
-  geometry (neighbours, distance, cells within a radius, world position, picking) behind one
-  plain C++ type before the reach radius and drift are written against it, so the shape
-  stays swappable. Candidates:
-
-  | Shape | Neighbours | Coordinates | Notes |
-  |---|---|---|---|
-  | Cube | 6 faces (26 touching) | `(x, y, z)` | Current. Diagonals are ambiguous, and a radius is a square. |
-  | Hexagon, or hexagonal prism in 3D | 6 in the plane, +2 above and below | axial `(q, r)` plus layer | All six neighbours are equally far, so a radius is a round ring. Flow and conveyors get six clean directions. Suits a mostly flat, disc-like universe. |
-  | Rhombic dodecahedron | 12, all equally far | `(x, y, z)` with an even sum | Each cell is the space around one sphere in the densest possible packing. The best true-3D option. |
-  | Truncated octahedron | 14 (8 hexagons, 6 squares) | `(x, y, z)` all even or all odd | Kelvin's foam cell. The cosmic web is a foam of voids, which is a nice tie-in, but it has two kinds of neighbour and is harder to read. |
 - **Gravity as a field on the grid** ([COSMOLOGY.md](COSMOLOGY.md#gravity-on-the-grid)):
   every massive body (overdensity, dark matter halo, star, remnant) adds a softened 1/r
   potential. Loose gas is a per-cell quantity that drifts downhill each tick; bodies don't
