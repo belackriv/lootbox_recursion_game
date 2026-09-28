@@ -47,10 +47,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion")
 	FLRActionResult RequestSimpleAction(FName Action);
 
+	/** Build a recipe in the selected cell. */
 	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion")
 	FLRActionResult Craft(FName RecipeId);
 
-	/** Use / Deploy / Recall with the current selection filled in. */
+	/** An action on the selected cell (Perturb, Open, Dismantle...). */
 	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion")
 	FLRActionResult RequestActionWithSelection(FName Action);
 
@@ -58,11 +59,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Quantum Recursion")
 	FLRActionStatus GetActionStatus(FName Action) const;
 
+	/** How much of a material a cell holds. */
 	UFUNCTION(BlueprintPure, Category = "Quantum Recursion")
-	TArray<FLRInventorySlot> GetInventory() const;
+	int32 GetMatterAt(FIntVector Cell, FName Item) const;
 
+	/** How much of a material the whole pocket universe holds. */
 	UFUNCTION(BlueprintPure, Category = "Quantum Recursion")
-	int32 CountItem(FName Item) const;
+	int32 GetTotalMatter(FName Item) const;
 
 	UFUNCTION(BlueprintPure, Category = "Quantum Recursion")
 	bool GetPlacedAt(FIntVector Cell, FLRPlacedEntity& OutEntity) const;
@@ -88,18 +91,12 @@ public:
 	float GetPlasmaOpacity() const;
 
 	// ---- Selection, hover, build layer & camera focus (UI state, not saved) -----------
-	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Selection")
-	void SelectSlot(int32 SlotIndex);
-
 	/** Select a grid cell. With bToggle, selecting the already-selected cell deselects it. */
 	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Selection")
 	void SelectCell(FIntVector Cell, bool bToggle = true);
 
 	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Selection")
 	void ClearCellSelection();
-
-	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Selection")
-	int32 GetSelectedSlot() const { return SelectedSlot; }
 
 	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Selection")
 	bool GetSelectedCell(FIntVector& OutCell) const;
@@ -137,8 +134,9 @@ public:
 	TArray<FLRPlacedEntity> GetPlacedSorted() const;
 
 	// ---- Debug / meta -----------------------------------------------------------------
+	/** Cheat: add a material to the selected cell (or the origin if none is selected). */
 	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Debug")
-	bool GiveItem(FName Item, int32 Count);
+	bool GiveMatter(FName Item, int32 Count);
 
 	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Debug")
 	void SetTimeScale(float InTimeScale) { TimeScale = FMath::Clamp(InTimeScale, 0.f, 100.f); }
@@ -153,8 +151,9 @@ public:
 	bool SaveNow();
 
 	// ---- Events (Rails: PlayerInventoryChannel / PlayerActionsChannel broadcasts) ------
+	/** Matter in some cell changed. */
 	UPROPERTY(BlueprintAssignable, Category = "Quantum Recursion")
-	FLRSimpleEvent OnInventoryChanged;
+	FLRSimpleEvent OnMatterChanged;
 
 	UPROPERTY(BlueprintAssignable, Category = "Quantum Recursion")
 	FLRSimpleEvent OnWorldChanged;
@@ -170,7 +169,7 @@ public:
 private:
 	bool Tick(float DeltaSeconds);
 	bool LoadGame();
-	void HandleSimInventoryChanged();
+	void HandleSimMatterChanged();
 	void HandleSimWorldChanged();
 	void HandleSimActionCompleted(const FLRActionResult& Result);
 
@@ -181,7 +180,6 @@ private:
 	float TimeScale = 1.f;
 	double SecondsSinceAutosave = 0.0;
 
-	int32 SelectedSlot = INDEX_NONE;
 	FIntVector SelectedCell = FIntVector::ZeroValue;
 	bool bHasSelectedCell = false;
 	FIntVector HoveredCell = FIntVector::ZeroValue;

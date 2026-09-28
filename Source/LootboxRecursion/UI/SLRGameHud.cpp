@@ -72,7 +72,7 @@ void SLRGameHud::Construct(const FArguments& InArgs)
 					.AutoHeight()
 					.Padding(FMargin(0.f, 8.f, 0.f, 0.f))
 					[
-						BuildInventoryPanel()
+						BuildUniversePanel()
 					]
 				]
 
@@ -84,7 +84,7 @@ void SLRGameHud::Construct(const FArguments& InArgs)
 					.Visibility(EVisibility::SelfHitTestInvisible)
 				]
 
-				// Right column: world list, info, log
+				// Right column: grid and selection, info
 				+ SHorizontalBox::Slot()
 				.AutoWidth()
 				[
@@ -105,14 +105,15 @@ void SLRGameHud::Construct(const FArguments& InArgs)
 						[
 							BuildInfoPanel()
 						]
-						+ SVerticalBox::Slot()
-						.AutoHeight()
-						.Padding(FMargin(0.f, 8.f, 0.f, 0.f))
-						[
-							BuildLogPanel()
-						]
 					]
 				]
+			]
+			// Bottom: the log, across the full width.
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(FMargin(0.f, 8.f, 0.f, 0.f))
+			[
+				BuildLogPanel()
 			]
 		]
 	];
@@ -201,7 +202,7 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 			.Padding(FMargin(16.f, 0.f))
 			[
 				SNew(STextBlock)
-				.Text(LOCTEXT("Help", "Click a cell to select it  |  WASD pan, wheel zoom, hold right mouse to look, Q/E orbit, PgUp/PgDn layer, R reset view, H home  |  ~ console: LRGive hydrogen 500, LRTimeScale 10"))
+				.Text(LOCTEXT("Help", "Click a cell to select it  |  WASD pan, wheel zoom, hold right mouse to look, Q/E orbit, PgUp/PgDn layer, R reset view, H home  |  ~ console: LRGive hydrogen 500 (into the selected cell), LRTimeScale 10"))
 				.Font(Style.SmallFont)
 				.ColorAndOpacity(Style.TextDim)
 			]
@@ -345,23 +346,8 @@ TSharedRef<SWidget> SLRGameHud::BuildActionsPanel()
 		})
 	];
 
-	Box->AddSlot()
-	.AutoHeight()
-	.Padding(FMargin(0.f, 0.f, 0.f, 6.f))
-	[
-		MakeActionButton(LRNames::Use,
-			[this]()
-			{
-				if (ULRGameSubsystem* Sub = GetSubsystem())
-				{
-					Sub->RequestActionWithSelection(LRNames::Use);
-				}
-			},
-			// Only when the selected inventory slot holds something usable (a loot box).
-			[this]() { return IsSelectedSlotUsable(); })
-	];
-
-	// Craft: one button per recipe (Rails: CraftToggleButton + CraftActionButton choices).
+	// Build: one button per recipe, built in the selected cell (Rails: CraftToggleButton +
+	// CraftActionButton choices).
 	Box->AddSlot()
 	.AutoHeight()
 	.Padding(FMargin(0.f, 4.f, 0.f, 2.f))
@@ -376,7 +362,7 @@ TSharedRef<SWidget> SLRGameHud::BuildActionsPanel()
 			SNew(STextBlock)
 			.Font(Style.HeadingFont)
 			.ColorAndOpacity(Style.Text)
-			.Text(LOCTEXT("Craft", "Craft"))
+			.Text_Lambda([this]() { return AsText(GetStatus(LRNames::Craft).Label); })
 		]
 		+ SHorizontalBox::Slot()
 		.FillWidth(1.f)
@@ -417,7 +403,9 @@ TSharedRef<SWidget> SLRGameHud::BuildActionsPanel()
 					Locked += Sim->IsRecipeUnlocked(Recipe.Id) ? 0 : 1;
 				}
 			}
-			return Locked > 0 ? AsText(FString::Printf(TEXT("%d recipe(s) still to discover..."), Locked)) : FText::GetEmpty();
+			FIntVector Cell;
+			const FString Hint = GetSelected(Cell) ? FString() : TEXT("Select a cell to build in.  ");
+			return AsText(Hint + (Locked > 0 ? FString::Printf(TEXT("%d recipe(s) still to discover..."), Locked) : FString()));
 		})
 		.Visibility_Lambda([this]() { return GetStatus(LRNames::Craft).bRevealed ? EVisibility::Visible : EVisibility::Collapsed; })
 	];
@@ -427,60 +415,91 @@ TSharedRef<SWidget> SLRGameHud::BuildActionsPanel()
 		SNullWidget::NullWidget);
 }
 
-TSharedRef<SWidget> SLRGameHud::BuildInventoryPanel()
+TSharedRef<SWidget> SLRGameHud::BuildUniversePanel()
 {
-	TSharedRef<SUniformGridPanel> Grid = SNew(SUniformGridPanel).SlotPadding(FMargin(2.f));
-	for (int32 Index = 0; Index < FLRSimulation::PlayerInventorySlots; ++Index)
-	{
-		Grid->AddSlot(Index % InventoryColumns, Index / InventoryColumns)
-		[
-			MakeInventorySlot(Index)
-		];
-	}
+	// No inventory: matter lives in grid cells. This is the total of each material, and how
+	// much of it the selected cell can reach (what building there can use).
+	const FLRHudStyle& Style = FLRHudStyle::Get();
+	TSharedRef<SVerticalBox> Box = SNew(SVerticalBox);
 
-	// Annihilate and Sort live in the inventory title bar (Rails: SortButton.vue).
-	TSharedRef<SWidget> HeaderButtons = SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot()
-		.AutoWidth()
-		.Padding(FMargin(0.f, 0.f, 4.f, 0.f))
-		[
-			SNew(SBox)
-			.WidthOverride(100.f)
+	auto Heading = [&Style](const FText& Label, float Width)
+	{
+		return SNew(SBox)
+			.WidthOverride(Width)
+			.HAlign(HAlign_Right)
 			[
-				MakeActionButton(LRNames::Annihilate,
-					[this]()
-					{
-						if (ULRGameSubsystem* Sub = GetSubsystem())
-						{
-							Sub->RequestActionWithSelection(LRNames::Annihilate);
-						}
-					},
-					// Only with something selected in the inventory.
-					[this]()
-					{
-						const ULRGameSubsystem* Sub = GetSubsystem();
-						const FLRInventorySlot* Slot = Sub ? GetSlot(Sub->GetSelectedSlot()) : nullptr;
-						return Slot && !Slot->IsEmpty();
-					})
-			]
+				SNew(STextBlock)
+				.Font(Style.SmallFont)
+				.ColorAndOpacity(Style.TextDark)
+				.Text(Label)
+			];
+	};
+	Box->AddSlot()
+	.AutoHeight()
+	.Padding(FMargin(4.f, 0.f, 4.f, 2.f))
+	[
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot()
+		.FillWidth(1.f)
+		[
+			SNew(STextBlock)
+			.Font(Style.SmallFont)
+			.ColorAndOpacity(Style.TextDark)
+			.Text(LOCTEXT("MatterHeading", "Matter"))
 		]
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		[
-			SNew(SBox)
-			.WidthOverride(70.f)
-			[
-				MakeActionButton(LRNames::SortInventory, [this]()
-				{
-					if (ULRGameSubsystem* Sub = GetSubsystem())
-					{
-						Sub->RequestSimpleAction(LRNames::SortInventory);
-					}
-				})
-			]
-		];
+			Heading(LOCTEXT("TotalHeading", "In the universe"), 100.f)
+		]
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		[
+			Heading(LOCTEXT("ReachHeading", "Within reach"), 100.f)
+		]
+	];
 
-	return MakePanel(LOCTEXT("Inventory", "INVENTORY"), Grid, HeaderButtons);
+	if (const FLRSimulation* Sim = GetSimulation())
+	{
+		for (const TPair<FName, FLRItemDef>& Pair : Sim->GetData().Items)
+		{
+			if (Pair.Value.Category == LRNames::CategoryMaterial)
+			{
+				Box->AddSlot()
+				.AutoHeight()
+				.Padding(FMargin(0.f, 1.f))
+				[
+					MakeMatterRow(Pair.Key)
+				];
+			}
+		}
+	}
+
+	Box->AddSlot()
+	.AutoHeight()
+	.Padding(FMargin(4.f, 4.f, 4.f, 0.f))
+	[
+		SNew(STextBlock)
+		.Font(Style.SmallFont)
+		.ColorAndOpacity(Style.TextDark)
+		.AutoWrapText(true)
+		.Text_Lambda([this]()
+		{
+			const FLRSimulation* Sim = GetSimulation();
+			const int32 Radius = Sim ? Sim->GetReachRadius() : 0;
+			FIntVector Cell;
+			if (!GetSelected(Cell))
+			{
+				return FText::Format(LOCTEXT("ReachHint", "Select a cell to see what's within reach of it: matter up to {0} cells away."), FText::AsNumber(Radius));
+			}
+			return FText::Format(LOCTEXT("ReachOf", "Within reach of {0}: matter up to {1} cells away. Building there pays from it, nearest first."),
+				AsText(FLRSimulation::DescribeCell(Cell)), FText::AsNumber(Radius));
+		})
+	];
+
+	return MakePanel(LOCTEXT("Universe", "UNIVERSE"),
+		SNew(SBox).WidthOverride(440.f)[Box],
+		SNullWidget::NullWidget);
 }
 
 TSharedRef<SWidget> SLRGameHud::BuildWorldPanel()
@@ -568,7 +587,7 @@ TSharedRef<SWidget> SLRGameHud::BuildWorldPanel()
 		})
 	];
 
-	// Deploy / Recall act on the selected cell (and selected inventory slot for Deploy).
+	// Open and Dismantle act on whatever is in the selected cell.
 	Box->AddSlot()
 	.AutoHeight()
 	.Padding(FMargin(0.f, 2.f, 0.f, 6.f))
@@ -578,23 +597,23 @@ TSharedRef<SWidget> SLRGameHud::BuildWorldPanel()
 		.FillWidth(1.f)
 		.Padding(FMargin(0.f, 0.f, 3.f, 0.f))
 		[
-			MakeActionButton(LRNames::Deploy,
+			MakeActionButton(LRNames::Use,
 				[this]()
 				{
-					if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->RequestActionWithSelection(LRNames::Deploy); }
+					if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->RequestActionWithSelection(LRNames::Use); }
 				},
-				[this]() { return HasSelectedCell(/*bWantOccupied*/ false); })
+				[this]() { return CanOpenSelectedCell(); })
 		]
 		+ SHorizontalBox::Slot()
 		.FillWidth(1.f)
 		.Padding(FMargin(3.f, 0.f, 0.f, 0.f))
 		[
-			MakeActionButton(LRNames::Recall,
+			MakeActionButton(LRNames::Dismantle,
 				[this]()
 				{
-					if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->RequestActionWithSelection(LRNames::Recall); }
+					if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->RequestActionWithSelection(LRNames::Dismantle); }
 				},
-				[this]() { return IsSelectedCellRecallable(); })
+				[this]() { return CanDismantleSelectedCell(); })
 		]
 	];
 
@@ -636,42 +655,10 @@ TSharedRef<SWidget> SLRGameHud::BuildWorldPanel()
 					.Percent_Lambda([this]() -> TOptional<float> { return GetSelectedExposureFraction(); })
 				]
 			]
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.f)
-				.Padding(FMargin(0.f, 0.f, 3.f, 0.f))
-				[
-					MakeActionButton(LRNames::Load,
-						[this]()
-						{
-							if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->RequestActionWithSelection(LRNames::Load); }
-						},
-						// A loot box or a radiation source must be selected in the inventory.
-						[this]() { return IsSelectedSlotLoadable(); })
-				]
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.f)
-				.Padding(FMargin(3.f, 0.f, 0.f, 0.f))
-				[
-					MakeActionButton(LRNames::Unload,
-						[this]()
-						{
-							if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->RequestActionWithSelection(LRNames::Unload); }
-						},
-						[this]()
-						{
-							const FLRPlacedEntity* Enclosure = GetSelectedEnclosure();
-							return Enclosure && (!Enclosure->Chamber.IsEmpty() || !Enclosure->Source.IsEmpty());
-						})
-				]
-			]
 		]
 	];
 
-	// Everything deployed, on every layer. Rebuilt when the world changes (RebuildDeployedList).
+	// Everything in the pocket universe, on every layer. Rebuilt when the world changes (RebuildDeployedList).
 	Box->AddSlot()
 	.AutoHeight()
 	[
@@ -764,11 +751,31 @@ TSharedRef<SWidget> SLRGameHud::BuildInfoPanel()
 
 TSharedRef<SWidget> SLRGameHud::BuildLogPanel()
 {
+	// Newest first, LogVisibleLines tall; scroll down for older ones (up to MaxLogLines).
+	// A line of the small font plus its padding is about 16px.
+	constexpr float LineHeight = 16.f;
 	SAssignNew(LogBox, SVerticalBox);
 	RebuildLog();
+
+	TSharedRef<SWidget> ToTop = MakeSmallButton(LOCTEXT("LogToTop", "To top"), [this]()
+	{
+		if (LogScroll.IsValid())
+		{
+			LogScroll->ScrollToStart();
+		}
+	});
+
 	return MakePanel(LOCTEXT("Log", "LOG"),
-		SNew(SBox).MinDesiredHeight(110.f)[LogBox.ToSharedRef()],
-		SNullWidget::NullWidget);
+		SNew(SBox)
+		.HeightOverride(LogVisibleLines * LineHeight)
+		[
+			SAssignNew(LogScroll, SScrollBox)
+			+ SScrollBox::Slot()
+			[
+				LogBox.ToSharedRef()
+			]
+		],
+		ToTop);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -872,11 +879,12 @@ TSharedRef<SWidget> SLRGameHud::MakeRecipeButton(FName RecipeId)
 			const FLRSimulation* S = GetSimulation();
 			return (S && S->IsRecipeUnlocked(RecipeId) && GetStatus(LRNames::Craft).bRevealed) ? EVisibility::Visible : EVisibility::Collapsed;
 		})
+		// Buildable in the selected cell: it can take the output and there's enough matter in reach.
 		.IsEnabled_Lambda([this, RecipeId]()
 		{
 			const FLRSimulation* S = GetSimulation();
-			const FLRRecipeDef* R = S ? S->GetData().FindRecipe(RecipeId) : nullptr;
-			return R && GetStatus(LRNames::Craft).bEnabled && S->CanAfford(R->Cost);
+			FIntVector Cell;
+			return S && GetStatus(LRNames::Craft).bEnabled && GetSelected(Cell) && S->ValidateBuild(RecipeId, Cell).IsNone();
 		})
 		.OnClicked_Lambda([this, RecipeId]()
 		{
@@ -911,102 +919,90 @@ TSharedRef<SWidget> SLRGameHud::MakeRecipeButton(FName RecipeId)
 					const FLRHudStyle& S = FLRHudStyle::Get();
 					const FLRSimulation* Sim = GetSimulation();
 					const FLRRecipeDef* R = Sim ? Sim->GetData().FindRecipe(RecipeId) : nullptr;
-					return (R && Sim->CanAfford(R->Cost)) ? S.TextDim : S.Red;
+					FIntVector Cell;
+					if (!R || !GetSelected(Cell))
+					{
+						return S.TextDim;
+					}
+					return Sim->CanAffordAt(Cell, R->Cost) ? S.TextDim : S.Red;
 				})
 			]
 		];
 }
 
-TSharedRef<SWidget> SLRGameHud::MakeInventorySlot(int32 SlotIndex)
+TSharedRef<SWidget> SLRGameHud::MakeMatterRow(FName Item)
 {
 	const FLRHudStyle& Style = FLRHudStyle::Get();
+	const FLRSimulation* Sim = GetSimulation();
+	const FLRItemDef* Def = Sim ? Sim->GetData().FindItem(Item) : nullptr;
+	const FLinearColor Swatch = Def ? Def->GetLinearColor() : FLinearColor::Gray;
+	const FText Name = AsText(Sim ? Sim->GetData().GetDisplayName(Item) : Item.ToString());
 
-	// Rails: InventoryItemSlot.vue
-	return SNew(SBox)
-		.WidthOverride(40.f)
-		.HeightOverride(40.f)
-		[
-			SNew(SBorder)
-			.BorderImage(&Style.WhiteBrush)
-			.Padding(FMargin(2.f))
-			.BorderBackgroundColor_Lambda([this, SlotIndex]() -> FSlateColor
-			{
-				const FLRHudStyle& S = FLRHudStyle::Get();
-				const ULRGameSubsystem* Sub = GetSubsystem();
-				return (Sub && Sub->GetSelectedSlot() == SlotIndex) ? S.Orange : S.SlotBorder;
-			})
+	auto Number = [&Style](const FSlateColor& Color, TFunction<FText()> Value)
+	{
+		return SNew(SBox)
+			.WidthOverride(100.f)
+			.HAlign(HAlign_Right)
 			[
-				SNew(SButton)
-				.ButtonStyle(&Style.SlotButtonStyle)
-				.IsFocusable(false)
-				.ContentPadding(FMargin(0.f))
-				.HAlign(HAlign_Fill)
-				.VAlign(VAlign_Fill)
-				.OnClicked_Lambda([this, SlotIndex]()
-				{
-					if (ULRGameSubsystem* Sub = GetSubsystem())
-					{
-						Sub->SelectSlot(SlotIndex);
-					}
-					return FReply::Handled();
-				})
-				.OnHovered_Lambda([this, SlotIndex]() { SetHover(EHoverKind::InventorySlot, NAME_None, SlotIndex); })
-				.OnUnhovered_Lambda([this]() { ClearHover(); })
+				SNew(STextBlock)
+				.Font(Style.BodyFont)
+				.ColorAndOpacity(Color)
+				.Text_Lambda(MoveTemp(Value))
+			];
+	};
+
+	// A button only for its hover events (the info panel describes the material).
+	return SNew(SButton)
+		.ButtonStyle(&Style.SlotButtonStyle)
+		.IsFocusable(false)
+		.ContentPadding(FMargin(4.f, 2.f))
+		.OnHovered_Lambda([this, Item]() { SetHover(EHoverKind::Material, Item); })
+		.OnUnhovered_Lambda([this]() { ClearHover(); })
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(FMargin(0.f, 0.f, 6.f, 0.f))
+			[
+				SNew(SBox)
+				.WidthOverride(12.f)
+				.HeightOverride(12.f)
 				[
-					SNew(SOverlay)
-					// Colour swatch standing in for an icon
-					+ SOverlay::Slot()
-					[
-						SNew(SBorder)
-						.BorderImage(&Style.WhiteBrush)
-						.BorderBackgroundColor_Lambda([this, SlotIndex]() -> FSlateColor
-						{
-							const FLRInventorySlot* Slot = GetSlot(SlotIndex);
-							const FLRSimulation* Sim = GetSimulation();
-							const FLRItemDef* Def = (Slot && !Slot->IsEmpty() && Sim) ? Sim->GetData().FindItem(Slot->Item) : nullptr;
-							if (!Def)
-							{
-								return FLinearColor::Transparent;
-							}
-							FLinearColor Color = Def->GetLinearColor();
-							Color.A = 0.45f;
-							return Color;
-						})
-					]
-					+ SOverlay::Slot()
-					.HAlign(HAlign_Center)
-					.VAlign(VAlign_Center)
-					[
-						SNew(STextBlock)
-						.Font(Style.HeadingFont)
-						.ColorAndOpacity(Style.Text)
-						.Text_Lambda([this, SlotIndex]()
-						{
-							const FLRInventorySlot* Slot = GetSlot(SlotIndex);
-							const FLRSimulation* Sim = GetSimulation();
-							if (!Slot || Slot->IsEmpty() || !Sim)
-							{
-								return FText::GetEmpty();
-							}
-							const FLRItemDef* Def = Sim->GetData().FindItem(Slot->Item);
-							return AsText(Def && !Def->Abbrev.IsEmpty() ? Def->Abbrev : Slot->Item.ToString().Left(3));
-						})
-					]
-					+ SOverlay::Slot()
-					.HAlign(HAlign_Right)
-					.VAlign(VAlign_Bottom)
-					.Padding(FMargin(0.f, 0.f, 2.f, 0.f))
-					[
-						SNew(STextBlock)
-						.Font(Style.SmallFont)
-						.ColorAndOpacity(Style.Text)
-						.Text_Lambda([this, SlotIndex]()
-						{
-							const FLRInventorySlot* Slot = GetSlot(SlotIndex);
-							return (Slot && !Slot->IsEmpty() && Slot->Count > 1) ? FText::AsNumber(Slot->Count) : FText::GetEmpty();
-						})
-					]
+					SNew(SBorder)
+					.BorderImage(&Style.WhiteBrush)
+					.BorderBackgroundColor(Swatch)
 				]
+			]
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.f)
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Font(Style.BodyFont)
+				.ColorAndOpacity(Style.Text)
+				.Text(Name)
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			[
+				Number(Style.Text, [this, Item]()
+				{
+					const FLRSimulation* S = GetSimulation();
+					return FText::AsNumber(S ? S->GetTotalMatter(Item) : 0);
+				})
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			[
+				Number(Style.Orange, [this, Item]()
+				{
+					const FLRSimulation* S = GetSimulation();
+					FIntVector Cell;
+					return (S && GetSelected(Cell)) ? FText::AsNumber(S->GetMatterInReach(Cell, Item)) : FText::FromString(TEXT("-"));
+				})
 			]
 		];
 }
@@ -1101,21 +1097,6 @@ FLRActionStatus SLRGameHud::GetStatus(FName ActionName) const
 	return Sim ? Sim->GetActionStatus(ActionName) : FLRActionStatus();
 }
 
-const FLRInventorySlot* SLRGameHud::GetSlot(int32 SlotIndex) const
-{
-	const FLRSimulation* Sim = GetSimulation();
-	return (Sim && Sim->GetInventory().IsValidIndex(SlotIndex)) ? &Sim->GetInventory()[SlotIndex] : nullptr;
-}
-
-bool SLRGameHud::IsSelectedSlotLoadable() const
-{
-	const ULRGameSubsystem* Sub = GetSubsystem();
-	const FLRSimulation* Sim = GetSimulation();
-	const FLRInventorySlot* Slot = Sub ? GetSlot(Sub->GetSelectedSlot()) : nullptr;
-	const FLRItemDef* Def = (Slot && !Slot->IsEmpty() && Sim) ? Sim->GetData().FindItem(Slot->Item) : nullptr;
-	return Def && (Def->IsLootBox() || Def->IsSource());
-}
-
 const FLRPlacedEntity* SLRGameHud::GetSelectedEnclosure() const
 {
 	const ULRGameSubsystem* Sub = GetSubsystem();
@@ -1181,24 +1162,80 @@ FString SLRGameHud::DescribeEnclosure(const FLRPlacedEntity& Enclosure) const
 			Radiation ? *Radiation->Name : TEXT("?"), Radiation ? Radiation->Tier : 0);
 	}
 
+	if (Box)
+	{
+		const FString CacheText = DescribeCache(*Box);
+		Text += CacheText.IsEmpty() ? FString() : TEXT("\n") + CacheText;
+	}
 	if (Box && Def && FLRSimulation::IsExposureComplete(*Box, *Def))
 	{
-		Text += TEXT("\nDone. Unload the cache to open it.");
+		Text += TEXT("\nDone. Open the cache here.");
 	}
 	else if (Enclosure.Chamber.IsEmpty() || Enclosure.Source.IsEmpty())
 	{
-		Text += TEXT("\nIdle: needs a cache and a source.");
+		Text += TEXT("\nIdle: build a cache and a radiation source into it.");
 	}
 	return Text;
 }
 
-bool SLRGameHud::IsSelectedSlotUsable() const
+bool SLRGameHud::GetSelected(FIntVector& OutCell) const
 {
 	const ULRGameSubsystem* Sub = GetSubsystem();
+	return Sub && Sub->GetSelectedCell(OutCell);
+}
+
+bool SLRGameHud::CanOpenSelectedCell() const
+{
 	const FLRSimulation* Sim = GetSimulation();
-	const FLRInventorySlot* Slot = Sub ? GetSlot(Sub->GetSelectedSlot()) : nullptr;
-	const FLRItemDef* Def = (Slot && !Slot->IsEmpty() && Sim) ? Sim->GetData().FindItem(Slot->Item) : nullptr;
-	return Def && Def->IsLootBox();
+	FIntVector Cell;
+	return Sim && GetSelected(Cell) && Sim->FindCacheAt(Cell) != nullptr;
+}
+
+bool SLRGameHud::CanDismantleSelectedCell() const
+{
+	const FLRSimulation* Sim = GetSimulation();
+	FIntVector Cell;
+	const FLRPlacedEntity* Entity = (Sim && GetSelected(Cell)) ? Sim->FindPlaced(Cell) : nullptr;
+	const FLRItemDef* Def = Entity ? Sim->GetData().FindItem(Entity->Item) : nullptr;
+	return Entity && !(Def && Def->IsStructure());
+}
+
+FString SLRGameHud::DescribeCache(const FLRLootBoxInstance& Cache) const
+{
+	const FLRSimulation* Sim = GetSimulation();
+	if (!Sim)
+	{
+		return FString();
+	}
+	TArray<FString> Lines;
+	for (const FLRLootModifier& Modifier : Cache.Modifiers)
+	{
+		const FLRRadiationDef* From = Sim->GetData().FindRadiation(Modifier.Source);
+		Lines.Add(FString::Printf(TEXT("Irradiated: %s%s"), *FLRSimulation::DescribeModifier(Modifier, Sim->GetData()),
+			From ? *FString::Printf(TEXT(" (%s)"), *From->Name) : TEXT("")));
+	}
+	if (Cache.bRevealed)
+	{
+		Lines.Add(FString::Printf(TEXT("Observed contents: %s"),
+			Cache.RevealedContents.IsEmpty() ? TEXT("nothing") : *Sim->DescribeAmounts(Cache.RevealedContents)));
+	}
+	return FString::Join(Lines, TEXT("\n"));
+}
+
+FString SLRGameHud::DescribeCellMatter(const FIntVector& Cell) const
+{
+	const FLRSimulation* Sim = GetSimulation();
+	const FLRCellMatter* CellMatter = Sim ? Sim->GetAllMatter().Find(Cell) : nullptr;
+	if (!CellMatter)
+	{
+		return FString();
+	}
+	TArray<FString> Lines;
+	for (const FLRItemAmount& Amount : CellMatter->Amounts)
+	{
+		Lines.Add(FString::Printf(TEXT("%d %s"), Amount.Count, *Sim->GetData().GetDisplayName(Amount.Item)));
+	}
+	return FString::Join(Lines, TEXT(", "));
 }
 
 bool SLRGameHud::IsCellSelected(const FIntVector& Cell) const
@@ -1225,16 +1262,6 @@ bool SLRGameHud::CanPerturbSelectedCell() const
 	}
 	const FLRItemDef* Def = Sim->GetData().FindItem(Entity->Item);
 	return Entity->Item == Perturb->Places && Def && Entity->Amplitude < Def->MaxAmplitude;
-}
-
-bool SLRGameHud::IsSelectedCellRecallable() const
-{
-	const ULRGameSubsystem* Sub = GetSubsystem();
-	const FLRSimulation* Sim = GetSimulation();
-	FIntVector Selected;
-	const FLRPlacedEntity* Entity = (Sub && Sim && Sub->GetSelectedCell(Selected)) ? Sim->FindPlaced(Selected) : nullptr;
-	const FLRItemDef* Def = Entity ? Sim->GetData().FindItem(Entity->Item) : nullptr;
-	return Entity && !(Def && Def->IsStructure());
 }
 
 FString SLRGameHud::DescribeOverdensity(const FLRPlacedEntity& Overdensity) const
@@ -1283,18 +1310,6 @@ FString SLRGameHud::DescribeOverdensity(const FLRPlacedEntity& Overdensity) cons
 	return Text;
 }
 
-bool SLRGameHud::HasSelectedCell(bool bWantOccupied) const
-{
-	const ULRGameSubsystem* Sub = GetSubsystem();
-	const FLRSimulation* Sim = GetSimulation();
-	FIntVector Selected;
-	if (!Sub || !Sim || !Sub->GetSelectedCell(Selected))
-	{
-		return false;
-	}
-	return (Sim->FindPlaced(Selected) != nullptr) == bWantOccupied;
-}
-
 // ---------------------------------------------------------------------------------------
 // Info panel (Rails: the hoveredTooltip sidebar in MainLayout.vue)
 // ---------------------------------------------------------------------------------------
@@ -1328,15 +1343,24 @@ FString SLRGameHud::DescribeCost(FName RecipeId, bool bMultiline) const
 		return FString();
 	}
 
+	FIntVector Cell;
+	const bool bHasCell = GetSelected(Cell);
 	TArray<FString> Parts;
 	for (const FLRItemAmount& Cost : Recipe->Cost)
 	{
 		const FLRItemDef* Def = Sim->GetData().FindItem(Cost.Item);
 		if (bMultiline)
 		{
-			const int32 Have = Sim->CountItem(Cost.Item);
-			Parts.Add(FString::Printf(TEXT("%s: %d  (have %d) %s"),
-				*Sim->GetData().GetDisplayName(Cost.Item), Cost.Count, Have, Have >= Cost.Count ? TEXT("OK") : TEXT("- need more")));
+			if (bHasCell)
+			{
+				const int32 Have = Sim->GetMatterInReach(Cell, Cost.Item);
+				Parts.Add(FString::Printf(TEXT("%s: %d  (%d within reach) %s"), *Sim->GetData().GetDisplayName(Cost.Item), Cost.Count, Have,
+					Have >= Cost.Count ? TEXT("OK") : TEXT("- need more")));
+			}
+			else
+			{
+				Parts.Add(FString::Printf(TEXT("%s: %d"), *Sim->GetData().GetDisplayName(Cost.Item), Cost.Count));
+			}
 		}
 		else
 		{
@@ -1362,18 +1386,12 @@ FText SLRGameHud::GetHoverTitle() const
 	case EHoverKind::Recipe:
 		if (const FLRRecipeDef* Recipe = Sim->GetData().FindRecipe(HoverName))
 		{
-			return AsText(FString::Printf(TEXT("Craft: %s"), *Recipe->Label));
+			return AsText(FString::Printf(TEXT("Build: %s"), *Recipe->Label));
 		}
 		break;
 
-	case EHoverKind::InventorySlot:
-		if (const FLRInventorySlot* Slot = GetSlot(HoverIndex))
-		{
-			return Slot->IsEmpty()
-				? AsText(FString::Printf(TEXT("Slot %d"), HoverIndex + 1))
-				: AsText(Sim->GetData().GetDisplayName(Slot->Item));
-		}
-		break;
+	case EHoverKind::Material:
+		return AsText(Sim->GetData().GetDisplayName(HoverName));
 
 	default:
 		break;
@@ -1394,6 +1412,7 @@ FText SLRGameHud::GetHoverBody() const
 	{
 		return FText::GetEmpty();
 	}
+	const FLRGameData& Data = Sim->GetData();
 
 	switch (HoverKind)
 	{
@@ -1409,58 +1428,35 @@ FText SLRGameHud::GetHoverBody() const
 	}
 
 	case EHoverKind::Recipe:
-		if (const FLRRecipeDef* Recipe = Sim->GetData().FindRecipe(HoverName))
+		if (const FLRRecipeDef* Recipe = Data.FindRecipe(HoverName))
 		{
-			return AsText(FString::Printf(TEXT("%s\n\nCost:\n%s"), *Recipe->Tooltip, *DescribeCost(HoverName, /*bMultiline*/ true)));
+			FString Body = FString::Printf(TEXT("%s\n\nCost:\n%s"), *Recipe->Tooltip, *DescribeCost(HoverName, /*bMultiline*/ true));
+			FIntVector Cell;
+			if (!GetSelected(Cell))
+			{
+				Body += TEXT("\n\nSelect a cell to build in.");
+			}
+			else
+			{
+				const FName Blocker = Sim->ValidateBuild(HoverName, Cell);
+				Body += Blocker.IsNone()
+					? FString::Printf(TEXT("\n\nBuilds in %s."), *FLRSimulation::DescribeCell(Cell))
+					: FString::Printf(TEXT("\n\nCan't build in %s: %s."), *FLRSimulation::DescribeCell(Cell), *FLRSimulation::DescribeReason(Blocker));
+			}
+			return AsText(Body);
 		}
 		break;
 
-	case EHoverKind::InventorySlot:
-		if (const FLRInventorySlot* Slot = GetSlot(HoverIndex))
+	case EHoverKind::Material:
+		if (const FLRItemDef* Def = Data.FindItem(HoverName))
 		{
-			if (Slot->IsEmpty())
+			FString Body = FString::Printf(TEXT("%s\n\n%d in the pocket universe."), *Def->Tooltip, Sim->GetTotalMatter(HoverName));
+			FIntVector Cell;
+			if (GetSelected(Cell))
 			{
-				return LOCTEXT("EmptySlot", "Empty.");
+				Body += FString::Printf(TEXT("\n%d within reach of %s, %d in the cell itself."),
+					Sim->GetMatterInReach(Cell, HoverName), *FLRSimulation::DescribeCell(Cell), Sim->GetMatter(Cell, HoverName));
 			}
-			const FLRItemDef* Def = Sim->GetData().FindItem(Slot->Item);
-			FString Body = Def ? Def->Tooltip : FString();
-			Body += FString::Printf(TEXT("\n\nCount: %d"), Slot->Count);
-			if (Def)
-			{
-				Body += FString::Printf(TEXT(" / %d"), Def->StackSize);
-			}
-			if (const FLRLootBoxInstance* Box = Sim->FindLootBox(Slot->InstanceId))
-			{
-				for (const FLRLootModifier& Modifier : Box->Modifiers)
-				{
-					const FLRRadiationDef* From = Sim->GetData().FindRadiation(Modifier.Source);
-					Body += FString::Printf(TEXT("\nIrradiated: %s%s"), *FLRSimulation::DescribeModifier(Modifier, Sim->GetData()),
-						From ? *FString::Printf(TEXT(" (%s)"), *From->Name) : TEXT(""));
-				}
-				if (Box->bRevealed)
-				{
-					TArray<FString> Parts;
-					for (const FLRItemAmount& Amount : Box->RevealedContents)
-					{
-						Parts.Add(FString::Printf(TEXT("%d %s"), Amount.Count, *Sim->GetData().GetDisplayName(Amount.Item)));
-					}
-					Body += FString::Printf(TEXT("\nObserved contents: %s"), Parts.IsEmpty() ? TEXT("nothing") : *FString::Join(Parts, TEXT(", ")));
-				}
-			}
-			if (Def && Def->IsSource())
-			{
-				if (const FLRRadiationDef* Radiation = Sim->GetData().FindRadiation(Def->Radiation))
-				{
-					Body += FString::Printf(TEXT("\nRadiation: %s (tier %d, energy %d)\nEach exposure: %s"), *Radiation->Name,
-						Radiation->Tier, Radiation->Energy, *FLRSimulation::DescribeModifier(Radiation->Effect, Sim->GetData()));
-				}
-			}
-			if (Def && Def->IsEnclosure())
-			{
-				Body += FString::Printf(TEXT("\nContains radiation up to tier %d, adds up to %d stacks, one every %.0fs."),
-					Def->MaxRadiationTier, Def->MaxExposureStacks, Def->ExposureSeconds);
-			}
-			Body += TEXT("\n\nClick to select.");
 			return AsText(Body);
 		}
 		break;
@@ -1470,27 +1466,47 @@ FText SLRGameHud::GetHoverBody() const
 	}
 
 	FIntVector Cell;
-	if (GetInfoCell(Cell))
+	if (!GetInfoCell(Cell))
 	{
-		if (const FLRPlacedEntity* Entity = Sim->FindPlaced(Cell))
-		{
-			const FLRItemDef* Def = Sim->GetData().FindItem(Entity->Item);
-			if (Def && Def->IsEnclosure())
-			{
-				return AsText(FString::Printf(TEXT("%s\n\n%s"), Def ? *Def->Tooltip : TEXT(""), *DescribeEnclosure(*Entity)));
-			}
-			if (Def && Def->IsOverdensity())
-			{
-				return AsText(FString::Printf(TEXT("%s\n\n%s"), *Def->Tooltip, *DescribeOverdensity(*Entity)));
-			}
-			return AsText(FString::Printf(TEXT("%s\n%s\n\nDeployed at t=%.0fs. Select it, then Recall to pick it up."),
-				*Sim->GetData().GetDisplayName(Entity->Item), Def ? *Def->Tooltip : TEXT(""), Entity->PlacedAt));
-		}
-		return GetStatus(LRNames::Perturb).bRevealed
-			? LOCTEXT("EmptyCellPerturb", "Empty cell. Click to select it, then Perturb to seed a ripple here, or pick a deployable item in the inventory and Deploy it.")
-			: LOCTEXT("EmptyCell", "Empty cell. Click to select it, pick a deployable item in the inventory, then Deploy.");
+		return LOCTEXT("InfoHint", "Hover an action, recipe, material or cell to see details.");
 	}
-	return LOCTEXT("InfoHint", "Hover an action, item or cell to see details.");
+
+	FString Body;
+	if (const FLRPlacedEntity* Entity = Sim->FindPlaced(Cell))
+	{
+		const FLRItemDef* Def = Data.FindItem(Entity->Item);
+		const FString Tooltip = Def ? Def->Tooltip : FString();
+		if (Def && Def->IsEnclosure())
+		{
+			Body = FString::Printf(TEXT("%s\n\n%s"), *Tooltip, *DescribeEnclosure(*Entity));
+		}
+		else if (Def && Def->IsOverdensity())
+		{
+			Body = FString::Printf(TEXT("%s\n\n%s"), *Tooltip, *DescribeOverdensity(*Entity));
+		}
+		else if (Def && Def->IsLootBox())
+		{
+			const FLRLootBoxInstance* Cache = Sim->FindCacheAt(Cell);
+			const FString CacheText = Cache ? DescribeCache(*Cache) : FString();
+			Body = FString::Printf(TEXT("%s\n%s%s\n\nOpen it here, or Dismantle it to get its matter back."),
+				*Data.GetDisplayName(Entity->Item), *Tooltip, CacheText.IsEmpty() ? TEXT("") : *(TEXT("\n\n") + CacheText));
+		}
+		else
+		{
+			Body = FString::Printf(TEXT("%s\n%s\n\nBuilt at t=%.0fs. Dismantle returns what it cost to this cell."),
+				*Data.GetDisplayName(Entity->Item), *Tooltip, Entity->PlacedAt);
+		}
+	}
+	else
+	{
+		Body = GetStatus(LRNames::Perturb).bRevealed
+			? TEXT("Empty cell. Click to select it, then Perturb to seed a ripple here, or Build something in it.")
+			: TEXT("Empty cell. Click to select it, then Build something in it.");
+	}
+
+	const FString MatterText = DescribeCellMatter(Cell);
+	Body += FString::Printf(TEXT("\n\nMatter here: %s"), MatterText.IsEmpty() ? TEXT("none") : *MatterText);
+	return AsText(Body);
 }
 
 // ---------------------------------------------------------------------------------------

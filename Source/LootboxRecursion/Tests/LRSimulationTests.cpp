@@ -17,16 +17,16 @@
 
 namespace LRTest
 {
-
 	const FName Carbon(TEXT("carbon"));
 	const FName Iron(TEXT("iron"));
 	const FName Box(TEXT("loot_box"));
 	const FName MysteryBox(TEXT("mystery_box"));
+	const FName DoubleBox(TEXT("double_box"));
 	const FName Enclosure(TEXT("enclosure"));
 	const FName Lamp(TEXT("lamp"));
 	const FName XRayTube(TEXT("xray_tube"));
 	const FName GammaSource(TEXT("gamma_source"));
-	/** A plain loot action: any action with a lootTable just rolls it. */
+	/** A plain loot action: any action with a lootTable rolls it into the selected cell. */
 	const FName Gather(TEXT("gather"));
 
 	void AddItemDef(FLRGameData& Data, FName Id, const TCHAR* Name, FName Category, int32 StackSize, FName LootTable = NAME_None)
@@ -55,6 +55,16 @@ namespace LRTest
 		Data.LootTables.Add(Id, Table);
 	}
 
+	FLRRecipeDef& AddRecipe(FLRGameData& Data, FName Id, FName Output, const TArray<FLRItemAmount>& Cost)
+	{
+		FLRRecipeDef Recipe;
+		Recipe.Id = Id;
+		Recipe.Label = Id.ToString();
+		Recipe.Output = Output;
+		Recipe.Cost = Cost;
+		return Data.Recipes.Add_GetRef(Recipe);
+	}
+
 	FLRActionDef MakeAction(FName Name, float Cooldown, float CastTime, FName LootTable = NAME_None)
 	{
 		FLRActionDef Action;
@@ -66,14 +76,19 @@ namespace LRTest
 		return Action;
 	}
 
-	/** Small, fully deterministic data set (every loot range is a single value). */
+	/**
+	 * Small, fully deterministic data set (every loot range is a single value). Building,
+	 * opening and dismantling are instant; reach is one cell.
+	 */
 	FLRGameData MakeData()
 	{
 		FLRGameData Data;
+		Data.ReachRadius = 1;
 		AddItemDef(Data, Carbon, TEXT("Carbon"), LRNames::CategoryMaterial, 100);
 		AddItemDef(Data, Iron, TEXT("Iron"), LRNames::CategoryMaterial, 100);
 		AddItemDef(Data, Box, TEXT("Loot Box"), LRNames::CategoryLootBox, 1, TEXT("box"));
 		AddItemDef(Data, MysteryBox, TEXT("Mystery Box"), LRNames::CategoryLootBox, 1, TEXT("nested"));
+		AddItemDef(Data, DoubleBox, TEXT("Double Box"), LRNames::CategoryLootBox, 1, TEXT("double"));
 		AddItemDef(Data, Enclosure, TEXT("Enclosure"), LRNames::CategoryPlaceable, 1);
 		Data.Items[Enclosure].MaxRadiationTier = 5;
 		Data.Items[Enclosure].MaxExposureStacks = 2;
@@ -104,82 +119,44 @@ namespace LRTest
 		AddTable(Data, TEXT("box"), 2, Carbon, 10);       // always 2 x 10 carbon
 		AddTable(Data, TEXT("gather"), 1, Carbon, 30);    // always 30 carbon
 		AddTable(Data, TEXT("nested"), 1, Box, 1);        // a box inside a box
+		AddTable(Data, TEXT("double"), 2, Box, 1);        // two boxes inside a box
 
-		FLRRecipeDef BoxRecipe;
-		BoxRecipe.Id = Box;
-		BoxRecipe.Label = TEXT("Loot Box");
-		BoxRecipe.Output = Box;
-		BoxRecipe.Cost = { FLRItemAmount(Carbon, 50), FLRItemAmount(Iron, 50) };
-		Data.Recipes.Add(BoxRecipe);
+		AddRecipe(Data, Box, Box, { FLRItemAmount(Carbon, 50), FLRItemAmount(Iron, 50) }).Label = TEXT("Loot Box");
+		AddRecipe(Data, MysteryBox, MysteryBox, { FLRItemAmount(Carbon, 1) });
+		AddRecipe(Data, DoubleBox, DoubleBox, { FLRItemAmount(Carbon, 1) });
+		AddRecipe(Data, Enclosure, Enclosure, { FLRItemAmount(Carbon, 10) });
+		AddRecipe(Data, Lamp, Lamp, { FLRItemAmount(Carbon, 5) });
+		AddRecipe(Data, XRayTube, XRayTube, { FLRItemAmount(Carbon, 1) });
+		AddRecipe(Data, GammaSource, GammaSource, { FLRItemAmount(Carbon, 1) });
 
 		Data.Actions.Add(MakeAction(Gather, 5.f, 5.f, TEXT("gather")));
-		Data.Actions.Add(MakeAction(LRNames::Craft, 5.f, 5.f));
+		Data.Actions.Add(MakeAction(LRNames::Craft, 0.f, 0.f));
+		Data.Actions.Add(MakeAction(LRNames::Use, 0.f, 0.f));
+		Data.Actions.Add(MakeAction(LRNames::Dismantle, 0.f, 0.f));
 
-		FLRActionDef Use = MakeAction(LRNames::Use, 5.f, 5.f);
-		FLRRequirement HasBox;
-		HasBox.Category = LRNames::CategoryLootBox;
-		HasBox.Condition = TEXT("gt");
-		HasBox.Value = 0;
-		Use.Requirements.Add(HasBox);
-		Data.Actions.Add(Use);
-
-		FLRActionDef Deploy = MakeAction(LRNames::Deploy, 1.f, 0.f);
-		FLRRequirement HasPlaceable;
-		HasPlaceable.Category = LRNames::CategoryPlaceable;
-		Deploy.Requirements.Add(HasPlaceable);
-		Data.Actions.Add(Deploy);
-
-		FLRActionDef Recall = MakeAction(LRNames::Recall, 1.f, 0.f);
-		FLRRequirement HasPlaced;
-		HasPlaced.Check = LRNames::CheckPlaced;
-		Recall.Requirements.Add(HasPlaced);
-		Data.Actions.Add(Recall);
-		Data.Actions.Add(MakeAction(LRNames::SortInventory, 1.f, 0.f));
-		Data.Actions.Add(MakeAction(LRNames::Load, 0.f, 0.f));
-		Data.Actions.Add(MakeAction(LRNames::Unload, 0.f, 0.f));
-		Data.Actions.Add(MakeAction(LRNames::Annihilate, 0.f, 0.f));
-
-		// Tech tree: a recipe unlocked by crafting a loot box, one chained off it, and an
-		// action revealed by holding a loot box.
+		// Tech tree: a recipe unlocked by building a loot box, one chained off it, and an
+		// action revealed by a cache sitting in the world.
 		FLRRequirement CraftedABox;
 		CraftedABox.Check = LRNames::CheckStat;
 		CraftedABox.Id = TEXT("crafted:loot_box");
 		CraftedABox.Condition = TEXT("gte");
 		CraftedABox.Value = 1;
-		FLRRecipeDef Gated;
-		Gated.Id = TEXT("gated_enclosure");
-		Gated.Label = TEXT("Gated Enclosure");
-		Gated.Output = Enclosure;
-		Gated.Cost = { FLRItemAmount(Carbon, 10) };
-		Gated.RevealRequirements.Add(CraftedABox);
-		Data.Recipes.Add(Gated);
+		AddRecipe(Data, TEXT("gated_enclosure"), Enclosure, { FLRItemAmount(Carbon, 10) }).RevealRequirements.Add(CraftedABox);
 
 		FLRRequirement AfterGated;
 		AfterGated.Check = LRNames::CheckUnlocked;
 		AfterGated.Id = TEXT("recipe:gated_enclosure");
 		AfterGated.Condition = TEXT("eq");
 		AfterGated.Value = 1;
-		FLRRecipeDef Chained;
-		Chained.Id = TEXT("chained_lamp");
-		Chained.Label = TEXT("Chained Lamp");
-		Chained.Output = Lamp;
-		Chained.Cost = { FLRItemAmount(Carbon, 5) };
-		Chained.RevealRequirements.Add(AfterGated);
-		Data.Recipes.Add(Chained);
+		AddRecipe(Data, TEXT("chained_lamp"), Lamp, { FLRItemAmount(Carbon, 5) }).RevealRequirements.Add(AfterGated);
 
 		FLRActionDef Scan = MakeAction(TEXT("scan"), 1.f, 0.f, TEXT("gather"));
-		FLRRequirement HoldsBox;
-		HoldsBox.Category = LRNames::CategoryLootBox;
-		Scan.RevealRequirements.Add(HoldsBox);
+		FLRRequirement CacheInWorld;
+		CacheInWorld.Check = LRNames::CheckPlaced;
+		CacheInWorld.Category = LRNames::CategoryLootBox;
+		Scan.RevealRequirements.Add(CacheInWorld);
 		Data.Actions.Add(Scan);
 		return Data;
-	}
-
-	FLRActionRequest UseSlot(int32 Slot)
-	{
-		FLRActionRequest Request = FLRActionRequest::Make(LRNames::Use);
-		Request.Slot = Slot;
-		return Request;
 	}
 
 	FLRActionRequest AtCell(FName Action, const FIntVector& Cell)
@@ -190,26 +167,52 @@ namespace LRTest
 		return Request;
 	}
 
-	int32 SlotOf(const FLRSimulation& Sim, FName Item)
+	FLRActionResult Build(FLRSimulation& Sim, FName Recipe, const FIntVector& Cell)
 	{
-		return Sim.GetInventory().IndexOfByPredicate([Item](const FLRInventorySlot& Slot) { return Slot.Item == Item; });
-	}
-
-	/** Load the (first) given item from the inventory into the enclosure at Cell. */
-	FLRActionResult LoadInto(FLRSimulation& Sim, FName Item, const FIntVector& Cell)
-	{
-		FLRActionRequest Request = AtCell(LRNames::Load, Cell);
-		Request.Slot = SlotOf(Sim, Item);
+		FLRActionRequest Request = AtCell(LRNames::Craft, Cell);
+		Request.Choice = Recipe;
 		return Sim.RequestAction(Request);
 	}
 
-	/** A deployed enclosure at (0, 0, 0). */
-	void DeployEnclosure(FLRSimulation& Sim)
+	bool Open(FLRSimulation& Sim, const FIntVector& Cell)
 	{
-		Sim.GiveItem(Enclosure, 1);
-		FLRActionRequest Deploy = AtCell(LRNames::Deploy, FIntVector::ZeroValue);
-		Deploy.Slot = SlotOf(Sim, Enclosure);
-		Sim.RequestAction(Deploy);
+		return Sim.RequestAction(AtCell(LRNames::Use, Cell)).bSuccess;
+	}
+
+	bool Dismantle(FLRSimulation& Sim, const FIntVector& Cell)
+	{
+		return Sim.RequestAction(AtCell(LRNames::Dismantle, Cell)).bSuccess;
+	}
+
+	/** An enclosure at Cell, paid for with matter given to it. */
+	void BuildEnclosure(FLRSimulation& Sim, const FIntVector& Cell)
+	{
+		Sim.GiveMatter(Cell, Carbon, 10);
+		Build(Sim, Enclosure, Cell);
+	}
+
+	/** Build a cache (or source) into the enclosure at Cell, paying with matter given to it. */
+	bool BuildInto(FLRSimulation& Sim, FName Recipe, const FIntVector& Cell)
+	{
+		const FLRRecipeDef* Def = Sim.GetData().FindRecipe(Recipe);
+		for (const FLRItemAmount& Cost : Def ? Def->Cost : TArray<FLRItemAmount>())
+		{
+			Sim.GiveMatter(Cell, Cost.Item, Cost.Count);
+		}
+		return Build(Sim, Recipe, Cell).bSuccess;
+	}
+
+	/** The instance id of the cache at Cell (an entity or in an enclosure), or 0. */
+	int32 CacheIdAt(const FLRSimulation& Sim, const FIntVector& Cell)
+	{
+		const FLRLootBoxInstance* Cache = Sim.FindCacheAt(Cell);
+		return Cache ? Cache->InstanceId : 0;
+	}
+
+	int32 StacksAt(const FLRSimulation& Sim, const FIntVector& Cell)
+	{
+		const FLRLootBoxInstance* Cache = Sim.FindCacheAt(Cell);
+		return Cache ? Cache->Modifiers.Num() : -1;
 	}
 
 	const FName Hydrogen(TEXT("hydrogen"));
@@ -313,142 +316,143 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimLootActionTest, "LootboxRecursion.Simulat
 bool FLRSimLootActionTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 42);
+	const FIntVector Cell(2, -1, 0);
 
-	const FLRActionResult Started = Sim.RequestAction(FLRActionRequest::Make(LRTest::Gather));
+	TestFalse(TEXT("needs a cell"), Sim.RequestAction(FLRActionRequest::Make(LRTest::Gather)).bSuccess);
+	TestFalse(TEXT("a refused request doesn't start the cooldown"), Sim.GetActionStatus(LRTest::Gather).bOnCooldown);
+
+	const FLRActionResult Started = Sim.RequestAction(LRTest::AtCell(LRTest::Gather, Cell));
 	TestTrue(TEXT("request accepted"), Started.bSuccess && Started.bStarted);
 	TestTrue(TEXT("status shows casting"), Sim.GetActionStatus(LRTest::Gather).bCasting);
-
-	const FLRActionResult Again = Sim.RequestAction(FLRActionRequest::Make(LRTest::Gather));
-	TestFalse(TEXT("second request rejected while casting"), Again.bSuccess);
+	TestFalse(TEXT("second request rejected while casting"), Sim.RequestAction(LRTest::AtCell(LRTest::Gather, Cell)).bSuccess);
 
 	Sim.Advance(4.9);
-	TestEqual(TEXT("no carbon before cast completes"), Sim.CountItem(LRTest::Carbon), 0);
+	TestEqual(TEXT("no carbon before the cast completes"), Sim.GetMatter(Cell, LRTest::Carbon), 0);
 
 	bool bCompleted = false;
 	Sim.OnActionCompleted.AddLambda([&bCompleted](const FLRActionResult& Result) { bCompleted = Result.bSuccess; });
 	Sim.Advance(0.2);
 	TestTrue(TEXT("completion broadcast"), bCompleted);
-	TestEqual(TEXT("carbon after cast"), Sim.CountItem(LRTest::Carbon), 30);
+	TestEqual(TEXT("carbon lands in the cell"), Sim.GetMatter(Cell, LRTest::Carbon), 30);
 	TestFalse(TEXT("cooldown over (cooldown == cast time)"), Sim.GetActionStatus(LRTest::Gather).bOnCooldown);
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimStackingTest, "LootboxRecursion.Simulation.StackingIsAllOrNothing", LR_TEST_FLAGS)
-bool FLRSimStackingTest::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRMatterCellsTest, "LootboxRecursion.Matter.CellsHoldMatter", LR_TEST_FLAGS)
+bool FLRMatterCellsTest::RunTest(const FString& Parameters)
 {
-	FLRSimulation Sim(LRTest::MakeData(), 1);
+	FLRSimulation Sim(LRTest::MakeData(), 1); // reach 1
+	const FIntVector Here(0, 0, 0);
+	TestTrue(TEXT("give carbon"), Sim.GiveMatter(Here, LRTest::Carbon, 30));
+	Sim.GiveMatter(FIntVector(1, 0, 0), LRTest::Carbon, 40);   // a neighbour
+	Sim.GiveMatter(FIntVector(3, 0, 0), LRTest::Carbon, 100);  // out of reach
+	Sim.GiveMatter(FIntVector(0, 0, 1), LRTest::Carbon, 500);  // the layer above
+	TestFalse(TEXT("only materials are matter"), Sim.GiveMatter(Here, LRTest::Box, 1));
+	TestFalse(TEXT("unknown items aren't"), Sim.GiveMatter(Here, TEXT("unobtainium"), 1));
 
-	TestTrue(TEXT("give 250 carbon"), Sim.GiveItem(LRTest::Carbon, 250));
-	TestEqual(TEXT("slot 0"), Sim.GetInventory()[0].Count, 100);
-	TestEqual(TEXT("slot 1"), Sim.GetInventory()[1].Count, 100);
-	TestEqual(TEXT("slot 2"), Sim.GetInventory()[2].Count, 50);
+	TestEqual(TEXT("per cell"), Sim.GetMatter(Here, LRTest::Carbon), 30);
+	TestEqual(TEXT("whole universe"), Sim.GetTotalMatter(LRTest::Carbon), 670);
+	TestEqual(TEXT("within reach: this cell and its neighbours, this layer only"), Sim.GetMatterInReach(Here, LRTest::Carbon), 70);
+	TestEqual(TEXT("nothing of other materials"), Sim.GetMatterInReach(Here, LRTest::Iron), 0);
 
-	TestTrue(TEXT("give 60 more carbon"), Sim.GiveItem(LRTest::Carbon, 60));
-	TestEqual(TEXT("partial stack topped up first"), Sim.GetInventory()[2].Count, 100);
-	TestEqual(TEXT("remainder in next slot"), Sim.GetInventory()[3].Count, 10);
-
-	// Fill the remaining 46 slots with iron.
-	TestTrue(TEXT("fill with iron"), Sim.GiveItem(LRTest::Iron, 4600));
-	TestFalse(TEXT("iron no longer fits"), Sim.GiveItem(LRTest::Iron, 1));
-	TestTrue(TEXT("carbon still fits in the partial stack"), Sim.GiveItem(LRTest::Carbon, 90));
-	TestFalse(TEXT("but not more than that"), Sim.GiveItem(LRTest::Carbon, 1000));
-	TestEqual(TEXT("failed add changed nothing"), Sim.CountItem(LRTest::Carbon), 400);
+	FLRSimulation Loaded(LRTest::MakeData(), 0);
+	TestTrue(TEXT("load"), Loaded.Load(Sim.Save()));
+	TestEqual(TEXT("matter survives save/load"), Loaded.GetMatter(FIntVector(3, 0, 0), LRTest::Carbon), 100);
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimCraftTest, "LootboxRecursion.Simulation.CraftLootBox", LR_TEST_FLAGS)
-bool FLRSimCraftTest::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRMatterReachTest, "LootboxRecursion.Matter.CostsArePaidFromReach", LR_TEST_FLAGS)
+bool FLRMatterReachTest::RunTest(const FString& Parameters)
 {
-	FLRSimulation Sim(LRTest::MakeData(), 1);
+	FLRSimulation Sim(LRTest::MakeData(), 1); // reach 1
+	const FIntVector Here(0, 0, 0);
+	const FIntVector Next(1, 0, 0);
+	const FIntVector Far(3, 0, 0);
+	Sim.GiveMatter(Here, LRTest::Carbon, 30);
+	Sim.GiveMatter(Next, LRTest::Carbon, 40);
+	Sim.GiveMatter(Next, LRTest::Iron, 50);
+	Sim.GiveMatter(Far, LRTest::Carbon, 100);
 
-	FLRActionRequest Craft = FLRActionRequest::Make(LRNames::Craft);
-	Craft.Choice = LRTest::Box;
+	const FLRActionResult Built = LRTest::Build(Sim, LRTest::Box, Here);
+	TestTrue(TEXT("a box costs 50 carbon and 50 iron, all within reach"), Built.bSuccess);
+	TestTrue(TEXT("it sits in the cell"), LRTest::CacheIdAt(Sim, Here) != 0);
+	TestEqual(TEXT("the build cell pays first"), Sim.GetMatter(Here, LRTest::Carbon), 0);
+	TestEqual(TEXT("then its neighbours"), Sim.GetMatter(Next, LRTest::Carbon), 20);
+	TestEqual(TEXT("iron from the neighbour"), Sim.GetMatter(Next, LRTest::Iron), 0);
+	TestEqual(TEXT("out of reach is untouched"), Sim.GetMatter(Far, LRTest::Carbon), 100);
+	TestEqual(TEXT("empty cells drop out"), Sim.GetAllMatter().Num(), 2);
 
-	const FLRActionResult Poor = Sim.RequestAction(Craft);
-	TestFalse(TEXT("can't craft without materials"), Poor.bSuccess);
-	TestFalse(TEXT("failed request does not start a cooldown"), Sim.GetActionStatus(LRNames::Craft).bOnCooldown);
+	const FLRActionResult Poor = LRTest::Build(Sim, LRTest::Box, FIntVector(0, 1, 0));
+	TestFalse(TEXT("not enough within reach"), Poor.bSuccess);
+	TestTrue(TEXT("reason"), Poor.Reason == FName(TEXT("insufficient_materials")));
+	TestFalse(TEXT("no cell, no build"), Sim.RequestAction(FLRActionRequest::Make(LRNames::Craft)).bSuccess);
 
-	Sim.GiveItem(LRTest::Carbon, 60);
-	Sim.GiveItem(LRTest::Iron, 55);
-	TestTrue(TEXT("craft accepted"), Sim.RequestAction(Craft).bStarted);
-	Sim.Advance(5.0);
-
-	TestEqual(TEXT("carbon spent"), Sim.CountItem(LRTest::Carbon), 10);
-	TestEqual(TEXT("iron spent"), Sim.CountItem(LRTest::Iron), 5);
-	TestEqual(TEXT("box crafted"), Sim.CountItem(LRTest::Box), 1);
-
-	const int32 BoxSlot = Sim.GetInventory().IndexOfByPredicate([](const FLRInventorySlot& Slot) { return Slot.Item == LRTest::Box; });
-	TestTrue(TEXT("box has a slot"), BoxSlot != INDEX_NONE);
-	if (BoxSlot != INDEX_NONE)
-	{
-		const int32 InstanceId = Sim.GetInventory()[BoxSlot].InstanceId;
-		TestTrue(TEXT("box has an instance id"), InstanceId != 0);
-		TestNotNull(TEXT("box instance registered"), Sim.FindLootBox(InstanceId));
-	}
+	Sim.GiveMatter(Here, LRTest::Carbon, 50);
+	Sim.GiveMatter(Here, LRTest::Iron, 50);
+	const FLRActionResult Occupied = LRTest::Build(Sim, LRTest::Box, Here);
+	TestTrue(TEXT("a cell holds one cache"), !Occupied.bSuccess && Occupied.Reason == FName(TEXT("occupied")));
+	TestTrue(TEXT("matter lives alongside the cache"), Sim.GetMatter(Here, LRTest::Carbon) == 50);
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimOpenTest, "LootboxRecursion.Simulation.OpenLootBox", LR_TEST_FLAGS)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimOpenTest, "LootboxRecursion.Simulation.OpenCacheSpillsIntoItsCell", LR_TEST_FLAGS)
 bool FLRSimOpenTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 1);
-	TestFalse(TEXT("use disabled without a box"), Sim.GetActionStatus(LRNames::Use).bEnabled);
+	const FIntVector Cell(0, 0, 0);
+	TestFalse(TEXT("nothing to open"), LRTest::Open(Sim, Cell));
 
-	Sim.GiveItem(LRTest::Box, 1);
-	const int32 InstanceId = Sim.GetInventory()[0].InstanceId;
-	TestTrue(TEXT("use enabled with a box"), Sim.GetActionStatus(LRNames::Use).bEnabled);
+	Sim.GiveMatter(Cell, LRTest::Carbon, 50);
+	Sim.GiveMatter(Cell, LRTest::Iron, 50);
+	LRTest::Build(Sim, LRTest::Box, Cell);
+	const int32 BoxId = LRTest::CacheIdAt(Sim, Cell);
+	TestTrue(TEXT("built"), BoxId != 0);
 
-	// Slot 7 is empty: Use should fall back to the first loot box (Rails behaviour).
-	TestTrue(TEXT("use accepted"), Sim.RequestAction(LRTest::UseSlot(7)).bStarted);
-	Sim.Advance(5.0);
-
-	TestEqual(TEXT("box consumed"), Sim.CountItem(LRTest::Box), 0);
-	TestNull(TEXT("box instance removed"), Sim.FindLootBox(InstanceId));
-	TestEqual(TEXT("2 rolls x 10 carbon"), Sim.CountItem(LRTest::Carbon), 20);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimOpenRollbackTest, "LootboxRecursion.Simulation.OpenRollsBackWhenFull", LR_TEST_FLAGS)
-bool FLRSimOpenRollbackTest::RunTest(const FString& Parameters)
-{
-	FLRSimulation Sim(LRTest::MakeData(), 1);
-	Sim.GiveItem(LRTest::Box, 1);
-	Sim.GiveItem(LRTest::Iron, 4900); // the other 49 slots
-
-	const int32 InstanceId = Sim.GetInventory()[0].InstanceId;
-	FLRLootModifier Modifier;
-	Modifier.Kind = TEXT("item_count_mult");
-	Modifier.Item = LRTest::Carbon;
-	Modifier.Value = 20.f; // 2 x 200 carbon: needs 4 slots, only the box's own slot frees up
-	TestTrue(TEXT("modifier attached"), Sim.AddLootBoxModifier(InstanceId, Modifier));
-
-	Sim.RequestAction(LRTest::UseSlot(0));
-	Sim.Advance(5.0);
-
-	TestEqual(TEXT("box still there"), Sim.CountItem(LRTest::Box), 1);
-	TestNotNull(TEXT("box instance restored"), Sim.FindLootBox(InstanceId));
-	TestEqual(TEXT("modifiers kept"), Sim.FindLootBox(InstanceId) ? Sim.FindLootBox(InstanceId)->Modifiers.Num() : 0, 1);
-	TestEqual(TEXT("no carbon leaked"), Sim.CountItem(LRTest::Carbon), 0);
+	TestTrue(TEXT("open"), LRTest::Open(Sim, Cell));
+	TestNull(TEXT("the cache is gone"), Sim.FindPlaced(Cell));
+	TestNull(TEXT("and its instance"), Sim.FindLootBox(BoxId));
+	TestEqual(TEXT("2 rolls x 10 carbon, in its cell"), Sim.GetMatter(Cell, LRTest::Carbon), 20);
+	TestEqual(TEXT("opened stat"), Sim.GetStat(TEXT("opened:loot_box")), 1);
+	TestEqual(TEXT("gained stat"), Sim.GetStat(TEXT("gained:carbon")), 20);
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimRecursionTest, "LootboxRecursion.Simulation.BoxInsideABox", LR_TEST_FLAGS)
 bool FLRSimRecursionTest::RunTest(const FString& Parameters)
 {
-	FLRSimulation Sim(LRTest::MakeData(), 1);
-	Sim.GiveItem(LRTest::MysteryBox, 1);
+	FLRSimulation Sim(LRTest::MakeData(), 1); // reach 1
+	const FIntVector Cell(0, 0, 0);
+	Sim.GiveMatter(Cell, LRTest::Carbon, 1);
+	LRTest::Build(Sim, LRTest::MysteryBox, Cell);
+	TestTrue(TEXT("open the mystery box"), LRTest::Open(Sim, Cell));
 
-	Sim.RequestAction(LRTest::UseSlot(0));
-	Sim.Advance(5.0);
+	const FLRPlacedEntity* Inner = Sim.FindPlaced(Cell);
+	TestTrue(TEXT("a new cache took its place"), Inner && Inner->Item == LRTest::Box);
+	TestTrue(TEXT("with a real instance"), LRTest::CacheIdAt(Sim, Cell) != 0);
+	TestTrue(TEXT("open that too"), LRTest::Open(Sim, Cell));
+	TestEqual(TEXT("inner box opened into the cell"), Sim.GetMatter(Cell, LRTest::Carbon), 20);
 
-	TestEqual(TEXT("mystery box consumed"), Sim.CountItem(LRTest::MysteryBox), 0);
-	TestEqual(TEXT("contained a loot box"), Sim.CountItem(LRTest::Box), 1);
-	const FLRInventorySlot& Slot = Sim.GetInventory()[0];
-	TestNotNull(TEXT("inner box is a real instance"), Sim.FindLootBox(Slot.InstanceId));
+	// Two caches in one: the second lands in the nearest empty cell within reach...
+	Sim.GiveMatter(Cell, LRTest::Carbon, 1);
+	LRTest::Build(Sim, LRTest::DoubleBox, Cell);
+	LRTest::Open(Sim, Cell);
+	int32 Caches = 0;
+	for (const TPair<FIntVector, FLRPlacedEntity>& Pair : Sim.GetPlaced())
+	{
+		Caches += (Pair.Value.Item == LRTest::Box && FLRHexGrid::Distance(Pair.Key, Cell) <= 1) ? 1 : 0;
+	}
+	TestEqual(TEXT("both caches landed nearby"), Caches, 2);
 
-	Sim.RequestAction(LRTest::UseSlot(0));
-	Sim.Advance(5.0);
-	TestEqual(TEXT("inner box opened too"), Sim.CountItem(LRTest::Carbon), 20);
+	// ...and with no room in reach, it's lost.
+	FLRGameData Cramped = LRTest::MakeData();
+	Cramped.ReachRadius = 0;
+	FLRSimulation Tight(Cramped, 1);
+	LRTest::FMessageLog Log(Tight);
+	Tight.GiveMatter(Cell, LRTest::Carbon, 1);
+	LRTest::Build(Tight, LRTest::DoubleBox, Cell);
+	LRTest::Open(Tight, Cell);
+	TestEqual(TEXT("one cache kept"), Tight.GetPlaced().Num(), 1);
+	TestTrue(TEXT("the other reported lost"), Log.Contains(TEXT("lost")));
 	return true;
 }
 
@@ -487,80 +491,40 @@ bool FLRSimModifierTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimDeployRecallTest, "LootboxRecursion.Simulation.DeployAndRecall", LR_TEST_FLAGS)
-bool FLRSimDeployRecallTest::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimBuildDismantleTest, "LootboxRecursion.Simulation.BuildInPlaceAndDismantle", LR_TEST_FLAGS)
+bool FLRSimBuildDismantleTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 1);
-	TestFalse(TEXT("deploy disabled without a placeable"), Sim.GetActionStatus(LRNames::Deploy).bRequirementsMet);
+	const FIntVector Cell(4, 2, 0);
+	const FIntVector Empty(-3, 1, 0);
+	Sim.GiveMatter(Empty, LRTest::Carbon, 10);
+	const FLRActionResult Loose = LRTest::Build(Sim, LRTest::Lamp, Empty);
+	TestTrue(TEXT("a source needs an enclosure"), !Loose.bSuccess && Loose.Reason == FName(TEXT("needs_enclosure")));
 
-	Sim.GiveItem(LRTest::Enclosure, 2);
-	const int32 FirstId = Sim.GetInventory()[0].InstanceId;
+	LRTest::BuildEnclosure(Sim, Cell);
+	const FLRPlacedEntity* Built = Sim.FindPlaced(Cell);
+	TestTrue(TEXT("enclosure built in the cell"), Built && Built->Item == LRTest::Enclosure);
+	Sim.GiveMatter(Cell, LRTest::Carbon, 10);
+	TestFalse(TEXT("a machine needs an empty cell"), LRTest::Build(Sim, LRTest::Enclosure, Cell).bSuccess);
+	TestEqual(TEXT("the refused build cost nothing"), Sim.GetMatter(Cell, LRTest::Carbon), 10);
 
-	TestFalse(TEXT("deploy needs a coordinate"), Sim.RequestAction(FLRActionRequest::Make(LRNames::Deploy)).bSuccess);
+	TestTrue(TEXT("lamp into the enclosure"), LRTest::BuildInto(Sim, LRTest::Lamp, Cell));
+	TestTrue(TEXT("box into its chamber"), LRTest::BuildInto(Sim, LRTest::Box, Cell));
+	const FLRPlacedEntity* Loaded = Sim.FindPlaced(Cell);
+	TestTrue(TEXT("both inside"), Loaded && Loaded->Source.Item == LRTest::Lamp && Loaded->Chamber.Item == LRTest::Box);
+	const int32 BoxId = LRTest::CacheIdAt(Sim, Cell);
 
-	const FIntVector Cell(-3, 4, 2);
-	FLRActionRequest Deploy = LRTest::AtCell(LRNames::Deploy, Cell);
-	Deploy.Slot = 0;
-	TestTrue(TEXT("deploy at (-3, 4, 2) (instant)"), Sim.RequestAction(Deploy).bSuccess);
-	const FLRPlacedEntity* Placed = Sim.FindPlaced(Cell);
-	TestNull(TEXT("neighbouring layer still empty"), Sim.FindPlaced(FIntVector(-3, 4, 1)));
-	TestNotNull(TEXT("entity placed"), Placed);
-	TestEqual(TEXT("keeps its identity"), Placed ? Placed->InstanceId : 0, FirstId);
-	TestEqual(TEXT("one enclosure left in inventory"), Sim.CountItem(LRTest::Enclosure), 1);
-
-	Sim.Advance(1.0); // deploy cooldown
-	TestFalse(TEXT("occupied cell rejected"), Sim.RequestAction(LRTest::AtCell(LRNames::Deploy, Cell)).bSuccess);
-
-	Sim.Advance(1.0);
-	TestTrue(TEXT("recall"), Sim.RequestAction(LRTest::AtCell(LRNames::Recall, Cell)).bSuccess);
-	TestNull(TEXT("cell cleared"), Sim.FindPlaced(Cell));
-	TestEqual(TEXT("back in inventory"), Sim.CountItem(LRTest::Enclosure), 2);
-	TestTrue(TEXT("same instance came back"),
-		Sim.GetInventory().ContainsByPredicate([FirstId](const FLRInventorySlot& Slot) { return Slot.InstanceId == FirstId; }));
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimSortTest, "LootboxRecursion.Simulation.SortAndCompress", LR_TEST_FLAGS)
-bool FLRSimSortTest::RunTest(const FString& Parameters)
-{
-	FLRSimulation Sim(LRTest::MakeData(), 1);
-
-	// Build a messy inventory via a save file.
-	FLRSaveData Save = Sim.Save();
-	auto SetSlot = [&Save](int32 Index, FName Item, int32 Count, int32 InstanceId = 0)
-	{
-		Save.Inventory[Index].Item = Item;
-		Save.Inventory[Index].Count = Count;
-		Save.Inventory[Index].InstanceId = InstanceId;
-	};
-	SetSlot(0, LRTest::Carbon, 40);
-	SetSlot(2, LRTest::Iron, 30);
-	SetSlot(3, LRTest::Carbon, 70);
-	SetSlot(5, LRTest::Box, 1, 9);
-	FLRLootBoxInstance BoxInstance;
-	BoxInstance.InstanceId = 9;
-	BoxInstance.LootTable = TEXT("box");
-	Save.LootBoxes.Add(BoxInstance);
-	TestTrue(TEXT("load"), Sim.Load(Save));
-
-	TestTrue(TEXT("sort needed"), Sim.IsSortNeeded());
-	TestTrue(TEXT("sort"), Sim.RequestAction(FLRActionRequest::Make(LRNames::SortInventory)).bSuccess);
-
-	// Alphabetical by display name: Carbon (x2 stacks), Iron, Loot Box.
-	const TArray<FLRInventorySlot>& Inv = Sim.GetInventory();
-	TestTrue(TEXT("0 = carbon 100"), Inv[0].Item == LRTest::Carbon && Inv[0].Count == 100);
-	TestTrue(TEXT("1 = carbon 10"), Inv[1].Item == LRTest::Carbon && Inv[1].Count == 10);
-	TestTrue(TEXT("2 = iron 30"), Inv[2].Item == LRTest::Iron && Inv[2].Count == 30);
-	TestTrue(TEXT("3 = loot box, same instance"), Inv[3].Item == LRTest::Box && Inv[3].InstanceId == 9);
-	TestTrue(TEXT("4 empty"), Inv[4].IsEmpty());
-	TestFalse(TEXT("sorted now"), Sim.IsSortNeeded());
-
-	// The save said NextInstanceId = 1 but box 9 exists: new unique items must not collide.
-	TestTrue(TEXT("give another box"), Sim.GiveItem(LRTest::Box, 1));
-	TestNotNull(TEXT("original box instance intact"), Sim.FindLootBox(9));
-	TestEqual(TEXT("two boxes"), Sim.CountItem(LRTest::Box), 2);
-	TestFalse(TEXT("new box did not reuse id 9"),
-		Sim.GetInventory().ContainsByPredicate([](const FLRInventorySlot& Slot) { return Slot.Item == LRTest::Box && Slot.InstanceId != 9 && Slot.InstanceId <= 9; }));
+	// It comes apart a layer at a time, and each layer's cost comes back to the cell.
+	TestTrue(TEXT("dismantle the source"), LRTest::Dismantle(Sim, Cell));
+	TestEqual(TEXT("lamp refunded"), Sim.GetMatter(Cell, LRTest::Carbon), 15);
+	TestTrue(TEXT("dismantle the cache"), LRTest::Dismantle(Sim, Cell));
+	TestEqual(TEXT("box refunded"), Sim.GetMatter(Cell, LRTest::Iron), 50);
+	TestNull(TEXT("its instance is gone"), Sim.FindLootBox(BoxId));
+	TestTrue(TEXT("dismantle the enclosure"), LRTest::Dismantle(Sim, Cell));
+	TestNull(TEXT("the cell is empty"), Sim.FindPlaced(Cell));
+	TestEqual(TEXT("all of it back"), Sim.GetMatter(Cell, LRTest::Carbon), 75);
+	TestFalse(TEXT("nothing left to dismantle"), LRTest::Dismantle(Sim, Cell));
+	TestEqual(TEXT("refunds don't count as gained"), Sim.GetStat(TEXT("gained:carbon")), 0);
 	return true;
 }
 
@@ -568,24 +532,25 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimSaveLoadTest, "LootboxRecursion.Simulatio
 bool FLRSimSaveLoadTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 7);
-	Sim.GiveItem(LRTest::Enclosure, 1);
-	Sim.RequestAction(LRTest::AtCell(LRNames::Deploy, FIntVector(12, -1, 3)));
-	Sim.RequestAction(FLRActionRequest::Make(LRTest::Gather)); // mid-cast when saved
+	const FIntVector Cell(12, -1, 3);
+	LRTest::BuildEnclosure(Sim, Cell);
+	Sim.GiveMatter(Cell, LRTest::Iron, 7);
+	Sim.RequestAction(LRTest::AtCell(LRTest::Gather, Cell)); // mid-cast when saved
 	Sim.Advance(2.0);
 
 	const FLRSaveData Save = Sim.Save();
-
 	FLRSimulation Loaded(LRTest::MakeData(), 0);
 	TestTrue(TEXT("load"), Loaded.Load(Save));
-	TestNotNull(TEXT("placed entity restored"), Loaded.FindPlaced(FIntVector(12, -1, 3)));
+	TestNotNull(TEXT("entity restored"), Loaded.FindPlaced(Cell));
+	TestEqual(TEXT("matter restored"), Loaded.GetMatter(Cell, LRTest::Iron), 7);
 	TestTrue(TEXT("cast restored"), Loaded.GetActionStatus(LRTest::Gather).bCasting);
 
 	Loaded.Advance(3.0);
-	TestEqual(TEXT("pending cast completes after load"), Loaded.CountItem(LRTest::Carbon), 30);
+	TestEqual(TEXT("pending cast completes after load"), Loaded.GetMatter(Cell, LRTest::Carbon), 30);
 
-	FLRSaveData Old = Save;
-	Old.Version = FLRSimulation::SaveVersion + 1;
-	TestFalse(TEXT("incompatible save rejected"), Loaded.Load(Old));
+	FLRSaveData Newer = Save;
+	Newer.Version = FLRSimulation::SaveVersion + 1;
+	TestFalse(TEXT("incompatible save rejected"), Loaded.Load(Newer));
 	return true;
 }
 
@@ -601,8 +566,7 @@ bool FLRGameDataShippedTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("Content/Data loads cleanly"), bLoaded);
 
-	for (const FName Action : { LRNames::Perturb, LRNames::Feed, LRNames::Craft, LRNames::Use, LRNames::Deploy, LRNames::Recall,
-		LRNames::SortInventory, LRNames::Load, LRNames::Unload, LRNames::Annihilate })
+	for (const FName Action : { LRNames::Perturb, LRNames::Feed, LRNames::Craft, LRNames::Use, LRNames::Dismantle })
 	{
 		TestNotNull(*FString::Printf(TEXT("action '%s' defined"), *Action.ToString()), Data.FindAction(Action));
 	}
@@ -635,6 +599,20 @@ bool FLRGameDataValidationTest::RunTest(const FString& Parameters)
 	OutOfOrder.Epochs[2].StartTime = 1e-40;
 	TestTrue(TEXT("epochs out of order reported"), OutOfOrder.Validate().Num() > 0);
 
+	FLRGameData BuildsStructure = Cosmos;
+	LRTest::AddRecipe(BuildsStructure, TEXT("ripple_kit"), LRTest::Ripple, { FLRItemAmount(LRTest::Carbon, 1) });
+	TestTrue(TEXT("recipes can't build structures"), BuildsStructure.Validate().Num() > 0);
+
+	FLRGameData RollsASource = Cosmos;
+	LRTest::AddTable(RollsASource, TEXT("lamps"), 1, LRTest::Lamp, 1);
+	TestTrue(TEXT("rolls can't produce sources"), RollsASource.Validate().Num() > 0);
+
+	FLRGameData VagueMatter = Cosmos;
+	FLRRequirement Anything;
+	Anything.Check = LRNames::CheckMatter;
+	VagueMatter.Recipes[0].RevealRequirements.Add(Anything);
+	TestTrue(TEXT("a matter check needs an item or category"), VagueMatter.Validate().Num() > 0);
+
 	FLRGameData PlacesMaterial = Cosmos;
 	for (FLRActionDef& Action : PlacesMaterial.Actions)
 	{
@@ -651,61 +629,49 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimIrradiateTest, "LootboxRecursion.Irradiat
 bool FLRSimIrradiateTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 1);
-	LRTest::DeployEnclosure(Sim);
-	const FIntVector Cell = FIntVector::ZeroValue;
-
-	Sim.GiveItem(LRTest::Box, 1);
-	Sim.GiveItem(LRTest::Lamp, 1);
-	const int32 BoxId = Sim.GetInventory()[LRTest::SlotOf(Sim, LRTest::Box)].InstanceId;
-
-	TestFalse(TEXT("load needs a selected item"), Sim.RequestAction(LRTest::AtCell(LRNames::Load, Cell)).bSuccess);
-	TestTrue(TEXT("load box"), LRTest::LoadInto(Sim, LRTest::Box, Cell).bSuccess);
-	TestTrue(TEXT("load lamp"), LRTest::LoadInto(Sim, LRTest::Lamp, Cell).bSuccess);
-	TestEqual(TEXT("box left the inventory"), Sim.CountItem(LRTest::Box), 0);
+	const FIntVector Cell(0, 0, 0);
+	LRTest::BuildEnclosure(Sim, Cell);
+	TestTrue(TEXT("box into the chamber"), LRTest::BuildInto(Sim, LRTest::Box, Cell));
+	TestTrue(TEXT("lamp into the source slot"), LRTest::BuildInto(Sim, LRTest::Lamp, Cell));
+	TestTrue(TEXT("all the matter was spent"), Sim.GetAllMatter().IsEmpty());
 
 	Sim.Advance(9.9);
-	TestEqual(TEXT("no stack before the interval"), Sim.FindLootBox(BoxId) ? Sim.FindLootBox(BoxId)->Modifiers.Num() : -1, 0);
+	TestEqual(TEXT("no stack before the interval"), LRTest::StacksAt(Sim, Cell), 0);
 	Sim.Advance(0.2);
-	TestEqual(TEXT("first stack"), Sim.FindLootBox(BoxId) ? Sim.FindLootBox(BoxId)->Modifiers.Num() : -1, 1);
+	TestEqual(TEXT("first stack"), LRTest::StacksAt(Sim, Cell), 1);
 	Sim.Advance(100.0);
-	TestEqual(TEXT("capped at the enclosure's max stacks"), Sim.FindLootBox(BoxId) ? Sim.FindLootBox(BoxId)->Modifiers.Num() : -1, 2);
+	TestEqual(TEXT("capped at the enclosure's max stacks"), LRTest::StacksAt(Sim, Cell), 2);
 
-	TestTrue(TEXT("unload"), Sim.RequestAction(LRTest::AtCell(LRNames::Unload, Cell)).bSuccess);
-	TestEqual(TEXT("box back"), Sim.CountItem(LRTest::Box), 1);
-	TestEqual(TEXT("lamp back"), Sim.CountItem(LRTest::Lamp), 1);
-
-	// 2 rolls x 10 carbon, amounts doubled twice = 2 x 40.
-	Sim.RequestAction(LRTest::UseSlot(LRTest::SlotOf(Sim, LRTest::Box)));
-	Sim.Advance(5.0);
-	TestEqual(TEXT("irradiated loot"), Sim.CountItem(LRTest::Carbon), 80);
+	// 2 rolls x 10 carbon, amounts doubled twice = 2 x 40, opened right in the enclosure.
+	TestTrue(TEXT("open in place"), LRTest::Open(Sim, Cell));
+	TestEqual(TEXT("irradiated loot in the cell"), Sim.GetMatter(Cell, LRTest::Carbon), 80);
+	const FLRPlacedEntity* After = Sim.FindPlaced(Cell);
+	TestTrue(TEXT("the enclosure keeps its source"), After && After->Chamber.IsEmpty() && After->Source.Item == LRTest::Lamp);
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimIrradiateRulesTest, "LootboxRecursion.Irradiation.LoadRules", LR_TEST_FLAGS)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimIrradiateRulesTest, "LootboxRecursion.Irradiation.BuildRules", LR_TEST_FLAGS)
 bool FLRSimIrradiateRulesTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 1);
-	LRTest::DeployEnclosure(Sim);
-	const FIntVector Cell = FIntVector::ZeroValue;
-	Sim.GiveItem(LRTest::GammaSource, 1);
-	Sim.GiveItem(LRTest::Box, 2);
+	const FIntVector Cell(0, 0, 0);
+	LRTest::BuildEnclosure(Sim, Cell);
 
-	const FLRActionResult TooStrong = LRTest::LoadInto(Sim, LRTest::GammaSource, Cell);
+	Sim.GiveMatter(Cell, LRTest::Carbon, 1);
+	const FLRActionResult TooStrong = LRTest::Build(Sim, LRTest::GammaSource, Cell);
 	TestFalse(TEXT("gamma is too strong for a tier-5 enclosure"), TooStrong.bSuccess);
 	TestTrue(TEXT("reason"), TooStrong.Reason == FName(TEXT("radiation_too_strong")));
 
-	TestFalse(TEXT("no enclosure at an empty cell"), LRTest::LoadInto(Sim, LRTest::Box, FIntVector(5, 5, 0)).bSuccess);
-	TestTrue(TEXT("first box"), LRTest::LoadInto(Sim, LRTest::Box, Cell).bSuccess);
-	TestFalse(TEXT("chamber holds one box"), LRTest::LoadInto(Sim, LRTest::Box, Cell).bSuccess);
+	TestTrue(TEXT("first box"), LRTest::BuildInto(Sim, LRTest::Box, Cell));
+	const FLRActionResult Full = LRTest::Build(Sim, LRTest::Box, Cell);
+	TestTrue(TEXT("the chamber holds one box"), !Full.bSuccess && Full.Reason == FName(TEXT("chamber_full")));
 	Sim.Advance(60.0);
-	const FLRPlacedEntity* Loaded = Sim.FindPlaced(Cell);
-	const FLRLootBoxInstance* Inside = Loaded ? Sim.FindLootBox(Loaded->Chamber.InstanceId) : nullptr;
-	TestEqual(TEXT("no stacks without a source"), Inside ? Inside->Modifiers.Num() : -1, 0);
+	TestEqual(TEXT("no stacks without a source"), LRTest::StacksAt(Sim, Cell), 0);
 
-	// Recall brings the enclosure and its contents home.
-	TestTrue(TEXT("recall"), Sim.RequestAction(LRTest::AtCell(LRNames::Recall, Cell)).bSuccess);
-	TestEqual(TEXT("enclosure back"), Sim.CountItem(LRTest::Enclosure), 1);
-	TestEqual(TEXT("both boxes back"), Sim.CountItem(LRTest::Box), 2);
+	TestTrue(TEXT("lamp"), LRTest::BuildInto(Sim, LRTest::Lamp, Cell));
+	Sim.GiveMatter(Cell, LRTest::Carbon, 5);
+	const FLRActionResult Second = LRTest::Build(Sim, LRTest::Lamp, Cell);
+	TestTrue(TEXT("one source per enclosure"), !Second.bSuccess && Second.Reason == FName(TEXT("source_full")));
 	return true;
 }
 
@@ -713,13 +679,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimXRayTest, "LootboxRecursion.Irradiation.X
 bool FLRSimXRayTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 3);
-	LRTest::DeployEnclosure(Sim);
-	const FIntVector Cell = FIntVector::ZeroValue;
-	Sim.GiveItem(LRTest::Box, 1);
-	Sim.GiveItem(LRTest::XRayTube, 1);
-	const int32 BoxId = Sim.GetInventory()[LRTest::SlotOf(Sim, LRTest::Box)].InstanceId;
-	LRTest::LoadInto(Sim, LRTest::Box, Cell);
-	LRTest::LoadInto(Sim, LRTest::XRayTube, Cell);
+	const FIntVector Cell(0, 0, 0);
+	LRTest::BuildEnclosure(Sim, Cell);
+	LRTest::BuildInto(Sim, LRTest::Box, Cell);
+	LRTest::BuildInto(Sim, LRTest::XRayTube, Cell);
+	const int32 BoxId = LRTest::CacheIdAt(Sim, Cell);
 
 	Sim.Advance(10.0);
 	const FLRLootBoxInstance* BoxInstance = Sim.FindLootBox(BoxId);
@@ -728,12 +692,9 @@ bool FLRSimXRayTest::RunTest(const FString& Parameters)
 		(BoxInstance && BoxInstance->RevealedContents.Num() == 1) ? BoxInstance->RevealedContents[0].Count : -1, 20);
 
 	Sim.Advance(100.0);
-	TestEqual(TEXT("locked: no further stacks"), Sim.FindLootBox(BoxId) ? Sim.FindLootBox(BoxId)->Modifiers.Num() : -1, 0);
-
-	Sim.RequestAction(LRTest::AtCell(LRNames::Unload, Cell));
-	Sim.RequestAction(LRTest::UseSlot(LRTest::SlotOf(Sim, LRTest::Box)));
-	Sim.Advance(5.0);
-	TestEqual(TEXT("opens to exactly what was revealed"), Sim.CountItem(LRTest::Carbon), 20);
+	TestEqual(TEXT("locked: no further stacks"), LRTest::StacksAt(Sim, Cell), 0);
+	LRTest::Open(Sim, Cell);
+	TestEqual(TEXT("opens to exactly what was revealed"), Sim.GetMatter(Cell, LRTest::Carbon), 20);
 	return true;
 }
 
@@ -767,13 +728,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimIrradiateSaveTest, "LootboxRecursion.Irra
 bool FLRSimIrradiateSaveTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 1);
-	LRTest::DeployEnclosure(Sim);
-	const FIntVector Cell = FIntVector::ZeroValue;
-	Sim.GiveItem(LRTest::Box, 1);
-	Sim.GiveItem(LRTest::Lamp, 1);
-	const int32 BoxId = Sim.GetInventory()[LRTest::SlotOf(Sim, LRTest::Box)].InstanceId;
-	LRTest::LoadInto(Sim, LRTest::Box, Cell);
-	LRTest::LoadInto(Sim, LRTest::Lamp, Cell);
+	const FIntVector Cell(0, 0, 0);
+	LRTest::BuildEnclosure(Sim, Cell);
+	LRTest::BuildInto(Sim, LRTest::Box, Cell);
+	LRTest::BuildInto(Sim, LRTest::Lamp, Cell);
+	const int32 BoxId = LRTest::CacheIdAt(Sim, Cell);
 	Sim.Advance(6.0);
 
 	FLRSimulation Loaded(LRTest::MakeData(), 0);
@@ -781,12 +740,13 @@ bool FLRSimIrradiateSaveTest::RunTest(const FString& Parameters)
 	const FLRPlacedEntity* Entity = Loaded.FindPlaced(Cell);
 	TestTrue(TEXT("chamber restored"), Entity && Entity->Chamber.InstanceId == BoxId);
 	Loaded.Advance(4.0);
-	TestEqual(TEXT("progress carried over"), Loaded.FindLootBox(BoxId) ? Loaded.FindLootBox(BoxId)->Modifiers.Num() : -1, 1);
+	TestEqual(TEXT("progress carried over"), LRTest::StacksAt(Loaded, Cell), 1);
 
-	// New unique items must not reuse the id of the box inside the enclosure.
-	Loaded.GiveItem(LRTest::Box, 1);
-	TestFalse(TEXT("no id collision"),
-		Loaded.GetInventory().ContainsByPredicate([BoxId](const FLRInventorySlot& Slot) { return Slot.InstanceId == BoxId; }));
+	// New caches must not reuse the id of the box inside the enclosure.
+	const FIntVector Elsewhere(5, 0, 0);
+	LRTest::BuildInto(Loaded, LRTest::Box, Elsewhere);
+	const int32 NewId = LRTest::CacheIdAt(Loaded, Elsewhere);
+	TestTrue(TEXT("no id collision"), NewId != 0 && NewId != BoxId);
 	return true;
 }
 
@@ -796,16 +756,15 @@ bool FLRTechTreeRecipeTest::RunTest(const FString& Parameters)
 	FLRSimulation Sim(LRTest::MakeData(), 1);
 	const FName Gated(TEXT("gated_enclosure"));
 	const FName Chained(TEXT("chained_lamp"));
+	const FIntVector Cell(0, 0, 0);
 	TestTrue(TEXT("no reveal requirements = unlocked"), Sim.IsRecipeUnlocked(LRTest::Box));
 	TestFalse(TEXT("gated starts locked"), Sim.IsRecipeUnlocked(Gated));
 	TestFalse(TEXT("chained starts locked"), Sim.IsRecipeUnlocked(Chained));
 
-	Sim.GiveItem(LRTest::Carbon, 200);
-	Sim.GiveItem(LRTest::Iron, 100);
-	FLRActionRequest CraftGated = FLRActionRequest::Make(LRNames::Craft);
-	CraftGated.Choice = Gated;
-	const FLRActionResult Locked = Sim.RequestAction(CraftGated);
-	TestFalse(TEXT("locked recipe can't be crafted"), Locked.bSuccess);
+	Sim.GiveMatter(Cell, LRTest::Carbon, 200);
+	Sim.GiveMatter(Cell, LRTest::Iron, 100);
+	const FLRActionResult Locked = LRTest::Build(Sim, Gated, FIntVector(1, 0, 0));
+	TestFalse(TEXT("a locked recipe can't be built"), Locked.bSuccess);
 	TestTrue(TEXT("reason"), Locked.Reason == FName(TEXT("recipe_locked")));
 
 	int32 UnlockMessages = 0;
@@ -813,20 +772,15 @@ bool FLRTechTreeRecipeTest::RunTest(const FString& Parameters)
 	{
 		UnlockMessages += Result.Action == FName(TEXT("unlock")) ? 1 : 0;
 	});
-	FLRActionRequest CraftBox = FLRActionRequest::Make(LRNames::Craft);
-	CraftBox.Choice = LRTest::Box;
-	Sim.RequestAction(CraftBox);
-	Sim.Advance(5.0);
+	LRTest::Build(Sim, LRTest::Box, Cell);
 
 	TestEqual(TEXT("stat counted"), Sim.GetStat(TEXT("crafted:loot_box")), 1);
 	TestEqual(TEXT("gained stat counted"), Sim.GetStat(TEXT("gained:loot_box")), 1);
 	TestTrue(TEXT("gated unlocked"), Sim.IsRecipeUnlocked(Gated));
 	TestTrue(TEXT("chain resolved in the same pass"), Sim.IsRecipeUnlocked(Chained));
-	// Gated + Chained recipes, plus the "scan" action (revealed by now holding a loot box).
+	// Gated + Chained recipes, plus the "scan" action (revealed by a cache now sitting in the world).
 	TestEqual(TEXT("all three unlocks announced"), UnlockMessages, 3);
-
-	Sim.Advance(5.0); // craft cooldown
-	TestTrue(TEXT("now craftable"), Sim.RequestAction(CraftGated).bStarted);
+	TestTrue(TEXT("now buildable"), LRTest::Build(Sim, Gated, FIntVector(1, 0, 0)).bSuccess);
 
 	FLRSimulation Loaded(LRTest::MakeData(), 0);
 	TestTrue(TEXT("load"), Loaded.Load(Sim.Save()));
@@ -840,15 +794,15 @@ bool FLRTechTreeActionTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 1);
 	const FName Scan(TEXT("scan"));
+	const FIntVector Cell(0, 0, 0);
 	TestFalse(TEXT("hidden at first"), Sim.GetActionStatus(Scan).bRevealed);
-	TestFalse(TEXT("hidden actions can't be used"), Sim.RequestAction(FLRActionRequest::Make(Scan)).bSuccess);
+	TestFalse(TEXT("hidden actions can't be used"), Sim.RequestAction(LRTest::AtCell(Scan, Cell)).bSuccess);
 
-	Sim.GiveItem(LRTest::Box, 1);
-	TestTrue(TEXT("revealed once a box is held"), Sim.GetActionStatus(Scan).bRevealed);
+	LRTest::BuildInto(Sim, LRTest::Box, Cell);
+	TestTrue(TEXT("revealed once a cache is in the world"), Sim.GetActionStatus(Scan).bRevealed);
 
-	Sim.RequestAction(LRTest::UseSlot(0));
-	Sim.Advance(5.0);
-	TestEqual(TEXT("box gone"), Sim.CountItem(LRTest::Box), 0);
+	LRTest::Open(Sim, Cell);
+	TestNull(TEXT("cache gone"), Sim.FindCacheAt(Cell));
 	TestTrue(TEXT("stays revealed (latched)"), Sim.GetActionStatus(Scan).bRevealed);
 	TestEqual(TEXT("opened stat"), Sim.GetStat(TEXT("opened:loot_box")), 1);
 	return true;
@@ -859,8 +813,9 @@ bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 {
 	// Walks the real Content/Data tech tree and epochs from a new game to the last unlock, so a
 	// data change that creates a dead end fails here. The early game is played for real: the
-	// ripples' yields are what reach nucleosynthesis. After that, materials are cheated in
-	// (GiveItem doesn't count toward stats) and everything else is played through real actions.
+	// ripples' yields are what reach nucleosynthesis. After that, matter is cheated into a stock
+	// cell (GiveMatter doesn't count toward stats) and everything else is played through real
+	// actions, building within reach of the stock and the ripples.
 	FLRGameData Data;
 	TArray<FString> Errors;
 	if (!FLRGameData::LoadFromDirectory(FLRGameData::GetDefaultDataDirectory(), Data, Errors))
@@ -872,11 +827,7 @@ bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	FLRSimulation Sim(Data, 7);
-	const FName Hydrogen(TEXT("hydrogen"));
-	const FName Helium(TEXT("helium"));
-	const FName Carbon(TEXT("carbon"));
-	const FName Iron(TEXT("iron"));
-	const FName LootBox(TEXT("loot_box"));
+	TestTrue(TEXT("the layout below assumes a reach of at least 2"), Sim.GetReachRadius() >= 2);
 
 	auto EpochIs = [&Sim](const TCHAR* Id)
 	{
@@ -889,48 +840,38 @@ bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 		Sim.Advance(6.0); // past any cast time and cooldown
 		return bOk;
 	};
-	auto Craft = [&Act](const TCHAR* Recipe)
+	auto Craft = [&Act](const TCHAR* Recipe, const FIntVector& Cell)
 	{
-		FLRActionRequest Request = FLRActionRequest::Make(LRNames::Craft);
+		FLRActionRequest Request = LRTest::AtCell(LRNames::Craft, Cell);
 		Request.Choice = Recipe;
 		return Act(Request);
 	};
-	auto AtCell = [](FName Action, const FIntVector& Cell, int32 Slot = INDEX_NONE)
+	auto Irradiate = [&Sim, &Act, &Craft](const FIntVector& Cell, double Seconds)
 	{
-		FLRActionRequest Request = LRTest::AtCell(Action, Cell);
-		Request.Slot = Slot;
-		return Request;
-	};
-	auto OpenFirstBox = [&Sim, &Act, LootBox]()
-	{
-		FLRActionRequest Request = FLRActionRequest::Make(LRNames::Use);
-		Request.Slot = LRTest::SlotOf(Sim, LootBox);
-		return Act(Request);
-	};
-	auto Irradiate = [&Sim, &Act, &Craft, &AtCell, &OpenFirstBox, LootBox](const FIntVector& Cell, FName Source, double Seconds)
-	{
-		// A fresh box: open any leftover one first so the new one is the only box.
-		for (int32 Guard = 0; Guard < 10 && Sim.CountItem(LootBox) > 0 && OpenFirstBox(); ++Guard) {}
-		Craft(TEXT("loot_box"));
-		const bool bBox = Act(AtCell(LRNames::Load, Cell, LRTest::SlotOf(Sim, LootBox)));
-		const bool bSource = Act(AtCell(LRNames::Load, Cell, LRTest::SlotOf(Sim, Source)));
+		// Open the last cache in the chamber, then irradiate a fresh one.
+		if (Sim.FindCacheAt(Cell))
+		{
+			Act(LRTest::AtCell(LRNames::Use, Cell));
+		}
+		Craft(TEXT("loot_box"), Cell);
+		const bool bLoaded = Sim.FindCacheAt(Cell) != nullptr;
 		Sim.Advance(Seconds);
-		Act(AtCell(LRNames::Unload, Cell));
-		return bBox && bSource;
+		return bLoaded;
 	};
 
-	// Genesis: three perturbations end inflation, and the ripples' yields reach nucleosynthesis.
+	// Genesis: three ripples in a row end inflation, and their yields reach nucleosynthesis.
 	TestTrue(TEXT("starts in inflation"), EpochIs(TEXT("inflation")));
 	TestTrue(TEXT("perturb available from the start"), Sim.GetActionStatus(LRNames::Perturb).bRevealed);
-	TestFalse(TEXT("craft hidden at the start"), Sim.GetActionStatus(LRNames::Craft).bRevealed);
+	TestFalse(TEXT("build hidden at the start"), Sim.GetActionStatus(LRNames::Craft).bRevealed);
 	for (int32 X = 0; X < 3; ++X)
 	{
-		TestTrue(*FString::Printf(TEXT("perturb ripple %d"), X + 1), Act(AtCell(LRNames::Perturb, FIntVector(X, 0, 0))));
+		TestTrue(*FString::Printf(TEXT("perturb ripple %d"), X + 1), Act(LRTest::AtCell(LRNames::Perturb, FIntVector(X, 0, 0))));
 	}
 	TestTrue(TEXT("reheating after three perturbations"), EpochIs(TEXT("reheating")));
 	Sim.Advance(120.0);
 	TestTrue(TEXT("nucleosynthesis once the ripples gathered enough hydrogen"), EpochIs(TEXT("nucleosynthesis")));
-	TestTrue(TEXT("craft revealed"), Sim.GetActionStatus(LRNames::Craft).bRevealed);
+	TestTrue(TEXT("the hydrogen is in the ripples' cells"), Sim.GetMatter(FIntVector(0, 0, 0), TEXT("hydrogen")) > 0);
+	TestTrue(TEXT("build revealed"), Sim.GetActionStatus(LRNames::Craft).bRevealed);
 
 	// The host evaporates, and perturbing drew on it too: Feed appears once it's below 90%.
 	for (int32 Wait = 0; Wait < 100 && !Sim.GetActionStatus(LRNames::Feed).bRevealed; ++Wait)
@@ -940,31 +881,36 @@ bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("feed revealed"), Sim.GetActionStatus(LRNames::Feed).bRevealed);
 	TestTrue(TEXT("feed the horizon"), Act(FLRActionRequest::Make(LRNames::Feed)));
 
-	TestTrue(TEXT("cheat in materials"), Sim.GiveItem(Hydrogen, 300) && Sim.GiveItem(Helium, 400)
-		&& Sim.GiveItem(Carbon, 400) && Sim.GiveItem(Iron, 200));
-	TestTrue(TEXT("craft a cache"), Craft(TEXT("loot_box")));
-	TestTrue(TEXT("use revealed"), Sim.GetActionStatus(LRNames::Use).bRevealed);
-	TestTrue(TEXT("open it"), OpenFirstBox());
+	// The row above the ripples: a stock of matter with build sites around it, all within reach
+	// of the stock (and mostly of the ripples too).
+	const FIntVector Stock(1, 1, 0);
+	const FIntVector CacheSite(0, 2, 0);
+	const FIntVector CarbonCell(0, 1, 0);
+	const FIntVector IronCell(2, 1, 0);
+	TestTrue(TEXT("cheat in matter"), Sim.GiveMatter(Stock, TEXT("hydrogen"), 300) && Sim.GiveMatter(Stock, TEXT("helium"), 400)
+		&& Sim.GiveMatter(Stock, TEXT("carbon"), 400) && Sim.GiveMatter(Stock, TEXT("iron"), 200));
 
-	// The ripples sit at (0..2, 0, 0), so the enclosures go on the next row.
-	TestTrue(TEXT("carbon enclosure"), Craft(TEXT("carbon_irradiation_enclosure")));
-	const FIntVector CarbonCell(0, 2, 0);
-	TestTrue(TEXT("deploy it"), Act(AtCell(LRNames::Deploy, CarbonCell, LRTest::SlotOf(Sim, TEXT("carbon_irradiation_enclosure")))));
+	TestTrue(TEXT("build a cache"), Craft(TEXT("loot_box"), CacheSite));
+	TestTrue(TEXT("open revealed"), Sim.GetActionStatus(LRNames::Use).bRevealed);
+	TestTrue(TEXT("dismantle revealed"), Sim.GetActionStatus(LRNames::Dismantle).bRevealed);
+	TestTrue(TEXT("open it"), Act(LRTest::AtCell(LRNames::Use, CacheSite)));
 
-	TestTrue(TEXT("grow lamp"), Craft(TEXT("grow_lamp")));
-	TestTrue(TEXT("visible light run"), Irradiate(CarbonCell, TEXT("grow_lamp"), 35.0));
-	TestTrue(TEXT("infrared emitter"), Craft(TEXT("infrared_emitter")));
-	// Unload returned the lamp too, so the enclosure is free for the next source.
-	TestTrue(TEXT("infrared run"), Irradiate(CarbonCell, TEXT("infrared_emitter"), 35.0));
-	TestTrue(TEXT("microwave emitter"), Craft(TEXT("microwave_emitter")));
-	TestTrue(TEXT("microwave run"), Irradiate(CarbonCell, TEXT("microwave_emitter"), 25.0));
+	TestTrue(TEXT("carbon enclosure"), Craft(TEXT("carbon_irradiation_enclosure"), CarbonCell));
+	TestTrue(TEXT("grow lamp into it"), Craft(TEXT("grow_lamp"), CarbonCell));
+	TestTrue(TEXT("visible light run"), Irradiate(CarbonCell, 35.0));
+	// Swap sources: dismantling takes the source out first (and refunds it).
+	TestTrue(TEXT("take the lamp out"), Act(LRTest::AtCell(LRNames::Dismantle, CarbonCell)));
+	TestTrue(TEXT("infrared emitter"), Craft(TEXT("infrared_emitter"), CarbonCell));
+	TestTrue(TEXT("infrared run"), Irradiate(CarbonCell, 35.0));
+	TestTrue(TEXT("take the emitter out"), Act(LRTest::AtCell(LRNames::Dismantle, CarbonCell)));
+	TestTrue(TEXT("microwave emitter"), Craft(TEXT("microwave_emitter"), CarbonCell));
+	TestTrue(TEXT("microwave run"), Irradiate(CarbonCell, 25.0));
 
-	TestTrue(TEXT("iron enclosure"), Craft(TEXT("iron_irradiation_enclosure")));
-	const FIntVector IronCell(1, 2, 0);
-	TestTrue(TEXT("deploy iron enclosure"), Act(AtCell(LRNames::Deploy, IronCell, LRTest::SlotOf(Sim, TEXT("iron_irradiation_enclosure")))));
-	TestTrue(TEXT("x-ray tube"), Craft(TEXT("xray_tube")));
-	TestTrue(TEXT("x-ray run"), Irradiate(IronCell, TEXT("xray_tube"), 13.0));
-	TestTrue(TEXT("gamma source"), Craft(TEXT("gamma_source")));
+	TestTrue(TEXT("iron enclosure"), Craft(TEXT("iron_irradiation_enclosure"), IronCell));
+	TestTrue(TEXT("x-ray tube into it"), Craft(TEXT("xray_tube"), IronCell));
+	TestTrue(TEXT("x-ray run"), Irradiate(IronCell, 13.0));
+	TestTrue(TEXT("take the tube out"), Act(LRTest::AtCell(LRNames::Dismantle, IronCell)));
+	TestTrue(TEXT("gamma source"), Craft(TEXT("gamma_source"), IronCell));
 
 	// Three ripples and three opened caches: recombination, and the ripples grow on their own.
 	TestTrue(TEXT("recombination"), EpochIs(TEXT("recombination")));
@@ -987,32 +933,6 @@ bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 	{
 		TestTrue(*FString::Printf(TEXT("epoch '%s' reached"), *Epoch.Id.ToString()), Sim.GetEpochIndex() >= Data.FindEpochIndex(Epoch.Id));
 	}
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimAnnihilateTest, "LootboxRecursion.Simulation.Annihilate", LR_TEST_FLAGS)
-bool FLRSimAnnihilateTest::RunTest(const FString& Parameters)
-{
-	FLRSimulation Sim(LRTest::MakeData(), 1);
-	Sim.GiveItem(LRTest::Carbon, 150); // slots 0 (100) and 1 (50)
-	Sim.GiveItem(LRTest::Box, 1);      // slot 2
-	const int32 BoxId = Sim.GetInventory()[2].InstanceId;
-
-	TestFalse(TEXT("needs a selected slot"), Sim.RequestAction(FLRActionRequest::Make(LRNames::Annihilate)).bSuccess);
-
-	FLRActionRequest Request = FLRActionRequest::Make(LRNames::Annihilate);
-	Request.Slot = 0;
-	TestTrue(TEXT("annihilate the first stack"), Sim.RequestAction(Request).bSuccess);
-	TestEqual(TEXT("only that stack is gone"), Sim.CountItem(LRTest::Carbon), 50);
-	TestTrue(TEXT("slot empty"), Sim.GetInventory()[0].IsEmpty());
-	TestEqual(TEXT("stat"), Sim.GetStat(TEXT("annihilated:carbon")), 100);
-
-	Request.Slot = 2;
-	TestTrue(TEXT("annihilate the box"), Sim.RequestAction(Request).bSuccess);
-	TestNull(TEXT("box instance gone too"), Sim.FindLootBox(BoxId));
-
-	Request.Slot = 0;
-	TestFalse(TEXT("empty slot refused"), Sim.RequestAction(Request).bSuccess);
 	return true;
 }
 
@@ -1074,12 +994,11 @@ bool FLRStructureSeedTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("no deeper than maxAmplitude"), LRTest::SeedAt(Sim, Cell));
 	TestTrue(TEXT("each perturbation drew on the host"), FMath::IsNearlyEqual(Sim.GetHostMass(), 0.7, 1e-6));
 
-	Sim.GiveItem(LRTest::Enclosure, 1);
-	FLRActionRequest Deploy = LRTest::AtCell(LRNames::Deploy, FIntVector(1, 0, 0));
-	Deploy.Slot = LRTest::SlotOf(Sim, LRTest::Enclosure);
-	TestTrue(TEXT("deploy an enclosure next door"), Sim.RequestAction(Deploy).bSuccess);
+	LRTest::BuildEnclosure(Sim, FIntVector(1, 0, 0));
+	TestNotNull(TEXT("an enclosure next door"), Sim.FindPlaced(FIntVector(1, 0, 0)));
 	TestFalse(TEXT("can't seed into an occupied cell"), LRTest::SeedAt(Sim, FIntVector(1, 0, 0)));
-	TestFalse(TEXT("ripples can't be recalled"), Sim.RequestAction(LRTest::AtCell(LRNames::Recall, Cell)).bSuccess);
+	const FLRActionResult Dismantled = Sim.RequestAction(LRTest::AtCell(LRNames::Dismantle, Cell));
+	TestTrue(TEXT("ripples can't be dismantled"), !Dismantled.bSuccess && Dismantled.Reason == FName(TEXT("cannot_dismantle")));
 	TestNotNull(TEXT("the ripple is still there"), Sim.FindPlaced(Cell));
 	return true;
 }
@@ -1097,12 +1016,12 @@ bool FLRStructureYieldTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("seed"), LRTest::SeedAt(Sim, Cell));
 	Sim.Advance(30.0);
-	TestEqual(TEXT("no matter yet in the first epoch"), Sim.CountItem(LRTest::Hydrogen), 0);
+	TestEqual(TEXT("no matter yet in the first epoch"), Sim.GetMatter(FIntVector(0, 0, 0), LRTest::Hydrogen), 0);
 
 	TestTrue(TEXT("deepen it (the second seed begins the hot epoch)"), LRTest::SeedAt(Sim, Cell));
 	TestEqual(TEXT("hot epoch"), Sim.GetEpochIndex(), 1);
 	Sim.Advance(10.0);
-	TestEqual(TEXT("one yield, one roll per amplitude"), Sim.CountItem(LRTest::Hydrogen), 10);
+	TestEqual(TEXT("one yield, one roll per amplitude"), Sim.GetMatter(FIntVector(0, 0, 0), LRTest::Hydrogen), 10);
 	TestEqual(TEXT("yields count as gained"), Sim.GetStat(TEXT("gained:hydrogen")), 10);
 	TestEqual(TEXT("no growth before the clear epoch"), AmplitudeAt(Cell), 2);
 
@@ -1115,7 +1034,7 @@ bool FLRStructureYieldTest::RunTest(const FString& Parameters)
 	// Growth comes first in a tick, so all three yields here are at amplitude 3 (15 each).
 	Sim.Advance(30.0);
 	TestEqual(TEXT("gravity deepened the ripple"), AmplitudeAt(Cell), 3);
-	TestEqual(TEXT("three yields at amplitude 3"), Sim.CountItem(LRTest::Hydrogen), 20 + 3 * 15);
+	TestEqual(TEXT("three yields at amplitude 3"), Sim.GetMatter(FIntVector(0, 0, 0), LRTest::Hydrogen), 20 + 3 * 15);
 	Sim.Advance(60.0);
 	TestEqual(TEXT("no deeper than maxAmplitude"), AmplitudeAt(Cell), 3);
 	return true;
@@ -1155,16 +1074,16 @@ bool FLRHostTest::RunTest(const FString& Parameters)
 	Sim.Advance(400.0); // 0.7^3 = 0.343 is less than 400/1000
 	TestTrue(TEXT("evaporated"), Sim.IsFrozen());
 	TestTrue(TEXT("announced"), Log.Contains(TEXT("evaporated")));
-	TestEqual(TEXT("nothing yields while frozen"), Sim.CountItem(LRTest::Hydrogen), 0);
+	TestEqual(TEXT("nothing yields while frozen"), Sim.GetMatter(FIntVector(0, 0, 0), LRTest::Hydrogen), 0);
 	Sim.Advance(50.0);
-	TestEqual(TEXT("still nothing"), Sim.CountItem(LRTest::Hydrogen), 0);
+	TestEqual(TEXT("still nothing"), Sim.GetMatter(FIntVector(0, 0, 0), LRTest::Hydrogen), 0);
 	TestFalse(TEXT("perturbing needs a host"), LRTest::SeedAt(Sim, FIntVector(1, 0, 0)));
 
 	TestTrue(TEXT("feed"), Sim.RequestAction(FLRActionRequest::Make(LRNames::Feed)).bSuccess);
 	TestFalse(TEXT("no longer frozen"), Sim.IsFrozen());
 	TestTrue(TEXT("the universe stirs"), Log.Contains(TEXT("stirs again")));
 	Sim.Advance(10.0);
-	TestEqual(TEXT("yields resume"), Sim.CountItem(LRTest::Hydrogen), 10);
+	TestEqual(TEXT("yields resume"), Sim.GetMatter(FIntVector(0, 0, 0), LRTest::Hydrogen), 10);
 
 	for (int32 Index = 0; Index < 3; ++Index)
 	{

@@ -14,7 +14,7 @@ class UTextRenderComponent;
 class UTexture2D;
 
 /**
- * 3D view of the pocket universe's build grid: hexagonal cells in layers, addressed as
+ * 3D view of the pocket universe's grid: hexagonal cells in layers, addressed as
  * (Q, R, Layer) (see FLRHexGrid for the geometry). Rails/Vue equivalent: WorldGrid.vue +
  * WorldCellSlot.vue, now hexagonal and layered.
  *
@@ -22,7 +22,8 @@ class UTexture2D;
  *   of light (unlit instanced cubes, one draw call per brightness step), fading out towards
  *   the edge. The patch is built once and only moved, a whole cell at a time, when the camera
  *   has panned a few cells; it is rebuilt when zooming changes the beam width.
- * - Draws one mesh per deployed entity, on every layer.
+ * - Draws one mesh per entity, on every layer, and a disc of gas in every cell that holds
+ *   matter: sized by how much, tinted by the mix of materials.
  * - Works out the hovered cell every frame (cursor ray vs. deployed entities and the build
  *   layer's plane) and shows hover / selection markers. Clicking is handled by the player
  *   controller, which selects the hovered cell.
@@ -66,6 +67,9 @@ protected:
 	UFUNCTION()
 	void HandleWorldChanged();
 
+	UFUNCTION()
+	void HandleMatterChanged();
+
 private:
 	UStaticMeshComponent* CreateMesh(UStaticMesh* Mesh, UMaterialInstanceDynamic*& OutMaterial, bool bTraceable);
 	UInstancedStaticMeshComponent* CreateBeamLayer(const FLinearColor& Tint);
@@ -78,6 +82,8 @@ private:
 	void UpdateHover();
 	void UpdateMarkers();
 	void RebuildEntities();
+	/** Create, update or remove the gas disc of every cell whose matter changed. */
+	void UpdateMatter();
 	void FaceLabelsToCamera();
 
 	UPROPERTY()
@@ -109,7 +115,7 @@ private:
 	UPROPERTY()
 	TObjectPtr<UInstancedStaticMeshComponent> HoverOutline;
 
-	/** Ghost of the selected deployable item over the hovered cell. */
+	/** A ghost over the hovered cell (hidden for now; meant for a build preview). */
 	UPROPERTY()
 	TObjectPtr<UStaticMeshComponent> HoverMarker;
 
@@ -131,6 +137,12 @@ private:
 	TArray<TObjectPtr<UStaticMeshComponent>> EntityExtras;
 
 	TArray<FIntVector> EntityCells;
+
+	/**
+	 * Gas discs by cell, kept and updated in place (matter changes every few seconds). Not a
+	 * UPROPERTY: the actor owns its components, which keeps them alive.
+	 */
+	TMap<FIntVector, TWeakObjectPtr<UStaticMeshComponent>> MatterMeshes;
 
 	/** The cell the tile patch is currently centred on. */
 	FIntVector TileAnchor = FIntVector::ZeroValue;

@@ -15,7 +15,7 @@ because an online multi-user web app became a local single-player desktop game.
 | `LootTable` (PORO) | `FLRLootTableDef` + `FLRSimulation::RollLootTable` | Same algorithm: roll count, then cumulative weight pick. |
 | `LootBoxModifier` | `FLRLootModifier` + `FLRSimulation::ApplyModifiers` | Rails had only the no-op base class. The port implements three kinds (`extra_rolls`, `item_weight_mult`, `item_count_mult`) as hooks for irradiation. |
 | `LootBox` row | `FLRLootBoxInstance` (by instance id) | |
-| `Entity` + `InventorySlot` + `InventoryItem` rows | `TArray<FLRInventorySlot>` (50 slots) | A slot holds item id, count and, for unique items, an instance id. |
+| `Entity` + `InventorySlot` + `InventoryItem` rows | *(gone)* Matter per grid cell (`FLRCellMatter`) | The port first had a 50-slot inventory; the theme since moved everything into the pocket universe. `FLRInventorySlot` survives as what an enclosure's chamber and source hold. |
 | `InventoryItemMutation` ledger | *(dropped)* | The ledger existed to stream deltas to the browser. Here the UI reads state directly. |
 | `PlaceableEntity` / `IrradiationEnclosure` rows | `FLRPlacedEntity` in `TMap<coordinate, entity>` | Keeps its instance id across deploy and recall. |
 | `PlayerAction` (ActiveModel) | `FLRActionDef` (static) + `FLRActionState` (dynamic) + `FLRActionStatus` (computed for UI) | |
@@ -23,7 +23,7 @@ because an online multi-user web app became a local single-player desktop game.
 | `User#perform_action` | `FLRSimulation::RequestAction` | |
 | `PerformPlayerActionJob` (Solid Queue `wait: cast_time`) | Pending request in `FLRActionState`, run by `FLRSimulation::Advance` | Runs on simulation time. |
 | `ActiveRecord::Base.transaction` + `raise ActiveRecord::Rollback` | `FLRSimulation::FTransaction` (RAII snapshot) | It rolls back automatically unless `Commit()` is called. |
-| Action Cable `PlayerInventoryChannel` / `PlayerActionsChannel` | Delegates: `OnInventoryChanged`, `OnWorldChanged`, `OnActionCompleted` | Native delegates on the sim, re-broadcast as Blueprint-assignable delegates on the subsystem. |
+| Action Cable `PlayerInventoryChannel` / `PlayerActionsChannel` | Delegates: `OnMatterChanged`, `OnWorldChanged`, `OnActionCompleted` | Native delegates on the sim, re-broadcast as Blueprint-assignable delegates on the subsystem. |
 | Pinia `store/player.ts` (selection, world window) | `ULRGameSubsystem` selection + focus | |
 | `MainLayout.vue`, `Index.vue`, `ActionBar.vue`, `InventoryGrid.vue`, ... | `SLRGameHud` (Slate) | `*_Lambda` attributes act like Vue computed properties. |
 | `WorldGrid.vue` (virtualized 1D list) | `ALRWorldGridActor` (3D grid) + the Grid panel's deployed list | The grid draws glowing lines only around the camera focus. |

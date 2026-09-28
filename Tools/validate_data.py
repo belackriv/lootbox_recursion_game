@@ -15,8 +15,8 @@ CATEGORIES = {"material", "lootbox", "placeable", "source", "structure"}
 MODIFIER_KINDS = {"extra_rolls", "item_weight_mult", "item_count_mult", "add_entry", "reveal"}
 KINDS_NEEDING_ITEM = {"item_weight_mult", "item_count_mult", "add_entry"}
 CONDITIONS = {"gt", "gte", "lt", "lte", "eq"}
-CHECKS = {"inventory", "placed", "stat", "unlocked", "epoch", "host"}
-REQUIRED_ACTIONS = {"perturb", "feed", "craft", "use", "deploy", "recall", "sort_inventory", "load", "unload", "annihilate"}
+CHECKS = {"matter", "placed", "stat", "unlocked", "epoch", "host"}
+REQUIRED_ACTIONS = {"perturb", "feed", "craft", "use", "dismantle"}
 HOST_DEFAULTS = {"lifetimeSeconds": 0, "perturbCost": 0, "feedAmount": 0, "warningMass": 0.25}
 
 
@@ -24,6 +24,7 @@ def main() -> int:
     errors: list[str] = []
     items, recipes, tables, actions, radiation, epochs = {}, [], {}, [], [], []
     host = dict(HOST_DEFAULTS)
+    reach_radius = 0
 
     files = sorted(DATA_DIR.glob("*.json"))
     if not files:
@@ -50,6 +51,8 @@ def main() -> int:
                 epochs.append(epoch)
             else:
                 epochs[existing] = epoch
+        if doc.get("reachRadius", -1) >= 0:
+            reach_radius = doc["reachRadius"]
         file_host = doc.get("host")
         if file_host and any(file_host.get(k, 0) > 0 for k in ("lifetimeSeconds", "perturbCost", "feedAmount")):
             host = {**HOST_DEFAULTS, **file_host}
@@ -92,13 +95,15 @@ def main() -> int:
 
     def check_requirements(reqs, where):
         for req in reqs:
-            check = req.get("check", "inventory")
+            check = req.get("check", "matter")
             if check not in CHECKS:
                 errors.append(f"{where}: unknown requirement check '{check}'")
             if req.get("condition", "gt") not in CONDITIONS:
                 errors.append(f"{where}: unknown condition '{req.get('condition')}'")
             if req.get("item"):
                 check_item(req["item"], f"{where} requirement")
+            if check == "matter" and not req.get("item") and not req.get("category"):
+                errors.append(f"{where}: matter requirement needs an item or category")
             if check == "stat" and not req.get("id"):
                 errors.append(f"{where}: stat requirement needs an id")
             if check == "unlocked" and req.get("id") not in unlock_keys:
@@ -112,6 +117,11 @@ def main() -> int:
         check_item(recipe.get("output"), f"{where} output")
         if recipe.get("outputCount", 1) < 1:
             errors.append(f"{where}: outputCount must be >= 1")
+        output = items.get(recipe.get("output"))
+        if output and output.get("category") == "structure":
+            errors.append(f"{where}: structures can't be built, only seeded")
+        elif output and output.get("category") != "material" and recipe.get("outputCount", 1) != 1:
+            errors.append(f"{where}: only materials can be built more than one at a time")
         for cost in recipe.get("cost", []):
             check_item(cost.get("item"), f"{where} cost")
             if cost.get("count", 0) < 0:
@@ -126,6 +136,9 @@ def main() -> int:
             errors.append(f"{where}: has no entries")
         for entry in table.get("entries", []):
             check_item(entry.get("item"), where)
+            entry_def = items.get(entry.get("item"))
+            if entry_def and entry_def.get("category") != "material" and not entry_def.get("lootTable"):
+                errors.append(f"{where}: '{entry.get('item')}' can't come out of a roll (only materials and caches can)")
             if entry.get("weight", 1) <= 0:
                 errors.append(f"{where}: weight must be > 0")
             if entry.get("minCount", 1) < 1 or entry.get("maxCount", 1) < entry.get("minCount", 1):
@@ -183,6 +196,9 @@ def main() -> int:
         if index == 0 and epoch.get("advanceRequirements"):
             errors.append(f"{where}: the first epoch is where a game starts, so it can't have advanceRequirements")
         check_requirements(epoch.get("advanceRequirements", []), where)
+
+    if reach_radius < 0:
+        errors.append("reachRadius must be >= 0")
 
     if (host["lifetimeSeconds"] < 0 or not 0 <= host["perturbCost"] <= 1 or not 0 <= host["feedAmount"] <= 1
             or not 0 <= host["warningMass"] <= 1):

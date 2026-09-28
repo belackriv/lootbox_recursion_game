@@ -130,8 +130,10 @@ void ALRWorldGridActor::BeginPlay()
 	if (ULRGameSubsystem* Subsystem = ULRGameSubsystem::Get(this))
 	{
 		Subsystem->OnWorldChanged.AddDynamic(this, &ALRWorldGridActor::HandleWorldChanged);
+		Subsystem->OnMatterChanged.AddDynamic(this, &ALRWorldGridActor::HandleMatterChanged);
 	}
 	RebuildEntities();
+	UpdateMatter();
 }
 
 void ALRWorldGridActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -139,6 +141,7 @@ void ALRWorldGridActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (ULRGameSubsystem* Subsystem = ULRGameSubsystem::Get(this))
 	{
 		Subsystem->OnWorldChanged.RemoveDynamic(this, &ALRWorldGridActor::HandleWorldChanged);
+		Subsystem->OnMatterChanged.RemoveDynamic(this, &ALRWorldGridActor::HandleMatterChanged);
 	}
 	Super::EndPlay(EndPlayReason);
 }
@@ -397,7 +400,6 @@ void ALRWorldGridActor::UpdateMarkers()
 	{
 		return;
 	}
-	const float Scale = CellSize / 100.f;
 
 	FIntVector Selected;
 	const bool bHasSelection = Subsystem->GetSelectedCell(Selected);
@@ -416,27 +418,6 @@ void ALRWorldGridActor::UpdateMarkers()
 		return;
 	}
 	HoverOutline->SetRelativeLocation(CellToLocal(Hovered));
-
-	// If a deployable item is selected in the inventory and the cell is free, also show a
-	// small "ghost" of it.
-	const FLRItemDef* Preview = nullptr;
-	const int32 SlotIndex = Subsystem->GetSelectedSlot();
-	if (Simulation->GetInventory().IsValidIndex(SlotIndex) && !Simulation->GetInventory()[SlotIndex].IsEmpty())
-	{
-		const FLRItemDef* Def = Simulation->GetData().FindItem(Simulation->GetInventory()[SlotIndex].Item);
-		Preview = (Def && Def->IsPlaceable()) ? Def : nullptr;
-	}
-
-	if (Preview && !Simulation->FindPlaced(Hovered))
-	{
-		HoverMarker->SetVisibility(true);
-		HoverMarker->SetRelativeLocation(CellToLocal(Hovered) + FVector(0.f, 0.f, 25.f * Scale));
-		HoverMarker->SetRelativeScale3D(FVector(0.5f * Scale));
-		if (HoverMaterial)
-		{
-			HoverMaterial->SetVectorParameterValue(ColorParam, Preview->GetLinearColor());
-		}
-	}
 }
 
 // ---- Deployed entities ----------------------------------------------------------------
@@ -444,6 +425,65 @@ void ALRWorldGridActor::UpdateMarkers()
 void ALRWorldGridActor::HandleWorldChanged()
 {
 	RebuildEntities();
+}
+
+void ALRWorldGridActor::HandleMatterChanged()
+{
+	UpdateMatter();
+}
+
+void ALRWorldGridActor::UpdateMatter()
+{
+	const ULRGameSubsystem* Subsystem = ULRGameSubsystem::Get(this);
+	const FLRSimulation* Simulation = Subsystem ? Subsystem->GetSimulation() : nullptr;
+	if (!Simulation || !SphereMesh)
+	{
+		return;
+	}
+	const TMap<FIntVector, FLRCellMatter>& Matter = Simulation->GetAllMatter();
+
+	// Cells that no longer hold matter lose their disc.
+	for (auto It = MatterMeshes.CreateIterator(); It; ++It)
+	{
+		if (!Matter.Contains(It.Key()) || !It.Value().IsValid())
+		{
+			if (UStaticMeshComponent* Stale = It.Value().Get())
+			{
+				Stale->DestroyComponent();
+			}
+			It.RemoveCurrent();
+		}
+	}
+
+	const float Scale = CellSize / 100.f;
+	for (const TPair<FIntVector, FLRCellMatter>& Pair : Matter)
+	{
+		// Tint: the materials' colours weighted by amount. Size: grows with the log of the total,
+		// from a small puff to nearly the whole hexagon.
+		FLinearColor Tint = FLinearColor::Black;
+		const int32 Total = Pair.Value.Total();
+		for (const FLRItemAmount& Amount : Pair.Value.Amounts)
+		{
+			const FLRItemDef* Def = Simulation->GetData().FindItem(Amount.Item);
+			Tint += (Def ? Def->GetLinearColor() : FLinearColor::Gray) * (static_cast<float>(Amount.Count) / FMath::Max(Total, 1));
+		}
+		Tint.A = 1.f;
+		const float Size = FMath::Clamp(0.25f + 0.12f * FMath::Log2(1.f + Total / 10.f), 0.25f, 0.9f);
+
+		UStaticMeshComponent* Disc = MatterMeshes.FindRef(Pair.Key).Get();
+		if (!Disc)
+		{
+			UMaterialInstanceDynamic* NewMaterial = nullptr;
+			Disc = CreateMesh(SphereMesh, NewMaterial, /*bTraceable*/ false);
+			MatterMeshes.Add(Pair.Key, Disc);
+		}
+		Disc->SetRelativeLocation(CellToLocal(Pair.Key) + FVector(0.f, 0.f, 3.f * Scale));
+		Disc->SetRelativeScale3D(FVector(Size * Scale, Size * Scale, 0.06f * Scale));
+		if (UMaterialInstanceDynamic* Material = Cast<UMaterialInstanceDynamic>(Disc->GetMaterial(0)))
+		{
+			Material->SetVectorParameterValue(ColorParam, Tint);
+		}
+	}
 }
 
 void ALRWorldGridActor::RebuildEntities()

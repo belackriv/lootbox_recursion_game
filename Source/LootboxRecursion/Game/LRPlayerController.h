@@ -34,6 +34,7 @@ public:
 	ALRPlayerController();
 
 	// ---- Console commands: press ~ in game and type e.g. "LRGive hydrogen 500" ---------
+	/** Adds a material to the selected cell (or the origin). */
 	UFUNCTION(Exec)
 	void LRGive(FName Item, int32 Count);
 

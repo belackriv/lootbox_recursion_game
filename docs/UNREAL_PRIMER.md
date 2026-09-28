@@ -97,7 +97,7 @@ UWorld (level) ├─ ALRGameMode           picks the classes below; spawns ligh
 - **Dynamic multicast delegates** (`DECLARE_DYNAMIC_MULTICAST_DELEGATE`) are slower, can be
   used from Blueprints, and bind only to `UFUNCTION`s with `AddDynamic`. `ULRGameSubsystem`
   re-broadcasts the sim's events this way, so Blueprints can use
-  `Bind Event to OnInventoryChanged`.
+  `Bind Event to OnMatterChanged`.
 
 ## 6. UI: Slate vs UMG
 

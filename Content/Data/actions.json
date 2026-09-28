@@ -1,5 +1,5 @@
 {
-	"_comment": "cooldown and castTime are in simulation seconds. Requirement: check = inventory | placed | stat | unlocked | epoch | host, filtered by item or category, condition = gt | gte | lt | lte | eq. 'craft' is enabled when any recipe is affordable and 'sort_inventory' when the inventory is unsorted (special-cased in code, like PlayerAction#update_disabled). revealRequirements unlock an action for good once met (tech tree), retireRequirements retire it for good, and requirements are checked every time. 'places' makes a seeding action: it creates that overdensity in the selected cell or deepens the one there. Any other action with a lootTable just rolls it.",
+	"_comment": "cooldown and castTime are in simulation seconds. Every action but feed works on the selected grid cell. Requirement: check = matter | placed | stat | unlocked | epoch | host, filtered by item or category, condition = gt | gte | lt | lte | eq. revealRequirements unlock an action for good once met (tech tree), retireRequirements retire it for good, and requirements are checked every time. 'places' makes a seeding action: it creates that overdensity in the selected cell or deepens the one there. Any other action with a lootTable rolls it into the selected cell.",
 	"actions": [
 		{
 			"name": "perturb",
@@ -33,8 +33,8 @@
 		},
 		{
 			"name": "craft",
-			"label": "Craft",
-			"tooltip": "Craft items from your gathered materials.",
+			"label": "Build",
+			"tooltip": "Build the chosen recipe in the selected cell, paying with matter from cells within reach of it.",
 			"cooldown": 5,
 			"castTime": 5,
 			"revealRequirements": [
@@ -48,115 +48,33 @@
 		},
 		{
 			"name": "use",
-			"label": "Use",
-			"tooltip": "Use the selected item. Select a quantum cache in your inventory, then Use to open it.",
+			"label": "Open",
+			"tooltip": "Collapse the cache in the selected cell, or in the enclosure there. Its contents land in that cell.",
 			"cooldown": 5,
 			"castTime": 5,
-			"requirements": [
-				{
-					"check": "inventory",
-					"category": "lootbox",
-					"condition": "gt",
-					"value": 0
-				}
-			],
 			"revealRequirements": [
 				{
-					"check": "inventory",
-					"category": "lootbox",
-					"condition": "gt",
-					"value": 0
-				}
-			]
-		},
-		{
-			"name": "deploy",
-			"label": "Deploy",
-			"tooltip": "Deploy the selected item into the selected grid cell.",
-			"cooldown": 1,
-			"castTime": 0,
-			"requirements": [
-				{
-					"check": "inventory",
-					"category": "placeable",
-					"condition": "gt",
-					"value": 0
-				}
-			],
-			"revealRequirements": [
-				{
-					"check": "inventory",
-					"category": "placeable",
-					"condition": "gt",
-					"value": 0
-				}
-			]
-		},
-		{
-			"name": "recall",
-			"label": "Recall",
-			"tooltip": "Recall a deployed entity from the selected grid cell back into your inventory.",
-			"cooldown": 1,
-			"castTime": 0,
-			"requirements": [
-				{
-					"check": "placed",
-					"condition": "gt",
-					"value": 0
-				}
-			],
-			"revealRequirements": [
-				{
-					"check": "unlocked",
-					"id": "action:deploy",
-					"condition": "eq",
+					"check": "stat",
+					"id": "crafted:loot_box",
+					"condition": "gte",
 					"value": 1
 				}
 			]
 		},
 		{
-			"name": "load",
-			"label": "Load",
-			"tooltip": "Load the selected quantum cache or radiation source into the irradiation enclosure in the selected cell.",
+			"name": "dismantle",
+			"label": "Dismantle",
+			"tooltip": "Take apart what's in the selected cell and return what it cost to the cell. An enclosure comes apart a layer at a time: its source, then its cache, then the enclosure.",
 			"cooldown": 1,
 			"castTime": 0,
 			"revealRequirements": [
 				{
-					"check": "unlocked",
-					"id": "recipe:grow_lamp",
-					"condition": "eq",
+					"check": "stat",
+					"id": "crafted:loot_box",
+					"condition": "gte",
 					"value": 1
 				}
 			]
-		},
-		{
-			"name": "unload",
-			"label": "Unload",
-			"tooltip": "Take the cache and source out of the irradiation enclosure in the selected cell.",
-			"cooldown": 1,
-			"castTime": 0,
-			"revealRequirements": [
-				{
-					"check": "unlocked",
-					"id": "action:load",
-					"condition": "eq",
-					"value": 1
-				}
-			]
-		},
-		{
-			"name": "sort_inventory",
-			"label": "Sort",
-			"tooltip": "Automatically sort and consolidate your inventory slots.",
-			"cooldown": 1,
-			"castTime": 0
-		},
-		{
-			"name": "annihilate",
-			"label": "Annihilate",
-			"tooltip": "Annihilate the whole stack in the selected inventory slot. It is gone for good.",
-			"cooldown": 0.5,
-			"castTime": 0
 		}
 	]
 }

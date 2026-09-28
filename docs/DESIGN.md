@@ -34,16 +34,19 @@ below.
 
 ## Core loop (implemented)
 
-1. **Perturb** a grid cell to seed a ripple, or deepen one. Ripples yield matter into the
-   inventory every few seconds, depending on the epoch: nothing during inflation, then
+Everything happens in grid cells: there is no inventory (see *Matter lives in the pocket
+universe*).
+
+1. **Perturb** a grid cell to seed a ripple, or deepen one. Ripples gather matter into their
+   own cell every few seconds, depending on the epoch: nothing during inflation, then
    hydrogen, then hydrogen and helium.
-2. **Craft** materials into loot boxes and irradiation enclosures. A cache crushes hydrogen
-   and helium, and collapses back into them plus some fused carbon and a little iron. Caches
-   are the only source of carbon and iron until there are stars.
-3. **Open** loot boxes (the Use action) for randomized loot from weighted loot tables.
-   A loot box can contain other loot boxes: that's the recursion.
-4. **Deploy** placeable items into cells of the hexagonal grid, and **Recall** them back.
-5. **Sort** to compress and order the 50-slot inventory.
+2. **Build** in a selected cell, paying with matter within reach: caches, irradiation
+   enclosures, and radiation sources (built into an enclosure). A cache crushes hydrogen and
+   helium, and collapses back into them plus some fused carbon and a little iron. Caches are
+   the only source of carbon and iron until there are stars.
+3. **Open** a cache where it sits (the `use` action) for randomized loot from weighted loot
+   tables; the loot lands in its cell. A cache can contain other caches: that's the recursion.
+4. **Dismantle** what's in a cell to get its cost back into that cell.
 
 Loot boxes carry **modifiers**, which rewrite their loot table before it's rolled:
 
@@ -75,7 +78,7 @@ announces each one.
   deepened by Perturb up to amplitude 5. Each yield rolls the epoch's `yieldTable` once per
   amplitude. Before recombination, radiation pressure stops matter clumping, so only Perturb
   deepens them. From recombination on, gravity deepens them every `rippleGrowthSeconds`,
-  which is what makes the early game self-sustaining. Structures can't be recalled.
+  which is what makes the early game self-sustaining. Structures can't be dismantled.
 - **Perturb retires** at recombination (`retireRequirements`): it's hidden and refused for
   good, and the ripples carry on without it.
 - **The host black hole evaporates** by Hawking radiation. Its mass cubed falls linearly,
@@ -87,37 +90,35 @@ announces each one.
 - **The plasma** is a glowing veil in the sky whose opacity comes from the epoch, fading over
   a few seconds between epochs. It clears at recombination.
 
-Overdensity yields go straight into the inventory, and whatever doesn't fit is lost. That's
-the interim until matter lives in cells (next section).
+## Matter lives in the pocket universe (implemented)
 
-## Matter lives in the pocket universe (planned)
-
-The player inventory is a leftover of the loot-box game. The operator can't reach into the
-pocket universe, so there is nowhere outside it for a stockpile to live. Everything will be
-contained in the pocket universe instead, and the inventory goes away (roadmap M7).
+There is no player inventory: the operator can't reach into the pocket universe, so there is
+nowhere outside it for a stockpile to live. Everything is contained in the pocket universe.
 
 - **Cells hold matter.** Each cell holds an amount of each material, alongside at most one
-  entity. Ripples deposit their yield into their own cell. Later that gas drifts along the
-  gravity field.
-- **Costs come from within a reach radius.** Crafting or building at a cell draws its cost
-  from the matter in cells within `reachRadius` cells of it. The radius is data (planned for
-  `universe.json`), so it's easy to tune. Distance is measured in cells, using the grid's own
-  distance function.
-- **Conveyors deliver, they don't extend reach.** Once gravity conveyors unlock, the radius
-  stays the same. Instead, conveyors carry matter into a build site's reach automatically.
-- **Caches are cell entities.** Compressing gas at a cell makes a cache there, and collapsing
-  it spills the contents into that cell.
-- **Enclosures and sources are built in place** rather than crafted and then deployed.
-  Dismantling returns their materials to the cell. A source could irradiate every cache
-  within a few cells, which would make irradiation spatial.
-- **Selection is of cells, not slots.** Load, Deploy and Recall become building and
-  dismantling at a cell. Sort and Annihilate go away.
-- **Readability.** A readout of the whole universe's totals and a panel for the hovered
-  cell's contents replace the inventory grid.
+  entity. Ripples deposit their yield into their own cell, and an opened cache spills into
+  its cell. The grid draws a disc of gas in every cell that holds matter, sized by how much
+  and tinted by the mix. Later that gas drifts along the gravity field.
+- **Costs come from within a reach radius.** Building at a cell draws its cost from the
+  matter in cells within `reachRadius` steps of it (`universe.json`, currently 2), in its
+  layer: the cell itself first, then ring by ring. Distance is the hex grid's own.
+- **Where things go.** A cache goes into an empty cell, or into the empty chamber of an
+  enclosure there. A radiation source goes into the enclosure in the cell. A machine takes an
+  empty cell. Materials can go anywhere.
+- **Nested caches** from an opened cache land in its spot, then the nearest empty cell
+  within reach. With no room, they're lost (the log says so).
+- **Dismantle** returns what something cost to its cell. An enclosure comes apart a layer at
+  a time: its source, then its cache, then the enclosure itself. Refunds don't count as
+  gained for the tech tree.
+- **Conveyors deliver, they don't extend reach** (planned). Once gravity conveyors unlock, the
+  radius stays the same; conveyors carry matter into a build site's reach automatically.
+- **Readability.** The Universe panel shows each material's total and how much is within
+  reach of the selected cell. The Info panel lists a hovered cell's matter.
 
 ## The grid (implemented)
 
-- **Hexagonal cells in layers**, unbounded in every direction, one deployed entity per cell.
+- **Hexagonal cells in layers**, unbounded in every direction, one entity per cell (plus
+  matter).
   A cell is `(Q, R, Layer)`: axial hex coordinates plus the layer. `FLRHexGrid` holds all the
   geometry (neighbours, distance, cells within a radius, world position, picking), and the
   simulation and world view both go through it, so the shape can still change in one place.
@@ -206,8 +207,8 @@ Requirement checks:
 
 | check | counts | example |
 |---|---|---|
-| `inventory` | items held (by `item` or `category`) | `{"check":"inventory","category":"lootbox","condition":"gt","value":0}` |
-| `placed` | entities deployed in the grid | `{"check":"placed","condition":"gt","value":0}` |
+| `matter` | matter in the whole pocket universe (by `item` or `category`) | `{"check":"matter","item":"carbon","condition":"gte","value":100}` |
+| `placed` | entities in the grid (by `item` or `category`) | `{"check":"placed","category":"lootbox","condition":"gt","value":0}` |
 | `stat` | lifetime counters the game records | `{"check":"stat","id":"exposed:x_rays","condition":"gte","value":1}` |
 | `unlocked` | 1 if another recipe/action is unlocked | `{"check":"unlocked","id":"recipe:grow_lamp","condition":"eq","value":1}` |
 | `epoch` | 1 once an epoch has been reached | `{"check":"epoch","id":"nucleosynthesis","condition":"eq","value":1}` |
@@ -227,14 +228,12 @@ Cheat items (`LRGive`) don't count.
 
 | Unlocks | When |
 |---|---|
-| Perturb, Sort, Annihilate | from the start |
+| Perturb | from the start |
 | Feed the Horizon | when the host is down to 90% of its mass |
-| Craft, Quantum Cache recipe | at nucleosynthesis |
-| Use | when you first hold a loot box |
-| Carbon Irradiation Enclosure | after opening a loot box |
-| Deploy, then Recall | when you first hold a deployable, then once Deploy is unlocked |
-| Grow Lamp | after crafting a carbon enclosure |
-| Load, then Unload | once the Grow Lamp is unlocked, then once Load is |
+| Build, Quantum Cache recipe | at nucleosynthesis |
+| Open, Dismantle | after building your first cache |
+| Carbon Irradiation Enclosure | after opening a cache |
+| Grow Lamp | after building a carbon enclosure |
 | Infrared Emitter | after 3 visible-light exposures |
 | Microwave Emitter | after 3 infrared exposures |
 | Iron Irradiation Enclosure | after 2 microwave exposures |
@@ -253,7 +252,7 @@ and requirements with OR.
 Irradiation is how loot boxes get better. Numbers are placeholder tuning in
 `Content/Data/items.json` and `radiation.json`.
 
-**Enclosures** are deployable. Each one has:
+**Enclosures** are built in a cell. Each one has:
 
 - a **chamber** (one loot box)
 - a **source slot** (one radiation source)
@@ -266,7 +265,7 @@ Irradiation is how loot boxes get better. Numbers are placeholder tuning in
 | Carbon (graphite-lined) | 4 (up to microwaves) | 3 | 10s |
 | Iron (steel-plated) | 7 (up to gamma) | 5 | 12s |
 
-**Sources** are craftable items that emit one radiation type. Each radiation's `effect` in
+**Sources** are built into an enclosure and emit one radiation type. Each radiation's `effect` in
 `radiation.json` is the loot modifier one exposure adds:
 
 | Source | Radiation (tier) | Effect per stack | From the notes |
@@ -287,16 +286,17 @@ Irradiation is how loot boxes get better. Numbers are placeholder tuning in
 
 **How it plays:**
 
-1. Deploy an enclosure, select it, then select a loot box in the inventory and press
-   **Load**. Do the same with a source.
-2. While both are loaded, the enclosure adds one modifier stack per interval until the
-   box reaches the enclosure's cap. The log reports each exposure.
-3. X-rays are special. They add no stack; they roll the box's (already modified) table
-   right away and lock the result. The box then shows exactly what's inside, and it can't
+1. Build an enclosure in a cell, then, with that cell selected, build a cache and a source
+   into it.
+2. While both are in, the enclosure adds one modifier stack per interval until the cache
+   reaches the enclosure's cap. The log reports each exposure.
+3. X-rays are special. They add no stack; they roll the cache's (already modified) table
+   right away and lock the result. The cache then shows exactly what's inside, and it can't
    be changed any further. Irradiate first, then inspect.
-4. **Unload** returns the box and the source. **Recall** returns the enclosure with
-   everything in it. Stacks from different sources and enclosures add up on the same box,
-   so moving a box between enclosures is a strategy.
+4. **Open** the cache right there; its loot lands in the enclosure's cell. To change sources,
+   **Dismantle** once (the source comes out first, refunded) and build the next one in.
+   Caches can't move between enclosures any more, so stacking different radiation on one
+   cache means swapping sources while it stays in the chamber.
 
 **Ideas for later:**
 

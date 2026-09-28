@@ -69,6 +69,11 @@ int32 FLRGameData::FindEpochIndex(FName Id) const
 	return Epochs.IndexOfByPredicate([Id](const FLREpochDef& Epoch) { return Epoch.Id == Id; });
 }
 
+const FLRRecipeDef* FLRGameData::FindRecipeFor(FName Item) const
+{
+	return Recipes.FindByPredicate([Item](const FLRRecipeDef& Recipe) { return Recipe.Output == Item; });
+}
+
 const FLRRecipeDef* FLRGameData::FindRecipe(FName Id) const
 {
 	return Recipes.FindByPredicate([Id](const FLRRecipeDef& Recipe) { return Recipe.Id == Id; });
@@ -133,6 +138,10 @@ void FLRGameData::AddFrom(const FLRDataFile& File)
 	{
 		Host = File.Host;
 	}
+	if (File.ReachRadius >= 0)
+	{
+		ReachRadius = File.ReachRadius;
+	}
 }
 
 TArray<FString> FLRGameData::Validate() const
@@ -155,7 +164,7 @@ TArray<FString> FLRGameData::Validate() const
 	{
 		for (const FLRRequirement& Req : Requirements)
 		{
-			if (Req.Check != LRNames::CheckInventory && Req.Check != LRNames::CheckPlaced
+			if (Req.Check != LRNames::CheckMatter && Req.Check != LRNames::CheckPlaced
 				&& Req.Check != LRNames::CheckStat && Req.Check != LRNames::CheckUnlocked
 				&& Req.Check != LRNames::CheckEpoch && Req.Check != LRNames::CheckHost)
 			{
@@ -168,6 +177,10 @@ TArray<FString> FLRGameData::Validate() const
 			if (!Req.Item.IsNone())
 			{
 				CheckItemRef(Req.Item, Where + TEXT(" requirement"));
+			}
+			if (Req.Check == LRNames::CheckMatter && Req.Item.IsNone() && Req.Category.IsNone())
+			{
+				Errors.Add(FString::Printf(TEXT("%s: matter requirement needs an item or category"), *Where));
 			}
 			if (Req.Check == LRNames::CheckStat && Req.Id.IsNone())
 			{
@@ -241,6 +254,17 @@ TArray<FString> FLRGameData::Validate() const
 		{
 			Errors.Add(FString::Printf(TEXT("%s: outputCount must be >= 1"), *Where));
 		}
+		if (const FLRItemDef* Output = FindItem(Recipe.Output))
+		{
+			if (Output->IsStructure())
+			{
+				Errors.Add(FString::Printf(TEXT("%s: structures can't be built, only seeded"), *Where));
+			}
+			else if (Output->Category != LRNames::CategoryMaterial && Recipe.OutputCount != 1)
+			{
+				Errors.Add(FString::Printf(TEXT("%s: only materials can be built more than one at a time"), *Where));
+			}
+		}
 		for (const FLRItemAmount& Cost : Recipe.Cost)
 		{
 			CheckItemRef(Cost.Item, Where + TEXT(" cost"));
@@ -267,6 +291,11 @@ TArray<FString> FLRGameData::Validate() const
 		for (const FLRLootEntry& Entry : Table.Entries)
 		{
 			CheckItemRef(Entry.Item, Where);
+			const FLRItemDef* EntryDef = FindItem(Entry.Item);
+			if (EntryDef && EntryDef->Category != LRNames::CategoryMaterial && !EntryDef->IsLootBox())
+			{
+				Errors.Add(FString::Printf(TEXT("%s: '%s' can't come out of a roll (only materials and caches can)"), *Where, *Entry.Item.ToString()));
+			}
 			if (Entry.Weight <= 0)
 			{
 				Errors.Add(FString::Printf(TEXT("%s: weight must be > 0"), *Where));
@@ -336,6 +365,11 @@ TArray<FString> FLRGameData::Validate() const
 			Errors.Add(FString::Printf(TEXT("%s: the first epoch is where a game starts, so it can't have advanceRequirements"), *Where));
 		}
 		CheckRequirements(Epoch.AdvanceRequirements, Where);
+	}
+
+	if (ReachRadius < 0)
+	{
+		Errors.Add(TEXT("reachRadius must be >= 0"));
 	}
 
 	if (Host.LifetimeSeconds < 0.f || Host.PerturbCost < 0.f || Host.PerturbCost > 1.f

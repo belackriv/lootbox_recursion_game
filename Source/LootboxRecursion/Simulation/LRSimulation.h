@@ -13,16 +13,20 @@
  * change to Postgres and broadcast it over Action Cable, this class mutates in-memory state
  * and fires delegates. Persistence is a snapshot (Save/Load) handled by ULRGameSubsystem.
  *
+ * Everything lives in the pocket universe: there is no player inventory. Cells hold matter
+ * (an amount per material) next to at most one entity. Building at a cell pays from the matter
+ * in cells within the reach radius, and puts the result in that cell.
+ *
  * Time is simulation time: the owner calls Advance(DeltaSeconds) every frame. That makes
  * pausing, fast-forwarding (LRTimeScale) and deterministic tests trivial.
  */
 class LOOTBOXRECURSION_API FLRSimulation
 {
 public:
-	static constexpr int32 PlayerInventorySlots = 50; // Rails: User::BASE_INVENTORY_SLOTS
-	static constexpr int32 SaveVersion = 5; // 2: 3D grid, wood -> carbon. 3: enclosure contents. 4: unlocks + stats. 5: epochs, host, primordial materials
-	/** Oldest save that still loads (newer fields just start empty). 5 reworked the materials and tech tree, so older saves start fresh. */
-	static constexpr int32 MinCompatibleSaveVersion = 5;
+	/** 2: 3D grid, wood -> carbon. 3: enclosure contents. 4: unlocks + stats. 5: epochs, host, primordial materials. 6: matter in cells, no inventory. */
+	static constexpr int32 SaveVersion = 6;
+	/** Oldest save that still loads (newer fields just start empty). 6 removed the inventory, so older saves start fresh. */
+	static constexpr int32 MinCompatibleSaveVersion = 6;
 	/** Simulation seconds the sky takes to fade to a new epoch's plasma opacity. */
 	static constexpr double PlasmaFadeSeconds = 6.0;
 
@@ -44,18 +48,32 @@ public:
 
 	// ---- Queries ----------------------------------------------------------------------
 	const FLRGameData& GetData() const { return Data; }
-	const TArray<FLRInventorySlot>& GetInventory() const { return Inventory; }
 	const TMap<FIntVector, FLRPlacedEntity>& GetPlaced() const { return Placed; }
 	const FLRPlacedEntity* FindPlaced(const FIntVector& Cell) const { return Placed.Find(Cell); }
 	const FLRLootBoxInstance* FindLootBox(int32 InstanceId) const { return LootBoxes.Find(InstanceId); }
-
-	int32 CountItem(FName Item) const;
-	int32 CountCategory(FName Category) const;
-	bool CanAfford(const TArray<FLRItemAmount>& Cost) const;
-	bool CanAffordAnyRecipe() const;
-	/** Rails: Entity#inventory_sort_needed? */
-	bool IsSortNeeded() const;
+	/** The cache in a cell: a cache entity, or the one in an enclosure's chamber. Null if none. */
+	const FLRLootBoxInstance* FindCacheAt(const FIntVector& Cell) const;
 	FLRActionStatus GetActionStatus(FName ActionName) const;
+
+	// ---- Matter -----------------------------------------------------------------------
+	/** Every cell that holds matter. */
+	const TMap<FIntVector, FLRCellMatter>& GetAllMatter() const { return Matter; }
+	/** How much of Item a cell holds. */
+	int32 GetMatter(const FIntVector& Cell, FName Item) const;
+	/** How much of Item the whole pocket universe holds. */
+	int32 GetTotalMatter(FName Item) const;
+	/** How much of Item is within reach of Cell: in cells at most GetReachRadius() steps away, in its layer. */
+	int32 GetMatterInReach(const FIntVector& Cell, FName Item) const;
+	bool CanAffordAt(const FIntVector& Cell, const TArray<FLRItemAmount>& Cost) const;
+	int32 GetReachRadius() const { return FMath::Max(0, Data.ReachRadius); }
+
+	/**
+	 * Why a recipe can't be built at Cell right now (NAME_None if it can): unknown or locked
+	 * recipe, the cell can't take the output, or not enough matter within reach.
+	 */
+	FName ValidateBuild(FName RecipeId, const FIntVector& Cell) const;
+	/** A failure reason as a short phrase for the log and tooltips ("not enough matter within reach"). */
+	static FString DescribeReason(FName Reason);
 
 	// ---- Tech tree / stats --------------------------------------------------------------
 	/** A recipe with no reveal requirements is always unlocked; otherwise once they've been met. */
@@ -94,8 +112,8 @@ public:
 	 */
 	FLRActionResult RequestAction(const FLRActionRequest& Request);
 
-	/** Debug/cheat: add items directly. Returns false if they don't fit (nothing is added). */
-	bool GiveItem(FName Item, int32 Count);
+	/** Debug/cheat: add a material to a cell. Returns false for unknown or non-material items. Doesn't count toward stats. */
+	bool GiveMatter(const FIntVector& Cell, FName Item, int32 Count);
 
 	/** Attach a modifier to a loot box instance (hook for irradiation). */
 	bool AddLootBoxModifier(int32 InstanceId, const FLRLootModifier& Modifier);
@@ -107,9 +125,19 @@ public:
 	static FLRLootTableDef ApplyModifiers(const FLRLootTableDef& Table, const TArray<FLRLootModifier>& Modifiers);
 
 	// ---- Events (Rails: Action Cable broadcasts) ---------------------------------------
-	FOnChanged OnInventoryChanged;
+	/** Matter in some cell changed. */
+	FOnChanged OnMatterChanged;
+	/** Entities, their contents or the cosmos changed. */
 	FOnChanged OnWorldChanged;
 	FOnActionCompleted OnActionCompleted;
+
+	/** "(q, r, layer)" */
+	static FString DescribeCell(const FIntVector& Cell);
+	/** Human-readable effect, e.g. "Carbon amounts x1.25". */
+	static FString DescribeModifier(const FLRLootModifier& Modifier, const FLRGameData& InData);
+	/** A box in an enclosure stops gaining stacks once revealed or at the enclosure's cap. */
+	static bool IsExposureComplete(const FLRLootBoxInstance& Box, const FLRItemDef& EnclosureDef);
+	FString DescribeAmounts(const TArray<FLRItemAmount>& Amounts) const;
 
 private:
 	/**
@@ -125,7 +153,7 @@ private:
 
 	private:
 		FLRSimulation& Sim;
-		TArray<FLRInventorySlot> Inventory;
+		TMap<FIntVector, FLRCellMatter> Matter;
 		TMap<int32, FLRLootBoxInstance> LootBoxes;
 		TMap<FIntVector, FLRPlacedEntity> Placed;
 		int32 NextInstanceId;
@@ -133,34 +161,27 @@ private:
 	};
 
 	FLRActionResult Execute(const FLRActionRequest& Request);
-	FLRActionResult ExecuteLootAction(const FLRActionDef& Def);
+	FLRActionResult ExecuteLootAction(const FLRActionRequest& Request, const FLRActionDef& Def);
 	FLRActionResult ExecuteCraft(const FLRActionRequest& Request);
 	FLRActionResult ExecuteUse(const FLRActionRequest& Request);
-	FLRActionResult ExecuteDeploy(const FLRActionRequest& Request);
-	FLRActionResult ExecuteRecall(const FLRActionRequest& Request);
-	FLRActionResult ExecuteSort();
-	FLRActionResult ExecuteLoad(const FLRActionRequest& Request);
-	FLRActionResult ExecuteUnload(const FLRActionRequest& Request);
-	FLRActionResult ExecuteAnnihilate(const FLRActionRequest& Request);
-	FName ValidateLoad(const FLRActionRequest& Request) const;
+	FLRActionResult ExecuteDismantle(const FLRActionRequest& Request);
 	/** Seeding actions (Def.Places set, e.g. perturb): create or deepen an overdensity. */
 	FLRActionResult ExecuteSeed(const FLRActionRequest& Request, const FLRActionDef& Def);
 	FName ValidateSeed(const FLRActionRequest& Request, const FLRActionDef& Def) const;
 	FLRActionResult ExecuteFeed(const FLRActionRequest& Request);
 
+	/** Irradiation: advance every loaded enclosure and apply exposures that completed. */
+	void AdvanceIrradiation(double DeltaSeconds);
+	/** Apply one exposure of Radiation to Box; returns a log message. */
+	FString ApplyExposure(FLRLootBoxInstance& Box, const FLRRadiationDef& Radiation, const FLRItemDef& EnclosureDef);
 	/** Host evaporation and the cosmic clock. */
 	void AdvanceCosmos(double DeltaSeconds);
-	/** Overdensities: yield matter into the inventory and, in later epochs, deepen on their own. */
+	/** Overdensities: yield matter into their own cell and, in later epochs, deepen on their own. */
 	void AdvanceStructures(double DeltaSeconds);
 	/** Make Index the current epoch (clock, start time). */
 	void EnterEpoch(int32 Index);
 	/** Broadcast event messages (host warnings) through OnActionCompleted. */
 	void AnnounceEvents(FName Event, const TArray<FString>& Messages);
-
-	/** Irradiation: advance every loaded enclosure and apply exposures that completed. */
-	void AdvanceIrradiation(double DeltaSeconds);
-	/** Apply one exposure of Radiation to Box; returns a log message. */
-	FString ApplyExposure(FLRLootBoxInstance& Box, const FLRRadiationDef& Radiation, const FLRItemDef& EnclosureDef);
 
 	/** Cheap pre-checks at request time so impossible requests don't burn a cooldown. */
 	FName ValidateRequest(const FLRActionRequest& Request) const;
@@ -169,31 +190,23 @@ private:
 	bool CheckRequirement(const FLRRequirement& Requirement) const;
 	bool CheckRequirements(const TArray<FLRRequirement>& Requirements) const;
 
-	/** All-or-nothing add, topping up existing stacks first. Rails: Entity#add_inventory */
-	bool AddItem(FName Item, int32 Count);
-	/** Put one unique item with a known instance id into the first empty slot. */
-	bool AddUnique(FName Item, int32 InstanceId);
-	/** All-or-nothing remove, from the last slot backwards. Rails: Entity#remove_inventory */
-	bool RemoveItem(FName Item, int32 Count);
-	int32 FindFirstEmptySlot() const;
-	int32 ResolveLootBoxSlot(int32 PreferredSlot) const;
-	int32 ResolvePlaceableSlot(int32 PreferredSlot) const;
+	// ---- Matter and entity primitives -----------------------------------------------------
+	void AddMatter(const FIntVector& Cell, FName Item, int32 Count);
+	/** Take Cost from cells within reach of Cell, the cell itself first, then ring by ring. All or nothing. */
+	bool RemoveMatterInReach(const FIntVector& Cell, const TArray<FLRItemAmount>& Cost);
+	/** Put rolled or built items into the universe at Cell: materials into its matter, caches as new caches. Returns caches lost for lack of room. */
+	int32 Spill(const FIntVector& Cell, const TArray<FLRItemAmount>& Amounts);
+	/**
+	 * A new, unirradiated cache of Item: into Cell (empty, or an enclosure with an empty chamber),
+	 * else the nearest empty cell within reach. Returns false if there was no room.
+	 */
+	bool PlaceNewCache(const FIntVector& Cell, FName Item);
+	/** A fresh loot box instance for a cache item; returns its instance id. */
+	int32 CreateLootBox(FName Item);
+	/** Return what Item cost to build (its recipe) to Cell's matter; returns what came back. */
+	TArray<FLRItemAmount> Refund(const FIntVector& Cell, FName Item);
 	int32 AllocateInstanceId() { return NextInstanceId++; }
 
-	/** Rails: Entity#build_sorted_stacks */
-	TArray<FLRInventorySlot> BuildSortedInventory() const;
-
-	FString DescribeAmounts(const TArray<FLRItemAmount>& Amounts) const;
-
-public:
-	/** "(x, y, z)" */
-	static FString DescribeCell(const FIntVector& Cell);
-	/** Human-readable effect, e.g. "Carbon amounts x1.25". */
-	static FString DescribeModifier(const FLRLootModifier& Modifier, const FLRGameData& InData);
-	/** A box in an enclosure stops gaining stacks once revealed or at the enclosure's cap. */
-	static bool IsExposureComplete(const FLRLootBoxInstance& Box, const FLRItemDef& EnclosureDef);
-
-private:
 	static TArray<FLRItemAmount> MergeAmounts(const TArray<FLRItemAmount>& Amounts);
 	static FLRActionResult MakeFailure(FName Action, FName Reason, const FString& Message);
 
@@ -208,7 +221,7 @@ private:
 	double Now = 0.0;
 	FRandomStream Rng;
 	int32 NextInstanceId = 1;
-	TArray<FLRInventorySlot> Inventory;
+	TMap<FIntVector, FLRCellMatter> Matter;    // by grid cell; cells with no matter are absent
 	TMap<int32, FLRLootBoxInstance> LootBoxes; // by instance id
 	TMap<FIntVector, FLRPlacedEntity> Placed;  // by grid cell
 	TMap<FName, FLRActionState> ActionStates;  // by action name

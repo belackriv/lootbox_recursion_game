@@ -10,7 +10,11 @@
  * These are USTRUCTs so they can be saved with USaveGame and read from Blueprints.
  */
 
-/** Rails: InventorySlot + its InventoryItem. An empty slot has Item == NAME_None. */
+/**
+ * One held item: what an irradiation enclosure's chamber or source slot contains. (Rails: an
+ * InventorySlot + its InventoryItem; there is no player inventory any more.) Empty when Item is
+ * NAME_None.
+ */
 USTRUCT(BlueprintType)
 struct LOOTBOXRECURSION_API FLRInventorySlot
 {
@@ -44,6 +48,56 @@ struct LOOTBOXRECURSION_API FLRInventorySlot
 	bool operator!=(const FLRInventorySlot& Other) const { return !(*this == Other); }
 };
 
+/**
+ * The matter in one cell of the pocket universe: an amount per material. Cells with no matter
+ * aren't stored.
+ */
+USTRUCT(BlueprintType)
+struct LOOTBOXRECURSION_API FLRCellMatter
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FIntVector Cell = FIntVector::ZeroValue;
+
+	/** One entry per material present, each with a positive count. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	TArray<FLRItemAmount> Amounts;
+
+	int32 Get(FName Item) const
+	{
+		const FLRItemAmount* Found = Amounts.FindByPredicate([Item](const FLRItemAmount& Amount) { return Amount.Item == Item; });
+		return Found ? Found->Count : 0;
+	}
+
+	/** Add (or with a negative Delta, remove) matter; entries that reach zero are dropped. */
+	void Add(FName Item, int32 Delta)
+	{
+		FLRItemAmount* Found = Amounts.FindByPredicate([Item](const FLRItemAmount& Amount) { return Amount.Item == Item; });
+		if (Found)
+		{
+			Found->Count += Delta;
+		}
+		else if (Delta > 0)
+		{
+			Amounts.Emplace(Item, Delta);
+		}
+		Amounts.RemoveAll([](const FLRItemAmount& Amount) { return Amount.Count <= 0; });
+	}
+
+	int32 Total() const
+	{
+		int32 Sum = 0;
+		for (const FLRItemAmount& Amount : Amounts)
+		{
+			Sum += Amount.Count;
+		}
+		return Sum;
+	}
+
+	bool IsEmpty() const { return Amounts.IsEmpty(); }
+};
+
 /** Rails: a LootBox row (+ its loot_box_modifiers). */
 USTRUCT(BlueprintType)
 struct LOOTBOXRECURSION_API FLRLootBoxInstance
@@ -67,7 +121,7 @@ struct LOOTBOXRECURSION_API FLRLootBoxInstance
 	TArray<FLRItemAmount> RevealedContents;
 };
 
-/** Rails: a PlaceableEntity row with placed_at / world_coordinate set (now a 3D grid cell). */
+/** An entity in a grid cell: a ripple, a cache, or a machine such as an irradiation enclosure. Rails: a PlaceableEntity row. */
 USTRUCT(BlueprintType)
 struct LOOTBOXRECURSION_API FLRPlacedEntity
 {
@@ -79,7 +133,7 @@ struct LOOTBOXRECURSION_API FLRPlacedEntity
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FName Item;
 
-	/** Grid cell (X, Y, Z = layer). */
+	/** Grid cell (Q, R, Layer); see FLRHexGrid. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FIntVector Cell = FIntVector::ZeroValue;
 
@@ -128,11 +182,7 @@ struct LOOTBOXRECURSION_API FLRActionRequest
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LR")
 	FName Choice;
 
-	/** Use / Deploy: inventory slot index, or INDEX_NONE to pick the first suitable slot. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LR")
-	int32 Slot = INDEX_NONE;
-
-	/** Deploy / Recall: grid cell. Only meaningful when bHasCell is true. */
+	/** The grid cell the action works on (every action but Feed needs one). Only meaningful when bHasCell is true. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LR")
 	FIntVector Cell = FIntVector::ZeroValue;
 
@@ -268,7 +318,7 @@ struct LOOTBOXRECURSION_API FLRSaveData
 	int32 NextInstanceId = 1;
 
 	UPROPERTY()
-	TArray<FLRInventorySlot> Inventory;
+	TArray<FLRCellMatter> Matter;
 
 	UPROPERTY()
 	TArray<FLRLootBoxInstance> LootBoxes;

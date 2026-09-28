@@ -222,10 +222,10 @@ void ALRPlayerController::SelectHovered()
 void ALRPlayerController::LRGive(FName Item, int32 Count)
 {
 	ULRGameSubsystem* Subsystem = ULRGameSubsystem::Get(this);
-	const bool bOk = Subsystem && Subsystem->GiveItem(Item, Count);
+	const bool bOk = Subsystem && Subsystem->GiveMatter(Item, Count);
 	ClientMessage(bOk
-		? FString::Printf(TEXT("Gave %d %s"), Count, *Item.ToString())
-		: FString::Printf(TEXT("Could not give %d '%s' (unknown item or inventory full) - try LRItems"), Count, *Item.ToString()));
+		? FString::Printf(TEXT("Gave %d %s to the selected cell (or the origin)"), Count, *Item.ToString())
+		: FString::Printf(TEXT("Could not give %d '%s' (only materials can be given) - try LRItems"), Count, *Item.ToString()));
 }
 
 void ALRPlayerController::LRTimeScale(float Scale)

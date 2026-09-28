@@ -43,7 +43,7 @@ void ULRGameSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	const int32 Seed = static_cast<int32>(FDateTime::Now().GetTicks() & 0x7fffffff);
 	Simulation = MakeUnique<FLRSimulation>(Data, Seed);
-	Simulation->OnInventoryChanged.AddUObject(this, &ULRGameSubsystem::HandleSimInventoryChanged);
+	Simulation->OnMatterChanged.AddUObject(this, &ULRGameSubsystem::HandleSimMatterChanged);
 	Simulation->OnWorldChanged.AddUObject(this, &ULRGameSubsystem::HandleSimWorldChanged);
 	Simulation->OnActionCompleted.AddUObject(this, &ULRGameSubsystem::HandleSimActionCompleted);
 
@@ -60,7 +60,7 @@ void ULRGameSubsystem::Deinitialize()
 
 	if (Simulation)
 	{
-		Simulation->OnInventoryChanged.RemoveAll(this);
+		Simulation->OnMatterChanged.RemoveAll(this);
 		Simulation->OnWorldChanged.RemoveAll(this);
 		Simulation->OnActionCompleted.RemoveAll(this);
 		Simulation.Reset();
@@ -125,7 +125,6 @@ void ULRGameSubsystem::ResetGame()
 		return;
 	}
 	Simulation->Reset(static_cast<int32>(FDateTime::Now().GetTicks() & 0x7fffffff));
-	SelectedSlot = INDEX_NONE;
 	bHasSelectedCell = false;
 	FocusOnCell(FIntVector::ZeroValue);
 	OnSelectionChanged.Broadcast();
@@ -160,13 +159,6 @@ FLRActionResult ULRGameSubsystem::Craft(FName RecipeId)
 {
 	FLRActionRequest Request = FLRActionRequest::Make(LRNames::Craft);
 	Request.Choice = RecipeId;
-	return RequestAction(Request);
-}
-
-FLRActionResult ULRGameSubsystem::RequestActionWithSelection(FName Action)
-{
-	FLRActionRequest Request = FLRActionRequest::Make(Action);
-	Request.Slot = SelectedSlot;
 	if (bHasSelectedCell)
 	{
 		Request.Cell = SelectedCell;
@@ -175,9 +167,20 @@ FLRActionResult ULRGameSubsystem::RequestActionWithSelection(FName Action)
 	return RequestAction(Request);
 }
 
-bool ULRGameSubsystem::GiveItem(FName Item, int32 Count)
+FLRActionResult ULRGameSubsystem::RequestActionWithSelection(FName Action)
 {
-	return Simulation && Simulation->GiveItem(Item, Count);
+	FLRActionRequest Request = FLRActionRequest::Make(Action);
+	if (bHasSelectedCell)
+	{
+		Request.Cell = SelectedCell;
+		Request.bHasCell = true;
+	}
+	return RequestAction(Request);
+}
+
+bool ULRGameSubsystem::GiveMatter(FName Item, int32 Count)
+{
+	return Simulation && Simulation->GiveMatter(bHasSelectedCell ? SelectedCell : FIntVector::ZeroValue, Item, Count);
 }
 
 // ---- Queries --------------------------------------------------------------------------
@@ -187,14 +190,14 @@ FLRActionStatus ULRGameSubsystem::GetActionStatus(FName Action) const
 	return Simulation ? Simulation->GetActionStatus(Action) : FLRActionStatus();
 }
 
-TArray<FLRInventorySlot> ULRGameSubsystem::GetInventory() const
+int32 ULRGameSubsystem::GetMatterAt(FIntVector Cell, FName Item) const
 {
-	return Simulation ? Simulation->GetInventory() : TArray<FLRInventorySlot>();
+	return Simulation ? Simulation->GetMatter(Cell, Item) : 0;
 }
 
-int32 ULRGameSubsystem::CountItem(FName Item) const
+int32 ULRGameSubsystem::GetTotalMatter(FName Item) const
 {
-	return Simulation ? Simulation->CountItem(Item) : 0;
+	return Simulation ? Simulation->GetTotalMatter(Item) : 0;
 }
 
 bool ULRGameSubsystem::GetPlacedAt(FIntVector Cell, FLRPlacedEntity& OutEntity) const
@@ -234,13 +237,6 @@ float ULRGameSubsystem::GetPlasmaOpacity() const
 }
 
 // ---- Selection ------------------------------------------------------------------------
-
-void ULRGameSubsystem::SelectSlot(int32 SlotIndex)
-{
-	// Clicking the selected slot again deselects it (same as the Vue store).
-	SelectedSlot = (SlotIndex == SelectedSlot) ? INDEX_NONE : SlotIndex;
-	OnSelectionChanged.Broadcast();
-}
 
 void ULRGameSubsystem::SelectCell(FIntVector Cell, bool bToggle)
 {
@@ -310,9 +306,9 @@ void ULRGameSubsystem::FocusHome()
 
 // ---- Simulation event forwarding ------------------------------------------------------
 
-void ULRGameSubsystem::HandleSimInventoryChanged()
+void ULRGameSubsystem::HandleSimMatterChanged()
 {
-	OnInventoryChanged.Broadcast();
+	OnMatterChanged.Broadcast();
 }
 
 void ULRGameSubsystem::HandleSimWorldChanged()

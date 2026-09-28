@@ -1,5 +1,7 @@
 #include "Simulation/LRSimulation.h"
 
+#include "Simulation/LRHexGrid.h"
+
 namespace
 {
 	const FName ReasonUnknownAction(TEXT("unknown_action"));
@@ -8,26 +10,18 @@ namespace
 	const FName ReasonOnCooldown(TEXT("on_cooldown"));
 	const FName ReasonRequirements(TEXT("requirements_not_met"));
 	const FName ReasonUnknownRecipe(TEXT("unknown_recipe"));
+	const FName ReasonRecipeLocked(TEXT("recipe_locked"));
 	const FName ReasonInsufficientMaterials(TEXT("insufficient_materials"));
-	const FName ReasonNoSlot(TEXT("no_slot"));
 	const FName ReasonNoLootBox(TEXT("no_loot_box"));
 	const FName ReasonNoLootTable(TEXT("no_loot_table"));
-	const FName ReasonNoInventorySpace(TEXT("insufficient_inventory_space"));
 	const FName ReasonNoCell(TEXT("no_cell"));
 	const FName ReasonOccupied(TEXT("occupied"));
-	const FName ReasonNoPlaceable(TEXT("no_placeable_item"));
 	const FName ReasonNothingPlaced(TEXT("no_placed_entity"));
-	const FName ReasonAlreadySorted(TEXT("already_sorted"));
-	const FName ReasonNoEnclosure(TEXT("no_enclosure"));
-	const FName ReasonNothingToLoad(TEXT("nothing_to_load"));
+	const FName ReasonNeedsEnclosure(TEXT("needs_enclosure"));
 	const FName ReasonChamberFull(TEXT("chamber_full"));
 	const FName ReasonSourceFull(TEXT("source_full"));
 	const FName ReasonTooStrong(TEXT("radiation_too_strong"));
-	const FName ReasonEnclosureEmpty(TEXT("enclosure_empty"));
-
-	const FName ReasonRecipeLocked(TEXT("recipe_locked"));
-	const FName ReasonNothingSelected(TEXT("nothing_selected"));
-	const FName ReasonCantRecall(TEXT("cannot_recall"));
+	const FName ReasonCantDismantle(TEXT("cannot_dismantle"));
 	const FName ReasonRippleAtMax(TEXT("ripple_at_max"));
 	const FName ReasonHorizonWeak(TEXT("horizon_too_weak"));
 	const FName ReasonNoHost(TEXT("no_host"));
@@ -36,36 +30,30 @@ namespace
 	const FName IrradiateEvent(TEXT("irradiate"));
 	const FName UnlockEvent(TEXT("unlock"));
 	const FName HostEvent(TEXT("host"));
+}
 
-	FString DescribeReason(FName Reason)
-	{
-		if (Reason == ReasonCasting) { return TEXT("already in progress"); }
-		if (Reason == ReasonOnCooldown) { return TEXT("on cooldown"); }
-		if (Reason == ReasonRequirements) { return TEXT("requirements not met"); }
-		if (Reason == ReasonInsufficientMaterials) { return TEXT("not enough materials"); }
-		if (Reason == ReasonNoSlot || Reason == ReasonNoInventorySpace) { return TEXT("inventory is full"); }
-		if (Reason == ReasonNoLootBox) { return TEXT("nothing to open"); }
-		if (Reason == ReasonNoCell) { return TEXT("select a grid cell first"); }
-		if (Reason == ReasonOccupied) { return TEXT("that cell is occupied"); }
-		if (Reason == ReasonNoPlaceable) { return TEXT("nothing deployable selected"); }
-		if (Reason == ReasonNothingPlaced) { return TEXT("nothing deployed in that cell"); }
-		if (Reason == ReasonAlreadySorted) { return TEXT("already sorted"); }
-		if (Reason == ReasonUnknownRecipe) { return TEXT("pick something to craft"); }
-		if (Reason == ReasonRecipeLocked) { return TEXT("that recipe isn't unlocked yet"); }
-		if (Reason == ReasonNothingSelected) { return TEXT("select an inventory slot first"); }
-		if (Reason == ReasonNoEnclosure) { return TEXT("select a cell with an irradiation enclosure"); }
-		if (Reason == ReasonNothingToLoad) { return TEXT("select a cache or radiation source in the inventory"); }
-		if (Reason == ReasonChamberFull) { return TEXT("the enclosure already holds a cache"); }
-		if (Reason == ReasonSourceFull) { return TEXT("the enclosure already holds a source"); }
-		if (Reason == ReasonTooStrong) { return TEXT("this enclosure can't contain radiation that strong"); }
-		if (Reason == ReasonEnclosureEmpty) { return TEXT("the enclosure is empty"); }
-		if (Reason == ReasonCantRecall) { return TEXT("that is part of the pocket universe now"); }
-		if (Reason == ReasonRippleAtMax) { return TEXT("that ripple can't get any deeper"); }
-		if (Reason == ReasonHorizonWeak) { return TEXT("the horizon is too weak, feed it first"); }
-		if (Reason == ReasonNoHost) { return TEXT("there is no host black hole to feed"); }
-		if (Reason == ReasonHostFull) { return TEXT("the host black hole is already at full mass"); }
-		return Reason.ToString();
-	}
+FString FLRSimulation::DescribeReason(FName Reason)
+{
+	if (Reason == ReasonCasting) { return TEXT("already in progress"); }
+	if (Reason == ReasonOnCooldown) { return TEXT("on cooldown"); }
+	if (Reason == ReasonRequirements) { return TEXT("requirements not met"); }
+	if (Reason == ReasonUnknownRecipe) { return TEXT("pick something to build"); }
+	if (Reason == ReasonRecipeLocked) { return TEXT("that recipe isn't unlocked yet"); }
+	if (Reason == ReasonInsufficientMaterials) { return TEXT("not enough matter within reach"); }
+	if (Reason == ReasonNoLootBox) { return TEXT("there's no cache in that cell"); }
+	if (Reason == ReasonNoCell) { return TEXT("select a grid cell first"); }
+	if (Reason == ReasonOccupied) { return TEXT("that cell is occupied"); }
+	if (Reason == ReasonNothingPlaced) { return TEXT("there's nothing to dismantle in that cell"); }
+	if (Reason == ReasonNeedsEnclosure) { return TEXT("sources are built into an irradiation enclosure"); }
+	if (Reason == ReasonChamberFull) { return TEXT("the enclosure already holds a cache"); }
+	if (Reason == ReasonSourceFull) { return TEXT("the enclosure already holds a source"); }
+	if (Reason == ReasonTooStrong) { return TEXT("this enclosure can't contain radiation that strong"); }
+	if (Reason == ReasonCantDismantle) { return TEXT("that is part of the pocket universe now"); }
+	if (Reason == ReasonRippleAtMax) { return TEXT("that ripple can't get any deeper"); }
+	if (Reason == ReasonHorizonWeak) { return TEXT("the horizon is too weak, feed it first"); }
+	if (Reason == ReasonNoHost) { return TEXT("there is no host black hole to feed"); }
+	if (Reason == ReasonHostFull) { return TEXT("the host black hole is already at full mass"); }
+	return Reason.ToString();
 }
 
 // ---------------------------------------------------------------------------------------
@@ -74,7 +62,7 @@ namespace
 
 FLRSimulation::FTransaction::FTransaction(FLRSimulation& InSim)
 	: Sim(InSim)
-	, Inventory(InSim.Inventory)
+	, Matter(InSim.Matter)
 	, LootBoxes(InSim.LootBoxes)
 	, Placed(InSim.Placed)
 	, NextInstanceId(InSim.NextInstanceId)
@@ -85,7 +73,7 @@ FLRSimulation::FTransaction::~FTransaction()
 {
 	if (!bCommitted)
 	{
-		Sim.Inventory = MoveTemp(Inventory);
+		Sim.Matter = MoveTemp(Matter);
 		Sim.LootBoxes = MoveTemp(LootBoxes);
 		Sim.Placed = MoveTemp(Placed);
 		Sim.NextInstanceId = NextInstanceId;
@@ -107,8 +95,7 @@ void FLRSimulation::Reset(int32 Seed)
 	Now = 0.0;
 	Rng.Initialize(Seed);
 	NextInstanceId = 1;
-	Inventory.Reset();
-	Inventory.SetNum(PlayerInventorySlots); // Rails: Entity#ensure_inventory_slots
+	Matter.Reset();
 	LootBoxes.Reset();
 	Placed.Reset();
 	ActionStates.Reset();
@@ -119,7 +106,7 @@ void FLRSimulation::Reset(int32 Seed)
 	EnterEpoch(0);
 	RefreshUnlocks(); // starting unlocks, not announced
 
-	OnInventoryChanged.Broadcast();
+	OnMatterChanged.Broadcast();
 	OnWorldChanged.Broadcast();
 }
 
@@ -140,7 +127,7 @@ FLRSaveData FLRSimulation::Save() const
 	Out.Now = Now;
 	Out.RandomSeed = Rng.GetCurrentSeed();
 	Out.NextInstanceId = NextInstanceId;
-	Out.Inventory = Inventory;
+	Matter.GenerateValueArray(Out.Matter);
 	LootBoxes.GenerateValueArray(Out.LootBoxes);
 	Placed.GenerateValueArray(Out.Placed);
 	ActionStates.GenerateValueArray(Out.Actions);
@@ -165,8 +152,14 @@ bool FLRSimulation::Load(const FLRSaveData& SaveData)
 	Rng.Initialize(SaveData.RandomSeed);
 	NextInstanceId = FMath::Max(1, SaveData.NextInstanceId);
 
-	Inventory = SaveData.Inventory;
-	Inventory.SetNum(PlayerInventorySlots);
+	Matter.Reset();
+	for (const FLRCellMatter& CellMatter : SaveData.Matter)
+	{
+		if (!CellMatter.IsEmpty())
+		{
+			Matter.Add(CellMatter.Cell, CellMatter);
+		}
+	}
 
 	LootBoxes.Reset();
 	for (const FLRLootBoxInstance& Box : SaveData.LootBoxes)
@@ -194,10 +187,6 @@ bool FLRSimulation::Load(const FLRSaveData& SaveData)
 	RefreshUnlocks(); // catch up with data changes, not announced
 
 	// Never hand out an instance id that is already in use, even if the save is inconsistent.
-	for (const FLRInventorySlot& Slot : Inventory)
-	{
-		NextInstanceId = FMath::Max(NextInstanceId, Slot.InstanceId + 1);
-	}
 	for (const TPair<int32, FLRLootBoxInstance>& Pair : LootBoxes)
 	{
 		NextInstanceId = FMath::Max(NextInstanceId, Pair.Key + 1);
@@ -209,7 +198,7 @@ bool FLRSimulation::Load(const FLRSaveData& SaveData)
 		NextInstanceId = FMath::Max(NextInstanceId, Pair.Value.Source.InstanceId + 1);
 	}
 
-	OnInventoryChanged.Broadcast();
+	OnMatterChanged.Broadcast();
 	OnWorldChanged.Broadcast();
 	return true;
 }
@@ -316,7 +305,7 @@ void FLRSimulation::AdvanceStructures(double DeltaSeconds)
 	const FLRLootTableDef* YieldTable = (Epoch && !Epoch->YieldTable.IsNone()) ? Data.FindLootTable(Epoch->YieldTable) : nullptr;
 	const double GrowthSeconds = Epoch ? static_cast<double>(Epoch->RippleGrowthSeconds) : 0.0;
 
-	bool bInventoryChanged = false;
+	bool bMatterChanged = false;
 	bool bWorldChanged = false;
 	for (TPair<FIntVector, FLRPlacedEntity>& Pair : Placed)
 	{
@@ -363,27 +352,25 @@ void FLRSimulation::AdvanceStructures(double DeltaSeconds)
 				ExtraRolls.Value = static_cast<float>(Entity.Amplitude - 1);
 				Modifiers.Add(ExtraRolls);
 			}
+			// The ripple gathers matter into its own cell.
 			for (const FLRItemAmount& Amount : MergeAmounts(RollLootTable(ApplyModifiers(*YieldTable, Modifiers))))
 			{
-				// Whatever doesn't fit in a full inventory is lost.
-				if (AddItem(Amount.Item, Amount.Count))
-				{
-					AddStat(StatKey(TEXT("gained"), Amount.Item), Amount.Count);
-					bInventoryChanged = true;
-				}
+				AddMatter(Entity.Cell, Amount.Item, Amount.Count);
+				AddStat(StatKey(TEXT("gained"), Amount.Item), Amount.Count);
+				bMatterChanged = true;
 			}
 		}
 	}
 
-	if (bInventoryChanged)
+	if (bMatterChanged)
 	{
-		OnInventoryChanged.Broadcast();
+		OnMatterChanged.Broadcast();
 	}
 	if (bWorldChanged)
 	{
 		OnWorldChanged.Broadcast();
 	}
-	if (bInventoryChanged || bWorldChanged)
+	if (bMatterChanged || bWorldChanged)
 	{
 		AnnounceUnlocks(RefreshUnlocks());
 	}
@@ -485,7 +472,6 @@ void FLRSimulation::AdvanceIrradiation(double DeltaSeconds)
 	{
 		return;
 	}
-	OnInventoryChanged.Broadcast();
 	OnWorldChanged.Broadcast();
 	for (const FString& Message : Messages)
 	{
@@ -532,42 +518,57 @@ FString FLRSimulation::ApplyExposure(FLRLootBoxInstance& Box, const FLRRadiation
 // Queries
 // ---------------------------------------------------------------------------------------
 
-int32 FLRSimulation::CountItem(FName Item) const
+const FLRLootBoxInstance* FLRSimulation::FindCacheAt(const FIntVector& Cell) const
+{
+	const FLRPlacedEntity* Entity = Placed.Find(Cell);
+	const FLRItemDef* Def = Entity ? Data.FindItem(Entity->Item) : nullptr;
+	if (Def && Def->IsLootBox())
+	{
+		return LootBoxes.Find(Entity->InstanceId);
+	}
+	if (Def && Def->IsEnclosure() && !Entity->Chamber.IsEmpty())
+	{
+		return LootBoxes.Find(Entity->Chamber.InstanceId);
+	}
+	return nullptr;
+}
+
+int32 FLRSimulation::GetMatter(const FIntVector& Cell, FName Item) const
+{
+	const FLRCellMatter* CellMatter = Matter.Find(Cell);
+	return CellMatter ? CellMatter->Get(Item) : 0;
+}
+
+int32 FLRSimulation::GetTotalMatter(FName Item) const
 {
 	int32 Total = 0;
-	for (const FLRInventorySlot& Slot : Inventory)
+	for (const TPair<FIntVector, FLRCellMatter>& Pair : Matter)
 	{
-		if (!Slot.IsEmpty() && Slot.Item == Item)
+		Total += Pair.Value.Get(Item);
+	}
+	return Total;
+}
+
+int32 FLRSimulation::GetMatterInReach(const FIntVector& Cell, FName Item) const
+{
+	// Few cells hold matter, so walk those rather than every cell in reach.
+	const int32 Radius = GetReachRadius();
+	int32 Total = 0;
+	for (const TPair<FIntVector, FLRCellMatter>& Pair : Matter)
+	{
+		if (Pair.Key.Z == Cell.Z && FLRHexGrid::Distance(Pair.Key, Cell) <= Radius)
 		{
-			Total += Slot.Count;
+			Total += Pair.Value.Get(Item);
 		}
 	}
 	return Total;
 }
 
-int32 FLRSimulation::CountCategory(FName Category) const
+bool FLRSimulation::CanAffordAt(const FIntVector& Cell, const TArray<FLRItemAmount>& Cost) const
 {
-	int32 Total = 0;
-	for (const FLRInventorySlot& Slot : Inventory)
+	for (const FLRItemAmount& Amount : MergeAmounts(Cost))
 	{
-		if (Slot.IsEmpty())
-		{
-			continue;
-		}
-		const FLRItemDef* Def = Data.FindItem(Slot.Item);
-		if (Def && Def->Category == Category)
-		{
-			Total += Slot.Count;
-		}
-	}
-	return Total;
-}
-
-bool FLRSimulation::CanAfford(const TArray<FLRItemAmount>& Cost) const
-{
-	for (const FLRItemAmount& Amount : Cost)
-	{
-		if (CountItem(Amount.Item) < Amount.Count)
+		if (GetMatterInReach(Cell, Amount.Item) < Amount.Count)
 		{
 			return false;
 		}
@@ -575,16 +576,36 @@ bool FLRSimulation::CanAfford(const TArray<FLRItemAmount>& Cost) const
 	return true;
 }
 
-bool FLRSimulation::CanAffordAnyRecipe() const
+FName FLRSimulation::ValidateBuild(FName RecipeId, const FIntVector& Cell) const
 {
-	for (const FLRRecipeDef& Recipe : Data.Recipes)
+	const FLRRecipeDef* Recipe = Data.FindRecipe(RecipeId);
+	if (!Recipe) { return ReasonUnknownRecipe; }
+	if (!IsRecipeUnlocked(RecipeId)) { return ReasonRecipeLocked; }
+	const FLRItemDef* Output = Data.FindItem(Recipe->Output);
+	if (!Output || Output->IsStructure()) { return ReasonUnknownRecipe; }
+
+	// Where the output goes: sources into the enclosure in the cell, caches into an empty cell
+	// or an enclosure's empty chamber, machines into an empty cell, materials anywhere.
+	const FLRPlacedEntity* Entity = Placed.Find(Cell);
+	const FLRItemDef* EntityDef = Entity ? Data.FindItem(Entity->Item) : nullptr;
+	const bool bEnclosure = EntityDef && EntityDef->IsEnclosure();
+	if (Output->IsSource())
 	{
-		if (IsRecipeUnlocked(Recipe.Id) && CanAfford(Recipe.Cost))
-		{
-			return true;
-		}
+		if (!bEnclosure) { return ReasonNeedsEnclosure; }
+		if (!Entity->Source.IsEmpty()) { return ReasonSourceFull; }
+		const FLRRadiationDef* Radiation = Data.FindRadiation(Output->Radiation);
+		if (!Radiation || Radiation->Tier > EntityDef->MaxRadiationTier) { return ReasonTooStrong; }
 	}
-	return false;
+	else if (Output->IsLootBox())
+	{
+		if (Entity && !bEnclosure) { return ReasonOccupied; }
+		if (bEnclosure && !Entity->Chamber.IsEmpty()) { return ReasonChamberFull; }
+	}
+	else if (Output->Category != LRNames::CategoryMaterial && Entity)
+	{
+		return ReasonOccupied;
+	}
+	return CanAffordAt(Cell, Recipe->Cost) ? NAME_None : ReasonInsufficientMaterials;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -685,11 +706,6 @@ void FLRSimulation::AnnounceUnlocks(const TArray<FString>& Messages)
 	}
 }
 
-bool FLRSimulation::IsSortNeeded() const
-{
-	return BuildSortedInventory() != Inventory;
-}
-
 bool FLRSimulation::CheckRequirement(const FLRRequirement& Requirement) const
 {
 	int32 Actual = 0;
@@ -723,13 +739,19 @@ bool FLRSimulation::CheckRequirement(const FLRRequirement& Requirement) const
 			}
 		}
 	}
-	else if (!Requirement.Item.IsNone())
+	else if (Requirement.Check == LRNames::CheckMatter)
 	{
-		Actual = CountItem(Requirement.Item);
-	}
-	else if (!Requirement.Category.IsNone())
-	{
-		Actual = CountCategory(Requirement.Category);
+		if (!Requirement.Item.IsNone())
+		{
+			Actual = GetTotalMatter(Requirement.Item);
+		}
+		else
+		{
+			for (const TPair<FName, FLRItemDef>& Pair : Data.Items)
+			{
+				Actual += Pair.Value.Category == Requirement.Category ? GetTotalMatter(Pair.Key) : 0;
+			}
+		}
 	}
 	return FLRRequirement::EvaluateCondition(Actual, Requirement.Condition, Requirement.Value);
 }
@@ -763,19 +785,8 @@ FLRActionStatus FLRSimulation::GetActionStatus(FName ActionName) const
 	Status.CastTime = Def->CastTime;
 	Status.bRevealed = IsActionUnlocked(ActionName) && !IsActionRetired(ActionName); // latched tech-tree unlock
 
-	// Rails: PlayerAction#update_disabled special-cased sort_inventory the same way.
-	if (ActionName == LRNames::Craft)
-	{
-		Status.bRequirementsMet = CanAffordAnyRecipe() && CheckRequirements(Def->Requirements);
-	}
-	else if (ActionName == LRNames::SortInventory)
-	{
-		Status.bRequirementsMet = IsSortNeeded() && CheckRequirements(Def->Requirements);
-	}
-	else
-	{
-		Status.bRequirementsMet = CheckRequirements(Def->Requirements);
-	}
+	// Whether this recipe or that cell works is checked per request (ValidateBuild etc.).
+	Status.bRequirementsMet = CheckRequirements(Def->Requirements);
 
 	if (const FLRActionState* State = ActionStates.Find(ActionName))
 	{
@@ -821,7 +832,7 @@ void FLRSimulation::Complete(const FLRActionResult& Result)
 	}
 	if (Result.bSuccess)
 	{
-		OnInventoryChanged.Broadcast();
+		OnMatterChanged.Broadcast();
 		OnWorldChanged.Broadcast();
 	}
 	OnActionCompleted.Broadcast(Result);
@@ -891,70 +902,26 @@ FName FLRSimulation::ValidateRequest(const FLRActionRequest& Request) const
 	if (Request.Action == LRNames::Feed)
 	{
 		if (!Data.Host.IsDefined()) { return ReasonNoHost; }
-		if (HostMass >= 1.0) { return ReasonHostFull; }
+		return HostMass >= 1.0 ? ReasonHostFull : NAME_None;
 	}
-	else if (Request.Action == LRNames::Craft)
+
+	// Everything else acts on a cell.
+	if (!Request.bHasCell) { return ReasonNoCell; }
+	if (Request.Action == LRNames::Craft)
 	{
-		const FLRRecipeDef* Recipe = Data.FindRecipe(Request.Choice);
-		if (!Recipe) { return ReasonUnknownRecipe; }
-		if (!IsRecipeUnlocked(Recipe->Id)) { return ReasonRecipeLocked; }
-		if (!CanAfford(Recipe->Cost)) { return ReasonInsufficientMaterials; }
+		return ValidateBuild(Request.Choice, Request.Cell);
 	}
-	else if (Request.Action == LRNames::Use)
+	if (Request.Action == LRNames::Use)
 	{
-		if (ResolveLootBoxSlot(Request.Slot) == INDEX_NONE) { return ReasonNoLootBox; }
+		return FindCacheAt(Request.Cell) ? NAME_None : ReasonNoLootBox;
 	}
-	else if (Request.Action == LRNames::Deploy)
+	if (Request.Action == LRNames::Dismantle)
 	{
-		if (!Request.bHasCell) { return ReasonNoCell; }
-		if (Placed.Contains(Request.Cell)) { return ReasonOccupied; }
-		if (ResolvePlaceableSlot(Request.Slot) == INDEX_NONE) { return ReasonNoPlaceable; }
-	}
-	else if (Request.Action == LRNames::Recall)
-	{
-		if (!Request.bHasCell) { return ReasonNoCell; }
 		const FLRPlacedEntity* Entity = Placed.Find(Request.Cell);
 		if (!Entity) { return ReasonNothingPlaced; }
 		const FLRItemDef* EntityDef = Data.FindItem(Entity->Item);
-		if (EntityDef && EntityDef->IsStructure()) { return ReasonCantRecall; }
+		return (EntityDef && EntityDef->IsStructure()) ? ReasonCantDismantle : NAME_None;
 	}
-	else if (Request.Action == LRNames::Load)
-	{
-		return ValidateLoad(Request);
-	}
-	else if (Request.Action == LRNames::Annihilate)
-	{
-		if (!Inventory.IsValidIndex(Request.Slot) || Inventory[Request.Slot].IsEmpty()) { return ReasonNothingSelected; }
-	}
-	else if (Request.Action == LRNames::Unload)
-	{
-		if (!Request.bHasCell) { return ReasonNoCell; }
-		const FLRPlacedEntity* Entity = Placed.Find(Request.Cell);
-		const FLRItemDef* Def = Entity ? Data.FindItem(Entity->Item) : nullptr;
-		if (!Def || !Def->IsEnclosure()) { return ReasonNoEnclosure; }
-		if (Entity->Chamber.IsEmpty() && Entity->Source.IsEmpty()) { return ReasonEnclosureEmpty; }
-	}
-	return NAME_None;
-}
-
-FName FLRSimulation::ValidateLoad(const FLRActionRequest& Request) const
-{
-	if (!Request.bHasCell) { return ReasonNoCell; }
-	const FLRPlacedEntity* Entity = Placed.Find(Request.Cell);
-	const FLRItemDef* EnclosureDef = Entity ? Data.FindItem(Entity->Item) : nullptr;
-	if (!EnclosureDef || !EnclosureDef->IsEnclosure()) { return ReasonNoEnclosure; }
-
-	const FLRInventorySlot* Slot = Inventory.IsValidIndex(Request.Slot) ? &Inventory[Request.Slot] : nullptr;
-	const FLRItemDef* ItemDef = (Slot && !Slot->IsEmpty()) ? Data.FindItem(Slot->Item) : nullptr;
-	if (!ItemDef || (!ItemDef->IsLootBox() && !ItemDef->IsSource())) { return ReasonNothingToLoad; }
-
-	if (ItemDef->IsLootBox())
-	{
-		return Entity->Chamber.IsEmpty() ? NAME_None : ReasonChamberFull;
-	}
-	if (!Entity->Source.IsEmpty()) { return ReasonSourceFull; }
-	const FLRRadiationDef* Radiation = Data.FindRadiation(ItemDef->Radiation);
-	if (!Radiation || Radiation->Tier > EnclosureDef->MaxRadiationTier) { return ReasonTooStrong; }
 	return NAME_None;
 }
 
@@ -966,25 +933,32 @@ FLRActionResult FLRSimulation::Execute(const FLRActionRequest& Request)
 	{
 		return MakeFailure(Request.Action, ReasonUnknownAction, TEXT("Unknown action"));
 	}
-	if (Request.Action == LRNames::Craft)         { return ExecuteCraft(Request); }
-	if (Request.Action == LRNames::Use)           { return ExecuteUse(Request); }
-	if (Request.Action == LRNames::Deploy)        { return ExecuteDeploy(Request); }
-	if (Request.Action == LRNames::Recall)        { return ExecuteRecall(Request); }
-	if (Request.Action == LRNames::Load)          { return ExecuteLoad(Request); }
-	if (Request.Action == LRNames::Unload)        { return ExecuteUnload(Request); }
-	if (Request.Action == LRNames::Annihilate)    { return ExecuteAnnihilate(Request); }
-	if (Request.Action == LRNames::SortInventory) { return ExecuteSort(); }
-	if (Request.Action == LRNames::Feed)          { return ExecuteFeed(Request); }
-	if (!Def->Places.IsNone())                    { return ExecuteSeed(Request, *Def); }
-	if (!Def->LootTable.IsNone())                 { return ExecuteLootAction(*Def); }
+	if (Request.Action == LRNames::Craft)     { return ExecuteCraft(Request); }
+	if (Request.Action == LRNames::Use)       { return ExecuteUse(Request); }
+	if (Request.Action == LRNames::Dismantle) { return ExecuteDismantle(Request); }
+	if (Request.Action == LRNames::Feed)      { return ExecuteFeed(Request); }
+	if (!Def->Places.IsNone())                { return ExecuteSeed(Request, *Def); }
+	if (!Def->LootTable.IsNone())             { return ExecuteLootAction(Request, *Def); }
 
 	return MakeFailure(Request.Action, ReasonUnknownAction,
 		FString::Printf(TEXT("No behaviour implemented for '%s'"), *Request.Action.ToString()));
 }
 
-FLRActionResult FLRSimulation::ExecuteLootAction(const FLRActionDef& Def)
+namespace
 {
-	// Rails: InventoryItem.scavenge_item - now just a roll on a loot table (any action with a lootTable).
+	FString DescribeLost(int32 Lost)
+	{
+		return Lost > 0 ? FString::Printf(TEXT(" (%d cache(s) lost: no empty cell within reach)"), Lost) : FString();
+	}
+}
+
+FLRActionResult FLRSimulation::ExecuteLootAction(const FLRActionRequest& Request, const FLRActionDef& Def)
+{
+	// Rails: InventoryItem.scavenge_item - now a roll on a loot table, landing in the selected cell.
+	if (!Request.bHasCell)
+	{
+		return MakeFailure(Def.Name, ReasonNoCell, FString::Printf(TEXT("Can't %s: %s"), *Def.Label.ToLower(), *DescribeReason(ReasonNoCell)));
+	}
 	const FLRLootTableDef* Table = Data.FindLootTable(Def.LootTable);
 	if (!Table)
 	{
@@ -992,58 +966,62 @@ FLRActionResult FLRSimulation::ExecuteLootAction(const FLRActionDef& Def)
 	}
 
 	const TArray<FLRItemAmount> Rolled = MergeAmounts(RollLootTable(*Table));
-
-	FTransaction Txn(*this);
-	for (const FLRItemAmount& Amount : Rolled)
-	{
-		if (!AddItem(Amount.Item, Amount.Count))
-		{
-			return MakeFailure(Def.Name, ReasonNoInventorySpace,
-				FString::Printf(TEXT("%s failed: %s"), *Def.Label, *DescribeReason(ReasonNoInventorySpace)));
-		}
-	}
-	Txn.Commit();
+	const int32 Lost = Spill(Request.Cell, Rolled);
 
 	FLRActionResult Result;
 	Result.Action = Def.Name;
 	Result.bSuccess = true;
 	Result.Gained = Rolled;
-	Result.Message = FString::Printf(TEXT("%s: %s"), *Def.Label, *DescribeAmounts(Rolled));
+	Result.Message = FString::Printf(TEXT("%s at %s: %s%s"), *Def.Label, *DescribeCell(Request.Cell), *DescribeAmounts(Rolled), *DescribeLost(Lost));
 	return Result;
 }
 
 FLRActionResult FLRSimulation::ExecuteCraft(const FLRActionRequest& Request)
 {
-	// Rails: Entity.craft_item
+	// Rails: Entity.craft_item. Build at the cell, paying from the matter within reach of it.
 	const FLRRecipeDef* Recipe = Data.FindRecipe(Request.Choice);
-	if (!Recipe)
+	const FString Label = Recipe ? Recipe->Label : Request.Choice.ToString();
+	const FName Invalid = Request.bHasCell ? ValidateBuild(Request.Choice, Request.Cell) : ReasonNoCell;
+	if (!Invalid.IsNone())
 	{
-		return MakeFailure(Request.Action, ReasonUnknownRecipe, TEXT("Can't craft: pick something to craft"));
+		return MakeFailure(Request.Action, Invalid, FString::Printf(TEXT("Can't build %s: %s"), *Label, *DescribeReason(Invalid)));
 	}
-	if (!IsRecipeUnlocked(Recipe->Id))
-	{
-		return MakeFailure(Request.Action, ReasonRecipeLocked, FString::Printf(TEXT("Can't craft %s: %s"), *Recipe->Label, *DescribeReason(ReasonRecipeLocked)));
-	}
-	if (!CanAfford(Recipe->Cost))
-	{
-		return MakeFailure(Request.Action, ReasonInsufficientMaterials,
-			FString::Printf(TEXT("Can't craft %s: %s"), *Recipe->Label, *DescribeReason(ReasonInsufficientMaterials)));
-	}
+	const FLRItemDef* Output = Data.FindItem(Recipe->Output);
+	check(Output); // ValidateBuild checked it
+	const int32 OutputCount = FMath::Max(1, Recipe->OutputCount);
 
 	FTransaction Txn(*this);
-	for (const FLRItemAmount& Cost : Recipe->Cost)
+	if (!RemoveMatterInReach(Request.Cell, Recipe->Cost))
 	{
-		if (!RemoveItem(Cost.Item, Cost.Count))
+		return MakeFailure(Request.Action, ReasonInsufficientMaterials,
+			FString::Printf(TEXT("Can't build %s: %s"), *Label, *DescribeReason(ReasonInsufficientMaterials)));
+	}
+	if (Output->Category == LRNames::CategoryMaterial)
+	{
+		AddMatter(Request.Cell, Output->Id, OutputCount);
+	}
+	else if (Output->IsSource())
+	{
+		FLRPlacedEntity& Enclosure = Placed.FindChecked(Request.Cell);
+		Enclosure.Source.Item = Output->Id;
+		Enclosure.Source.Count = 1;
+		Enclosure.Source.InstanceId = AllocateInstanceId();
+	}
+	else if (Output->IsLootBox())
+	{
+		if (!PlaceNewCache(Request.Cell, Output->Id))
 		{
-			return MakeFailure(Request.Action, ReasonInsufficientMaterials,
-				FString::Printf(TEXT("Can't craft %s: %s"), *Recipe->Label, *DescribeReason(ReasonInsufficientMaterials)));
+			return MakeFailure(Request.Action, ReasonOccupied, FString::Printf(TEXT("Can't build %s: %s"), *Label, *DescribeReason(ReasonOccupied)));
 		}
 	}
-	const int32 OutputCount = FMath::Max(1, Recipe->OutputCount);
-	if (!AddItem(Recipe->Output, OutputCount))
+	else
 	{
-		return MakeFailure(Request.Action, ReasonNoSlot,
-			FString::Printf(TEXT("Can't craft %s: %s"), *Recipe->Label, *DescribeReason(ReasonNoSlot)));
+		FLRPlacedEntity Entity;
+		Entity.InstanceId = AllocateInstanceId();
+		Entity.Item = Output->Id;
+		Entity.Cell = Request.Cell;
+		Entity.PlacedAt = Now;
+		Placed.Add(Entity.Cell, Entity);
 	}
 	Txn.Commit();
 
@@ -1051,38 +1029,39 @@ FLRActionResult FLRSimulation::ExecuteCraft(const FLRActionRequest& Request)
 	Result.Action = Request.Action;
 	Result.bSuccess = true;
 	Result.Spent = Recipe->Cost;
-	Result.Gained.Emplace(Recipe->Output, OutputCount);
-	Result.Message = FString::Printf(TEXT("Crafted %s"), *DescribeAmounts(Result.Gained));
+	Result.Gained.Emplace(Output->Id, OutputCount);
+	Result.Message = FString::Printf(TEXT("Built %s at %s"), *DescribeAmounts(Result.Gained), *DescribeCell(Request.Cell));
 	AddStat(StatKey(TEXT("crafted"), Recipe->Id));
 	return Result;
 }
 
 FLRActionResult FLRSimulation::ExecuteUse(const FLRActionRequest& Request)
 {
-	// Rails: User#use + LootBox#open!
-	const int32 SlotIndex = ResolveLootBoxSlot(Request.Slot);
-	if (SlotIndex == INDEX_NONE)
+	// Rails: User#use + LootBox#open!. The cache collapses where it is, and its contents land
+	// in that cell.
+	FLRPlacedEntity* Entity = Request.bHasCell ? Placed.Find(Request.Cell) : nullptr;
+	const FLRItemDef* EntityDef = Entity ? Data.FindItem(Entity->Item) : nullptr;
+	const bool bInEnclosure = EntityDef && EntityDef->IsEnclosure() && !Entity->Chamber.IsEmpty();
+	if (!EntityDef || (!EntityDef->IsLootBox() && !bInEnclosure))
 	{
-		return MakeFailure(Request.Action, ReasonNoLootBox, TEXT("Can't use: nothing to open"));
+		return MakeFailure(Request.Action, ReasonNoLootBox, FString::Printf(TEXT("Can't open: %s"), *DescribeReason(ReasonNoLootBox)));
 	}
-
-	const FLRInventorySlot BoxSlot = Inventory[SlotIndex];
-	const FLRItemDef* BoxDef = Data.FindItem(BoxSlot.Item);
-	check(BoxDef); // ResolveLootBoxSlot only returns slots with a known loot box item
+	const FIntVector Cell = Request.Cell;
+	const int32 BoxId = bInEnclosure ? Entity->Chamber.InstanceId : Entity->InstanceId;
+	const FName BoxItem = bInEnclosure ? Entity->Chamber.Item : Entity->Item;
+	const FLRItemDef* BoxDef = Data.FindItem(BoxItem);
 
 	FLRLootBoxInstance Instance;
-	if (const FLRLootBoxInstance* Found = LootBoxes.Find(BoxSlot.InstanceId))
+	if (const FLRLootBoxInstance* Found = LootBoxes.Find(BoxId))
 	{
 		Instance = *Found;
 	}
 	else
 	{
-		// Rails had repair logic for LootBoxInventoryItems with a nil loot_box_id. Here a
-		// missing instance simply falls back to the item's own table with no modifiers.
-		Instance.InstanceId = BoxSlot.InstanceId;
-		Instance.LootTable = BoxDef->LootTable;
+		// A cache whose instance went missing opens on its item's own table, unmodified.
+		Instance.InstanceId = BoxId;
+		Instance.LootTable = BoxDef ? BoxDef->LootTable : LRNames::DefaultLootTable;
 	}
-
 	const FLRLootTableDef* Table = Data.FindLootTable(Instance.LootTable);
 	if (!Table)
 	{
@@ -1098,200 +1077,71 @@ FLRActionResult FLRSimulation::ExecuteUse(const FLRActionRequest& Request)
 		? Instance.RevealedContents
 		: MergeAmounts(RollLootTable(ApplyModifiers(*Table, Instance.Modifiers)));
 
-	FTransaction Txn(*this);
-
-	// Remove the box itself (unique item: one per slot).
-	Inventory[SlotIndex].Clear();
-	LootBoxes.Remove(BoxSlot.InstanceId);
-
-	for (const FLRItemAmount& Amount : Rolled)
+	LootBoxes.Remove(BoxId);
+	if (bInEnclosure)
 	{
-		if (!AddItem(Amount.Item, Amount.Count))
-		{
-			return MakeFailure(Request.Action, ReasonNoInventorySpace,
-				FString::Printf(TEXT("Can't open %s: %s"), *BoxDef->DisplayName, *DescribeReason(ReasonNoInventorySpace)));
-		}
+		Entity->Chamber.Clear();
+		Entity->ExposureProgress = 0.0;
 	}
-	Txn.Commit();
+	else
+	{
+		Placed.Remove(Cell); // Entity is gone from here on
+	}
+	const int32 Lost = Spill(Cell, Rolled);
 
 	FLRActionResult Result;
 	Result.Action = Request.Action;
 	Result.bSuccess = true;
-	Result.Spent.Emplace(BoxSlot.Item, 1);
+	Result.Spent.Emplace(BoxItem, 1);
 	Result.Gained = Rolled;
-	AddStat(StatKey(TEXT("opened"), BoxSlot.Item));
-	Result.Message = FString::Printf(TEXT("Opened %s: %s"), *BoxDef->DisplayName,
-		Rolled.IsEmpty() ? TEXT("nothing!") : *DescribeAmounts(Rolled));
+	AddStat(StatKey(TEXT("opened"), BoxItem));
+	Result.Message = FString::Printf(TEXT("Opened %s at %s: %s%s"), *Data.GetDisplayName(BoxItem), *DescribeCell(Cell),
+		Rolled.IsEmpty() ? TEXT("nothing!") : *DescribeAmounts(Rolled), *DescribeLost(Lost));
 	return Result;
 }
 
-FLRActionResult FLRSimulation::ExecuteDeploy(const FLRActionRequest& Request)
+FLRActionResult FLRSimulation::ExecuteDismantle(const FLRActionRequest& Request)
 {
-	// Rails: User#deploy + IrradiationEnclosureInventoryItem#place! + PlaceableEntity#place!
-	if (!Request.bHasCell)
-	{
-		return MakeFailure(Request.Action, ReasonNoCell, TEXT("Can't deploy: select a grid cell first"));
-	}
-	if (Placed.Contains(Request.Cell))
-	{
-		return MakeFailure(Request.Action, ReasonOccupied, TEXT("Can't deploy: that cell is occupied"));
-	}
-	const int32 SlotIndex = ResolvePlaceableSlot(Request.Slot);
-	if (SlotIndex == INDEX_NONE)
-	{
-		return MakeFailure(Request.Action, ReasonNoPlaceable, TEXT("Can't deploy: nothing deployable selected"));
-	}
-
-	const FLRInventorySlot Slot = Inventory[SlotIndex];
-
-	FLRPlacedEntity Entity;
-	Entity.InstanceId = Slot.InstanceId != 0 ? Slot.InstanceId : AllocateInstanceId();
-	Entity.Item = Slot.Item;
-	Entity.Cell = Request.Cell;
-	Entity.PlacedAt = Now;
-
-	Inventory[SlotIndex].Clear(); // placeables are unique: one per slot
-	Placed.Add(Entity.Cell, Entity);
-
-	FLRActionResult Result;
-	Result.Action = Request.Action;
-	Result.bSuccess = true;
-	Result.Spent.Emplace(Slot.Item, 1);
-	Result.Message = FString::Printf(TEXT("Deployed %s at %s"), *Data.GetDisplayName(Slot.Item), *DescribeCell(Entity.Cell));
-	return Result;
-}
-
-FLRActionResult FLRSimulation::ExecuteRecall(const FLRActionRequest& Request)
-{
-	// Rails: IrradiationEnclosureInventoryItem.recall! + PlaceableEntity#recall!
-	if (!Request.bHasCell)
-	{
-		return MakeFailure(Request.Action, ReasonNoCell, TEXT("Can't recall: select a grid cell first"));
-	}
-	const FLRPlacedEntity* Found = Placed.Find(Request.Cell);
-	if (!Found)
-	{
-		return MakeFailure(Request.Action, ReasonNothingPlaced, TEXT("Can't recall: nothing deployed in that cell"));
-	}
-	const FLRPlacedEntity Entity = *Found;
-	const FLRItemDef* EntityDef = Data.FindItem(Entity.Item);
-	if (EntityDef && EntityDef->IsStructure())
-	{
-		return MakeFailure(Request.Action, ReasonCantRecall, FString::Printf(TEXT("Can't recall: %s"), *DescribeReason(ReasonCantRecall)));
-	}
-
-	// The entity comes back with whatever it was holding, all or nothing.
-	FLRInventorySlot EntityItem;
-	EntityItem.Item = Entity.Item;
-	EntityItem.Count = 1;
-	EntityItem.InstanceId = Entity.InstanceId;
-
-	FTransaction Txn(*this);
-	FLRActionResult Result;
-	for (const FLRInventorySlot& Returned : { EntityItem, Entity.Chamber, Entity.Source })
-	{
-		if (Returned.IsEmpty())
-		{
-			continue;
-		}
-		if (!AddUnique(Returned.Item, Returned.InstanceId))
-		{
-			return MakeFailure(Request.Action, ReasonNoInventorySpace, TEXT("Can't recall: inventory is full"));
-		}
-		Result.Gained.Emplace(Returned.Item, 1);
-	}
-	Placed.Remove(Request.Cell);
-	Txn.Commit();
-
-	Result.Action = Request.Action;
-	Result.bSuccess = true;
-	Result.Message = FString::Printf(TEXT("Recalled %s from %s"), *Data.GetDisplayName(Entity.Item), *DescribeCell(Entity.Cell));
-	return Result;
-}
-
-FLRActionResult FLRSimulation::ExecuteLoad(const FLRActionRequest& Request)
-{
-	const FName Invalid = ValidateLoad(Request);
+	// Take apart what's in the cell and return what it cost to the cell's matter. An enclosure
+	// comes apart one layer at a time: its source, then its cache, then the enclosure itself.
+	const FName Invalid = ValidateRequest(Request);
 	if (!Invalid.IsNone())
 	{
-		return MakeFailure(Request.Action, Invalid, FString::Printf(TEXT("Can't load: %s"), *DescribeReason(Invalid)));
+		return MakeFailure(Request.Action, Invalid, FString::Printf(TEXT("Can't dismantle: %s"), *DescribeReason(Invalid)));
 	}
+	const FIntVector Cell = Request.Cell;
+	FLRPlacedEntity& Entity = Placed.FindChecked(Cell);
+	const FLRItemDef* Def = Data.FindItem(Entity.Item);
+	const bool bEnclosure = Def && Def->IsEnclosure();
 
-	FLRPlacedEntity& Entity = Placed.FindChecked(Request.Cell);
-	const FLRInventorySlot Slot = Inventory[Request.Slot];
-	const FLRItemDef* ItemDef = Data.FindItem(Slot.Item);
-	if (ItemDef && ItemDef->IsLootBox())
+	FName Removed;
+	if (bEnclosure && !Entity.Source.IsEmpty())
 	{
-		Entity.Chamber = Slot;
+		Removed = Entity.Source.Item;
+		Entity.Source.Clear();
+		Entity.ExposureProgress = 0.0;
+	}
+	else if (bEnclosure && !Entity.Chamber.IsEmpty())
+	{
+		Removed = Entity.Chamber.Item;
+		LootBoxes.Remove(Entity.Chamber.InstanceId);
+		Entity.Chamber.Clear();
 		Entity.ExposureProgress = 0.0;
 	}
 	else
 	{
-		Entity.Source = Slot;
+		Removed = Entity.Item;
+		LootBoxes.Remove(Entity.InstanceId); // no-op unless it's a cache
+		Placed.Remove(Cell); // Entity is gone from here on
 	}
-	Inventory[Request.Slot].Clear();
+	const TArray<FLRItemAmount> Refunded = Refund(Cell, Removed);
 
 	FLRActionResult Result;
 	Result.Action = Request.Action;
 	Result.bSuccess = true;
-	Result.Spent.Emplace(Slot.Item, 1);
-	Result.Message = FString::Printf(TEXT("Loaded %s into the %s at %s"), *Data.GetDisplayName(Slot.Item),
-		*Data.GetDisplayName(Entity.Item), *DescribeCell(Entity.Cell));
-	return Result;
-}
-
-FLRActionResult FLRSimulation::ExecuteUnload(const FLRActionRequest& Request)
-{
-	const FName Invalid = ValidateRequest(Request);
-	if (!Invalid.IsNone())
-	{
-		return MakeFailure(Request.Action, Invalid, FString::Printf(TEXT("Can't unload: %s"), *DescribeReason(Invalid)));
-	}
-
-	FLRPlacedEntity& Entity = Placed.FindChecked(Request.Cell);
-	FTransaction Txn(*this);
-	FLRActionResult Result;
-	for (const FLRInventorySlot& Returned : { Entity.Chamber, Entity.Source })
-	{
-		if (Returned.IsEmpty())
-		{
-			continue;
-		}
-		if (!AddUnique(Returned.Item, Returned.InstanceId))
-		{
-			return MakeFailure(Request.Action, ReasonNoInventorySpace, TEXT("Can't unload: inventory is full"));
-		}
-		Result.Gained.Emplace(Returned.Item, 1);
-	}
-	// Entity still points into the live Placed map: AddUnique only touches the inventory.
-	Entity.Chamber.Clear();
-	Entity.Source.Clear();
-	Entity.ExposureProgress = 0.0;
-	Txn.Commit();
-
-	Result.Action = Request.Action;
-	Result.bSuccess = true;
-	Result.Message = FString::Printf(TEXT("Unloaded the %s at %s"), *Data.GetDisplayName(Entity.Item), *DescribeCell(Entity.Cell));
-	return Result;
-}
-
-FLRActionResult FLRSimulation::ExecuteAnnihilate(const FLRActionRequest& Request)
-{
-	// Destroys the whole stack in one slot. Sci-fi flavour: matter meets antimatter.
-	if (!Inventory.IsValidIndex(Request.Slot) || Inventory[Request.Slot].IsEmpty())
-	{
-		return MakeFailure(Request.Action, ReasonNothingSelected, FString::Printf(TEXT("Can't annihilate: %s"), *DescribeReason(ReasonNothingSelected)));
-	}
-	const FLRInventorySlot Slot = Inventory[Request.Slot];
-	LootBoxes.Remove(Slot.InstanceId); // a destroyed loot box takes its modifiers with it
-	Inventory[Request.Slot].Clear();
-	AddStat(StatKey(TEXT("annihilated"), Slot.Item), Slot.Count);
-
-	FLRActionResult Result;
-	Result.Action = Request.Action;
-	Result.bSuccess = true;
-	Result.Spent.Emplace(Slot.Item, Slot.Count);
-	Result.Message = FString::Printf(TEXT("Annihilated %d %s"), Slot.Count, *Data.GetDisplayName(Slot.Item));
+	Result.Spent.Emplace(Removed, 1);
+	Result.Message = FString::Printf(TEXT("Dismantled %s at %s: %s"), *Data.GetDisplayName(Removed), *DescribeCell(Cell),
+		Refunded.IsEmpty() ? TEXT("nothing to recover") : *FString::Printf(TEXT("%s back in the cell"), *DescribeAmounts(Refunded)));
 	return Result;
 }
 
@@ -1362,43 +1212,17 @@ FLRActionResult FLRSimulation::ExecuteFeed(const FLRActionRequest& Request)
 	return Result;
 }
 
-FLRActionResult FLRSimulation::ExecuteSort()
+bool FLRSimulation::GiveMatter(const FIntVector& Cell, FName Item, int32 Count)
 {
-	// Rails: Entity#sort_and_compress_inventory!
-	TArray<FLRInventorySlot> Sorted = BuildSortedInventory();
-
-	TSet<FName> Types;
-	int32 SlotsUsed = 0;
-	for (const FLRInventorySlot& Slot : Sorted)
-	{
-		if (!Slot.IsEmpty())
-		{
-			Types.Add(Slot.Item);
-			++SlotsUsed;
-		}
-	}
-	Inventory = MoveTemp(Sorted);
-
-	FLRActionResult Result;
-	Result.Action = LRNames::SortInventory;
-	Result.bSuccess = true;
-	Result.Message = FString::Printf(TEXT("Sorted inventory: %d item types in %d slots"), Types.Num(), SlotsUsed);
-	return Result;
-}
-
-bool FLRSimulation::GiveItem(FName Item, int32 Count)
-{
-	if (!Data.FindItem(Item) || Count <= 0)
+	const FLRItemDef* Def = Data.FindItem(Item);
+	if (!Def || Def->Category != LRNames::CategoryMaterial || Count <= 0)
 	{
 		return false;
 	}
-	const bool bAdded = AddItem(Item, Count);
-	if (bAdded)
-	{
-		OnInventoryChanged.Broadcast();
-		AnnounceUnlocks(RefreshUnlocks()); // inventory-based unlocks (no stats: this is a cheat)
-	}
-	return bAdded;
+	AddMatter(Cell, Item, Count);
+	OnMatterChanged.Broadcast();
+	AnnounceUnlocks(RefreshUnlocks()); // matter-based unlocks (no stats: this is a cheat)
+	return true;
 }
 
 bool FLRSimulation::AddLootBoxModifier(int32 InstanceId, const FLRLootModifier& Modifier)
@@ -1409,7 +1233,7 @@ bool FLRSimulation::AddLootBoxModifier(int32 InstanceId, const FLRLootModifier& 
 		return false;
 	}
 	Box->Modifiers.Add(Modifier);
-	OnInventoryChanged.Broadcast();
+	OnWorldChanged.Broadcast();
 	return true;
 }
 
@@ -1514,246 +1338,124 @@ FLRLootTableDef FLRSimulation::ApplyModifiers(const FLRLootTableDef& Table, cons
 }
 
 // ---------------------------------------------------------------------------------------
-// Inventory primitives
+// Matter and entity primitives
 // ---------------------------------------------------------------------------------------
 
-int32 FLRSimulation::FindFirstEmptySlot() const
-{
-	return Inventory.IndexOfByPredicate([](const FLRInventorySlot& Slot) { return Slot.IsEmpty(); });
-}
-
-bool FLRSimulation::AddItem(FName Item, int32 Count)
+void FLRSimulation::AddMatter(const FIntVector& Cell, FName Item, int32 Count)
 {
 	if (Count <= 0)
 	{
-		return true;
+		return;
 	}
-	const FLRItemDef* Def = Data.FindItem(Item);
-	if (!Def)
+	FLRCellMatter& CellMatter = Matter.FindOrAdd(Cell);
+	CellMatter.Cell = Cell;
+	CellMatter.Add(Item, Count);
+}
+
+bool FLRSimulation::RemoveMatterInReach(const FIntVector& Cell, const TArray<FLRItemAmount>& Cost)
+{
+	if (!CanAffordAt(Cell, Cost))
 	{
 		return false;
 	}
-
-	if (Def->IsUnique())
+	// Nearest first: the cell itself, then ring by ring.
+	const TArray<FIntVector> Nearby = FLRHexGrid::CellsInRadius(Cell, GetReachRadius());
+	for (const FLRItemAmount& Amount : MergeAmounts(Cost))
 	{
-		// One slot per unit, each with its own instance (Rails: one LootBox row per box).
-		TArray<int32> EmptySlots;
-		for (int32 Index = 0; Index < Inventory.Num() && EmptySlots.Num() < Count; ++Index)
+		int32 Remaining = Amount.Count;
+		for (const FIntVector& Near : Nearby)
 		{
-			if (Inventory[Index].IsEmpty())
+			if (Remaining <= 0)
 			{
-				EmptySlots.Add(Index);
+				break;
 			}
-		}
-		if (EmptySlots.Num() < Count)
-		{
-			return false;
-		}
-		for (const int32 Index : EmptySlots)
-		{
-			const int32 InstanceId = AllocateInstanceId();
-			Inventory[Index].Item = Item;
-			Inventory[Index].Count = 1;
-			Inventory[Index].InstanceId = InstanceId;
-			if (Def->IsLootBox())
+			FLRCellMatter* CellMatter = Matter.Find(Near);
+			const int32 Take = CellMatter ? FMath::Min(Remaining, CellMatter->Get(Amount.Item)) : 0;
+			if (Take > 0)
 			{
-				FLRLootBoxInstance Box;
-				Box.InstanceId = InstanceId;
-				Box.LootTable = Def->LootTable;
-				LootBoxes.Add(InstanceId, Box);
-			}
-		}
-		return true;
-	}
-
-	// Plan first, apply only if everything fits (Rails: build mutations, apply if count == 0).
-	const int32 StackSize = FMath::Max(1, Def->StackSize);
-	TArray<TPair<int32, int32>> Plan; // slot index, amount to add
-	int32 Remaining = Count;
-
-	// Top up existing partial stacks first...
-	for (int32 Index = 0; Index < Inventory.Num() && Remaining > 0; ++Index)
-	{
-		const FLRInventorySlot& Slot = Inventory[Index];
-		if (!Slot.IsEmpty() && Slot.Item == Item && Slot.Count < StackSize)
-		{
-			const int32 Add = FMath::Min(StackSize - Slot.Count, Remaining);
-			Plan.Emplace(Index, Add);
-			Remaining -= Add;
-		}
-	}
-	// ...then fill empty slots.
-	for (int32 Index = 0; Index < Inventory.Num() && Remaining > 0; ++Index)
-	{
-		if (Inventory[Index].IsEmpty())
-		{
-			const int32 Add = FMath::Min(StackSize, Remaining);
-			Plan.Emplace(Index, Add);
-			Remaining -= Add;
-		}
-	}
-	if (Remaining > 0)
-	{
-		return false;
-	}
-
-	for (const TPair<int32, int32>& Step : Plan)
-	{
-		FLRInventorySlot& Slot = Inventory[Step.Key];
-		if (Slot.IsEmpty())
-		{
-			Slot.Clear();
-			Slot.Item = Item;
-		}
-		Slot.Count += Step.Value;
-	}
-	return true;
-}
-
-bool FLRSimulation::AddUnique(FName Item, int32 InstanceId)
-{
-	const int32 Index = FindFirstEmptySlot();
-	if (Index == INDEX_NONE)
-	{
-		return false;
-	}
-	Inventory[Index].Item = Item;
-	Inventory[Index].Count = 1;
-	Inventory[Index].InstanceId = InstanceId;
-	return true;
-}
-
-bool FLRSimulation::RemoveItem(FName Item, int32 Count)
-{
-	if (Count <= 0)
-	{
-		return true;
-	}
-	if (CountItem(Item) < Count)
-	{
-		return false;
-	}
-
-	int32 Remaining = Count;
-	for (int32 Index = Inventory.Num() - 1; Index >= 0 && Remaining > 0; --Index)
-	{
-		FLRInventorySlot& Slot = Inventory[Index];
-		if (Slot.IsEmpty() || Slot.Item != Item)
-		{
-			continue;
-		}
-		const int32 Take = FMath::Min(Slot.Count, Remaining);
-		Slot.Count -= Take;
-		Remaining -= Take;
-		if (Slot.Count <= 0)
-		{
-			LootBoxes.Remove(Slot.InstanceId);
-			Slot.Clear();
-		}
-	}
-	return true;
-}
-
-int32 FLRSimulation::ResolveLootBoxSlot(int32 PreferredSlot) const
-{
-	auto IsLootBoxSlot = [this](const FLRInventorySlot& Slot)
-	{
-		const FLRItemDef* Def = Slot.IsEmpty() ? nullptr : Data.FindItem(Slot.Item);
-		return Def && Def->IsLootBox();
-	};
-	if (Inventory.IsValidIndex(PreferredSlot) && IsLootBoxSlot(Inventory[PreferredSlot]))
-	{
-		return PreferredSlot;
-	}
-	// Rails: fall back to the first unopened loot box.
-	return Inventory.IndexOfByPredicate(IsLootBoxSlot);
-}
-
-int32 FLRSimulation::ResolvePlaceableSlot(int32 PreferredSlot) const
-{
-	auto IsPlaceableSlot = [this](const FLRInventorySlot& Slot)
-	{
-		const FLRItemDef* Def = Slot.IsEmpty() ? nullptr : Data.FindItem(Slot.Item);
-		return Def && Def->IsPlaceable();
-	};
-	if (Inventory.IsValidIndex(PreferredSlot) && IsPlaceableSlot(Inventory[PreferredSlot]))
-	{
-		return PreferredSlot;
-	}
-	// Rails: User#deploy falls back to the first slot containing a placeable item.
-	return Inventory.IndexOfByPredicate(IsPlaceableSlot);
-}
-
-TArray<FLRInventorySlot> FLRSimulation::BuildSortedInventory() const
-{
-	TMap<FName, int32> StackableTotals;
-	TArray<FLRInventorySlot> UniqueSlots;
-	TArray<FName> Types;
-
-	for (const FLRInventorySlot& Slot : Inventory)
-	{
-		if (Slot.IsEmpty())
-		{
-			continue;
-		}
-		Types.AddUnique(Slot.Item);
-		if (Data.GetStackSize(Slot.Item) <= 1)
-		{
-			UniqueSlots.Add(Slot);
-		}
-		else
-		{
-			StackableTotals.FindOrAdd(Slot.Item) += Slot.Count;
-		}
-	}
-
-	// Sort by display name, then id (Rails: sort_by { [display_name.downcase, type] }).
-	Types.Sort([this](const FName& A, const FName& B)
-	{
-		const FString NameA = Data.GetDisplayName(A);
-		const FString NameB = Data.GetDisplayName(B);
-		const int32 Compare = NameA.Compare(NameB, ESearchCase::IgnoreCase);
-		return Compare != 0 ? Compare < 0 : A.LexicalLess(B);
-	});
-	UniqueSlots.Sort([](const FLRInventorySlot& A, const FLRInventorySlot& B) { return A.InstanceId < B.InstanceId; });
-
-	TArray<FLRInventorySlot> Out;
-	Out.Reserve(Inventory.Num());
-	for (const FName Type : Types)
-	{
-		if (const int32* Total = StackableTotals.Find(Type))
-		{
-			const int32 StackSize = Data.GetStackSize(Type);
-			int32 Remaining = *Total;
-			while (Remaining > 0)
-			{
-				FLRInventorySlot Stack;
-				Stack.Item = Type;
-				Stack.Count = FMath::Min(StackSize, Remaining);
-				Out.Add(Stack);
-				Remaining -= Stack.Count;
-			}
-		}
-		else
-		{
-			for (const FLRInventorySlot& Slot : UniqueSlots)
-			{
-				if (Slot.Item == Type)
+				CellMatter->Add(Amount.Item, -Take);
+				Remaining -= Take;
+				if (CellMatter->IsEmpty())
 				{
-					Out.Add(Slot);
+					Matter.Remove(Near);
 				}
 			}
 		}
 	}
-	// Normally compressing never needs more slots than we started with. It can if a save
-	// holds stacks larger than the current stackSize (data changed since) - then leave the
-	// inventory as-is rather than dropping items.
-	if (Out.Num() > Inventory.Num())
+	return true;
+}
+
+int32 FLRSimulation::Spill(const FIntVector& Cell, const TArray<FLRItemAmount>& Amounts)
+{
+	int32 Lost = 0;
+	for (const FLRItemAmount& Amount : Amounts)
 	{
-		return Inventory;
+		const FLRItemDef* Def = Data.FindItem(Amount.Item);
+		if (Def && Def->IsLootBox())
+		{
+			// The recursion: a cache that collapses into more caches.
+			for (int32 Index = 0; Index < Amount.Count; ++Index)
+			{
+				Lost += PlaceNewCache(Cell, Amount.Item) ? 0 : 1;
+			}
+		}
+		else if (Def && Def->Category == LRNames::CategoryMaterial)
+		{
+			AddMatter(Cell, Amount.Item, Amount.Count);
+		}
 	}
-	Out.SetNum(Inventory.Num()); // pad with empties
-	return Out;
+	return Lost;
+}
+
+bool FLRSimulation::PlaceNewCache(const FIntVector& Cell, FName Item)
+{
+	// The cell itself first (if it's empty, or an enclosure with an empty chamber), then the
+	// nearest empty cell within reach.
+	for (const FIntVector& Near : FLRHexGrid::CellsInRadius(Cell, GetReachRadius()))
+	{
+		FLRPlacedEntity* Entity = Placed.Find(Near);
+		if (!Entity)
+		{
+			FLRPlacedEntity Cache;
+			Cache.InstanceId = CreateLootBox(Item);
+			Cache.Item = Item;
+			Cache.Cell = Near;
+			Cache.PlacedAt = Now;
+			Placed.Add(Near, Cache);
+			return true;
+		}
+		const FLRItemDef* Def = Data.FindItem(Entity->Item);
+		if (Near == Cell && Def && Def->IsEnclosure() && Entity->Chamber.IsEmpty())
+		{
+			Entity->Chamber.Item = Item;
+			Entity->Chamber.Count = 1;
+			Entity->Chamber.InstanceId = CreateLootBox(Item); // touches LootBoxes only, so Entity stays valid
+			Entity->ExposureProgress = 0.0;
+			return true;
+		}
+	}
+	return false;
+}
+
+int32 FLRSimulation::CreateLootBox(FName Item)
+{
+	const FLRItemDef* Def = Data.FindItem(Item);
+	FLRLootBoxInstance Box;
+	Box.InstanceId = AllocateInstanceId();
+	Box.LootTable = (Def && Def->IsLootBox()) ? Def->LootTable : LRNames::DefaultLootTable;
+	LootBoxes.Add(Box.InstanceId, Box);
+	return Box.InstanceId;
+}
+
+TArray<FLRItemAmount> FLRSimulation::Refund(const FIntVector& Cell, FName Item)
+{
+	const FLRRecipeDef* Recipe = Data.FindRecipeFor(Item);
+	if (!Recipe)
+	{
+		return TArray<FLRItemAmount>();
+	}
+	Spill(Cell, Recipe->Cost);
+	return Recipe->Cost;
 }
 
 // ---------------------------------------------------------------------------------------

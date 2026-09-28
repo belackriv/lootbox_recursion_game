@@ -23,11 +23,10 @@ rules are ported:
 - crafting
 - loot tables with modifiers
 - opening boxes, including boxes inside boxes
-- deploying and recalling entities, now on a layered hexagonal grid
+- building in place on a layered hexagonal grid (no inventory: matter lives in the cells)
 - **new:** irradiating loot boxes in enclosures with radiation sources
 - **new:** a data-driven tech tree: recipes and actions unlock as you play
 - **new:** cosmic epochs from inflation to recombination, and a host black hole that evaporates
-- inventory sort and compress
 
 It also adds save/load, a 3D view of the grid, and carbon and iron irradiation enclosures.
 
@@ -87,15 +86,13 @@ In the editor, press **Play** (Alt+P).
 
 | Input | Does |
 |---|---|
-| Click a grid cell, then **Perturb** | Seed a ripple there, or deepen the one there. Ripples gather matter into your inventory every 10s. |
+| Click a grid cell, then **Perturb** | Seed a ripple there, or deepen the one there. Ripples gather matter into their cell every 10s. |
 | Click **Feed the Horizon** | Restore the host black hole's mass. At zero, the pocket universe freezes until fed. |
 | Click a **Craft** recipe | Quantum Cache (hydrogen and helium), enclosures, radiation sources (as they unlock) |
-| Click a Quantum Cache in the inventory, then **Use** | Open it (collapse it) |
-| Click a grid cell, then **Deploy** | Place the selected (or first) enclosure there. With an enclosure selected in the inventory, the cursor shows a preview. |
-| Select an occupied cell, then **Recall** | Pick it back up (ripples are part of the universe and stay) |
-| Select an enclosure, select a cache or radiation source in the inventory, then **Load** | Irradiate the cache. Each exposure adds a modifier; X-rays observe it (revealing and fixing the contents). **Unload** when done. |
-| **Sort** (inventory title bar) | Compress and alphabetize stacks |
-| Select a slot, then **Annihilate** (inventory title bar) | Destroy that whole stack |
+| Select a cell, then click a **Build** recipe | Build it there, paid from the matter within 2 cells. Caches and machines take the cell; a source goes into the enclosure there. |
+| Select a cache (or an enclosure holding one), then **Open** | Collapse it; the loot lands in that cell |
+| Select an enclosure, then build a cache and a source into it | Irradiate the cache. Each exposure adds a modifier; X-rays observe it (revealing and fixing the contents). Open it in place when done. |
+| Select an occupied cell, then **Dismantle** | Take it apart and get its cost back in the cell (an enclosure: source first, then cache). Ripples stay. |
 | Hold `W`/`A`/`S`/`D` or arrow keys | Pan across the grid |
 | Mouse wheel | Zoom |
 | Hold right mouse and drag | Free look: orbit and tilt (tilt up swings below the layer to look up at the sky) |
@@ -104,7 +101,7 @@ In the editor, press **Play** (Alt+P).
 | Click a row in the **Grid** panel's list | Select that entity and fly the camera to it |
 | `R` | Reset camera angle and zoom |
 | `H` / **Home** | Fly to the first deployed entity (or the origin) |
-| `~` | Console: `LRGive hydrogen 500`, `LRTimeScale 10`, `LRItems`, `LRSave`, `LRReset` |
+| `~` | Console: `LRGive hydrogen 500` (into the selected cell), `LRTimeScale 10`, `LRItems`, `LRSave`, `LRReset` |
 
 New games start during inflation, with just **Perturb**. Everything else unlocks as you play
 and as the epochs advance (see *The pocket universe* and *Tech tree* in

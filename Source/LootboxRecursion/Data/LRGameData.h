@@ -22,13 +22,7 @@ namespace LRNames
 	inline const FName Feed(TEXT("feed"));
 	inline const FName Craft(TEXT("craft"));
 	inline const FName Use(TEXT("use"));
-	inline const FName Deploy(TEXT("deploy"));
-	inline const FName Recall(TEXT("recall"));
-	inline const FName SortInventory(TEXT("sort_inventory"));
-
-	inline const FName Load(TEXT("load"));
-	inline const FName Unload(TEXT("unload"));
-	inline const FName Annihilate(TEXT("annihilate"));
+	inline const FName Dismantle(TEXT("dismantle"));
 
 	// Item categories (items.json "category")
 	inline const FName CategoryMaterial(TEXT("material"));
@@ -46,7 +40,7 @@ namespace LRNames
 	inline const FName ModifierReveal(TEXT("reveal"));
 
 	// Requirement checks
-	inline const FName CheckInventory(TEXT("inventory"));
+	inline const FName CheckMatter(TEXT("matter"));
 	inline const FName CheckPlaced(TEXT("placed"));
 	inline const FName CheckStat(TEXT("stat"));
 	inline const FName CheckUnlocked(TEXT("unlocked"));
@@ -107,7 +101,7 @@ struct LOOTBOXRECURSION_API FLRItemDef
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FString Color;
 
-	/** Radiation sources: which radiation (radiation.json id) this item emits. */
+	/** Radiation sources: which radiation (radiation.json id) this item emits. Sources are built into an enclosure. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FName Radiation;
 
@@ -152,8 +146,8 @@ struct LOOTBOXRECURSION_API FLRRequirement
 	GENERATED_BODY()
 
 	/**
-	 * inventory - count items you hold (optionally filtered by Item / Category)
-	 * placed    - count entities deployed in the world (optionally filtered by Item / Category)
+	 * matter    - matter in the whole pocket universe, of Item (or of every item in Category)
+	 * placed    - count entities in the world (optionally filtered by Item / Category)
 	 * stat      - a lifetime counter named by Id, e.g. "crafted:loot_box", "opened:loot_box",
 	 *             "gained:iron", "exposed:x_rays", "done:inject"
 	 * unlocked  - 1 if Id ("recipe:<id>" or "action:<name>") is unlocked, else 0
@@ -161,7 +155,7 @@ struct LOOTBOXRECURSION_API FLRRequirement
 	 * host      - the host black hole's mass, in whole percent of its starting mass
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	FName Check = LRNames::CheckInventory;
+	FName Check = LRNames::CheckMatter;
 
 	/** For stat / unlocked / epoch checks: the counter, unlock key or epoch id. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
@@ -186,7 +180,12 @@ struct LOOTBOXRECURSION_API FLRRequirement
 	static bool IsValidCondition(FName InCondition);
 };
 
-/** A craftable thing. Rails: User#get_craft_choices + <Class>::CRAFTING_COST. */
+/**
+ * A buildable thing. Built at a cell, paid from the matter within reach of it. Materials go into
+ * the cell's matter; a cache or machine takes the cell (a cache can also go into an enclosure's
+ * empty chamber); a source goes into the enclosure in the cell. Dismantling refunds the cost.
+ * Rails: User#get_craft_choices + <Class>::CRAFTING_COST.
+ */
 USTRUCT(BlueprintType)
 struct LOOTBOXRECURSION_API FLRRecipeDef
 {
@@ -481,6 +480,10 @@ struct LOOTBOXRECURSION_API FLRDataFile
 
 	UPROPERTY()
 	FLRHostDef Host;
+
+	/** universe.json: how many cells away building can draw matter from. -1 = not set in this file. */
+	UPROPERTY()
+	int32 ReachRadius = -1;
 };
 
 /** All definitions, indexed for lookup. Plain C++ (no reflection needed). */
@@ -493,12 +496,16 @@ struct LOOTBOXRECURSION_API FLRGameData
 	TArray<FLRRadiationDef> Radiation;
 	TArray<FLREpochDef> Epochs;         // in cosmic order
 	FLRHostDef Host;
+	/** Building at a cell pays from matter in cells up to this many steps away (0 = the cell itself). */
+	int32 ReachRadius = 0;
 
 	const FLRItemDef* FindItem(FName Id) const { return Items.Find(Id); }
 	const FLRLootTableDef* FindLootTable(FName Id) const { return LootTables.Find(Id); }
 	const FLRRecipeDef* FindRecipe(FName Id) const;
 	const FLRActionDef* FindAction(FName Name) const;
 	const FLRRadiationDef* FindRadiation(FName Id) const;
+	/** The first recipe that builds Item (what dismantling it refunds), or null. */
+	const FLRRecipeDef* FindRecipeFor(FName Item) const;
 	/** Position of an epoch in Epochs, or INDEX_NONE. */
 	int32 FindEpochIndex(FName Id) const;
 

@@ -1,5 +1,5 @@
 {
-	"_comment": "Craft action choices. revealRequirements make this the tech tree: a recipe stays hidden until they have all been met once, then it is unlocked for good. Useful checks: epoch (reached an epoch in universe.json), stat (lifetime counters: crafted:<recipe>, opened:<item>, gained:<item>, exposed:<radiation>, done:<action>) and unlocked (recipe:<id> / action:<name>). Costs and unlock thresholds are placeholder tuning.",
+	"_comment": "Build choices: each is built in the selected cell and paid from matter within reach of it (reachRadius in universe.json); dismantling refunds the cost. revealRequirements make this the tech tree: a recipe stays hidden until they have all been met once, then it is unlocked for good. Useful checks: epoch (reached an epoch in universe.json), stat (lifetime counters: crafted:<recipe>, opened:<item>, gained:<item>, exposed:<radiation>, done:<action>) and unlocked (recipe:<id> / action:<name>). Costs and unlock thresholds are placeholder tuning.",
 	"recipes": [
 		{
 			"id": "loot_box",
@@ -29,7 +29,7 @@
 		{
 			"id": "carbon_irradiation_enclosure",
 			"label": "Carbon Irradiation Enclosure",
-			"tooltip": "A light, graphite-lined radiation chamber. Contains radiation up to tier 4 (microwaves). Holds one quantum cache and one source.",
+			"tooltip": "A light, graphite-lined radiation chamber. Contains radiation up to tier 4 (microwaves). Build a cache and a radiation source into it.",
 			"output": "carbon_irradiation_enclosure",
 			"outputCount": 1,
 			"cost": [
@@ -54,7 +54,7 @@
 		{
 			"id": "iron_irradiation_enclosure",
 			"label": "Iron Irradiation Enclosure",
-			"tooltip": "A heavy steel-plated radiation chamber. Contains any radiation up to tier 7 (gamma). Holds one quantum cache and one source.",
+			"tooltip": "A heavy steel-plated radiation chamber. Contains any radiation up to tier 7 (gamma). Build a cache and a radiation source into it.",
 			"output": "iron_irradiation_enclosure",
 			"outputCount": 1,
 			"cost": [

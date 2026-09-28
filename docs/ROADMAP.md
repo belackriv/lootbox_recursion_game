@@ -14,7 +14,7 @@ and play.
 ## M1: Make it feel like a game
 
 - [ ] Item icons: textures in `Content/UI/Icons`, an `Icon` soft-object path on
-      `FLRItemDef`, drawn in the inventory slots instead of the abbreviations.
+      `FLRItemDef`, drawn in the HUD's lists instead of the abbreviations.
 - [ ] A loot box opening moment: a reveal panel listing what dropped, a Niagara burst on the
       box, and a sound. `OnActionCompleted` already carries `Gained`.
 - [ ] Real meshes for the enclosures in the world (a Blueprint subclass of
@@ -37,8 +37,7 @@ and play.
 
 See [DESIGN.md](DESIGN.md#irradiation-implemented-v1).
 
-- [x] Enclosures hold a loot box and a radiation source (Load / Unload; Recall returns
-      everything).
+- [x] Enclosures hold a cache and a radiation source (now built into them in place).
 - [x] Five source items driven by `radiation.json` effects; enclosure material caps the tier.
 - [x] Exposure over simulation time adds modifiers; X-rays reveal and lock the contents.
 - [x] Modifiers and revealed contents in the loot box tooltip.
@@ -103,13 +102,13 @@ Matter moves into the pocket universe first (see *Matter lives in the pocket uni
 - [x] Grid geometry behind one plain C++ type (`FLRHexGrid`), with hexagonal cells. The
       grid draws, picks and outlines hexagons. See *The grid* in DESIGN.md for the path to
       rhombic dodecahedra in true 3D.
-- [ ] Cells hold matter: an amount per material next to the entity. Ripples deposit into
-      their own cell.
-- [ ] Costs are paid from cells within `reachRadius` (data, in cells) of the build site.
-- [ ] Caches, enclosures and sources become cell entities, built and dismantled in place.
-      Sources may irradiate caches within a radius.
-- [ ] Remove the player inventory, Sort and Annihilate. Add a universe totals readout and a
+- [x] Cells hold matter: an amount per material next to the entity. Ripples deposit into
+      their own cell, and the grid draws a gas disc per cell.
+- [x] Costs are paid from cells within `reachRadius` (data, in cells) of the build site.
+- [x] Caches, enclosures and sources become cell entities, built and dismantled in place.
+- [x] Remove the player inventory, Sort and Annihilate. Add a universe totals readout and a
       hovered-cell contents panel.
+- [ ] Sources irradiate caches within a radius, so irradiation becomes spatial (idea).
 - [ ] Gas drifts downhill and diffuses. Injecting hydrogen fills the target cell.
 - [ ] Conveyors deliver matter into a build site's reach automatically (the radius stays the
       same).
