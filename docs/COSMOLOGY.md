@@ -190,9 +190,16 @@ the player can see the border because the grid warps towards each body.
 
 **Gas is a cell property, not an entity.** A cell already holds at most one deployed
 entity. Loose matter becomes a per-cell quantity (hydrogen density, later others) that
-advects downhill along the field and diffuses slightly. A star's cell absorbs gas from its
-neighbours each tick; the absorbed mass raises its class per the table above, until the
-Eddington cap. This is the mid-game conveyor and the late-game accretion with one mechanism.
+advects downhill along the field and diffuses slightly. Injecting hydrogen adds to the
+target cell's quantity; the drift then carries it downhill from there. A star's cell absorbs
+gas from its neighbours each tick; the absorbed mass raises its class per the table above,
+until the Eddington cap. This is the mid-game conveyor and the late-game accretion with one
+mechanism. Massive bodies (stars, remnants, halos) don't drift: they are the wells, and gas
+is what falls. See *Binaries* for the one case where bodies do move.
+
+**Which two bodies.** The two most massive bodies shape the displayed field and define the
+well borders. When masses tie, the body created earlier wins, which keeps the grid from
+flickering when a growing star overtakes an older one only briefly.
 
 **Rendering the bend.** Stage it:
 
@@ -210,6 +217,51 @@ Eddington cap. This is the mid-game conveyor and the late-game accretion with on
 
 Expansion fits the same rendering: the lattice spacing grows with cosmic time, and bound
 regions (inside a well) don't.
+
+## Binaries
+
+Most massive stars are in binaries (over 70% of O stars, about half of Sun-like ones), and
+the two-body field is the game's excuse to make them. Binaries form when a collapsing cloud
+fragments rather than making one star, so a gravity well fed past a threshold can split into
+two stars instead of one bigger one: over-feed the cloud and you get a pair.
+
+In the drift-only model nothing orbits, so a binary is a *relationship* between two bodies
+rather than motion: two stars whose Roche lobes touch are bound, the grid warps into the
+figure-eight around them, and the pair becomes the top-two system. Its separation is the
+cell distance between them. What a binary does:
+
+- **Mass transfer.** When one star swells into a giant it overflows its Roche lobe, and gas
+  streams along the grid to the companion, raising its class. This is the Algol paradox
+  (the less massive star of a pair being the more evolved one) and it's how the player gets
+  to move mass between stars without touching it.
+- **Type Ia.** A white dwarf with a giant companion accretes past the Chandrasekhar limit and
+  detonates, making iron. Two white dwarfs merging does the same.
+- **Inspiral and merger.** A binary's separation shrinks over time: quickly when a giant's
+  envelope engulfs the companion (a common envelope drags them together), and slowly for
+  compact remnants, which lose orbital energy to gravitational waves. Time to merge by
+  gravitational waves scales as separation to the fourth power over the product of the
+  masses, so only close, heavy pairs merge on game timescales. On the grid, the lighter body
+  steps towards the heavier one as the separation shrinks, then they merge into one body in
+  the heavier one's cell with the combined mass, minus some ejected as gas.
+
+Merger products by type:
+
+| Pair | Result | Bonus |
+|---|---|---|
+| two main-sequence stars | one heavier, rejuvenated star (a blue straggler) | jumps a class |
+| two white dwarfs | Type Ia supernova, or a heavy white dwarf | iron |
+| two neutron stars | kilonova, then a black hole | gold, platinum, uranium; gravitational waves |
+| neutron star and black hole | black hole | some rapid-process elements; gravitational waves |
+| two black holes | heavier black hole | gravitational waves only |
+
+Gravitational waves are the source for the *gravitational radiation* tier in the radiation
+catalogue in [DESIGN.md](DESIGN.md), which had no source until now. A compact binary
+inspiralling is a gravitational wave emitter for as long as it lasts, and the merger is a
+burst. What that radiation does to a cache is open; it's the exotic top tier.
+
+Player control comes from placement and feeding. Where hydrogen lands decides which star
+grows, feeding a well past the fragmentation threshold makes a pair, and a dark matter
+scaffold or a third well placed between two stars can pull them close enough to merge.
 
 ## Pressure mechanics
 
@@ -253,8 +305,8 @@ and the HUD shows the current epoch by name.
   universe pauses until fed) is kinder than a hard one.
 - Does dark matter get placed directly, or does the player only choose where filaments
   anchor and the sim lays them out?
-- Which two bodies are "the top two" when masses tie or swap? Hysteresis so the grid doesn't
-  flicker.
+- Does a fragmentation threshold on wells make binaries too easy or too random? A visible
+  "this cloud will fragment above N" hint on the well keeps it a choice rather than a roll.
 - Do caches stay the loot mechanic throughout, or does the late game roll supernova yields
   through the same loot table system? (Probably yes: a supernova is a very large cache.)
 
@@ -262,7 +314,9 @@ and the HUD shows the current epoch by name.
 
 - Wikipedia: *Chronology of the universe*, *Big Bang nucleosynthesis*, *Stellar
   nucleosynthesis*, *Population III star*, *Jeans instability*, *Roche lobe*,
-  *Hawking radiation*, *Cosmological natural selection*.
+  *Hawking radiation*, *Cosmological natural selection*, *Algol paradox*, *Common envelope*,
+  *Blue straggler*, *GW170817* (the neutron star merger seen in gravitational waves and
+  light, which confirmed where gold comes from).
 - N. Popławski, "Radial motion into an Einstein–Rosen bridge" (2010) and "Cosmology with
   torsion" (2010).
 - E. Farhi and A. Guth, "An obstacle to creating a universe in the laboratory" (1987);
