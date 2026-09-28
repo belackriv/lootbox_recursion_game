@@ -26,6 +26,10 @@ The progression arc is Factorio-shaped. Early on, you inject everything by hand.
 machines inside the pocket universe produce, transform and move matter for you, and your
 direct powers matter less.
 
+[COSMOLOGY.md](COSMOLOGY.md) has the physics behind the theme and the proposed three-phase
+arc (Big Bang, structure formation, stars), including the plan to replace Inject Matter with
+a perturbation ability and reorder the materials so hydrogen comes first.
+
 ## Core loop (implemented)
 
 1. **Inject Matter** to receive carbon or iron. It takes a cast time and has a cooldown.
@@ -52,12 +56,46 @@ Irradiation enclosures create them (see below).
 
 **Ideas, not implemented:**
 
-- **Structural rules:** things above layer 0 need support, or the pocket universe has no
-  gravity at all, which is a nice sci-fi excuse.
+- **One level or a true 3D grid?** Undecided, and worth a prototype. On one level, play
+  happens on a single layer and the other Z layers are reserved for a later idea, such as
+  extra dimensions. A true 3D grid (no layers, cells in a volume) is what the physics wants:
+  orbits have inclination and the cosmic web is a foam, not a sheet. There are no support or
+  structural rules either way; nothing rests on anything in space.
+
+  Making 3D navigable, in order of expected payoff:
+
+  1. *Face placement.* Raycast onto an existing entity's cube and place on the face that was
+     hit. Most things go next to other things, and this has no depth ambiguity.
+  2. *A placement plane that follows you.* The current single-plane cursor, but the plane
+     passes through the hovered or last-placed cell and faces the camera's dominant axis. A
+     modifier slides along the plane's normal, and a stalk from the cursor to the reference
+     plane makes depth readable in empty space.
+  3. *Depth cues from the grid.* Beams only near existing entities or in a translucent slab
+     around the active plane, with distance fade. Near a well the bent grid becomes shells
+     and radial lines, which are landmarks for free.
+  4. *Camera.* Orbit around a focus point, with snap views along the three axes.
+
+  The universe helps: anything that spins flattens (solar systems, galaxies, accretion
+  discs), so a net spin from the first perturbations settles structure toward a plane. That
+  plane is the ecliptic, a natural reference without being a cheat, and most builds sit near
+  it while stars and remnants stray. The sim already stores unbounded `(X, Y, Z)`, so the
+  prototype is picking and rendering only. Its test: a fresh player builds a 3x3x3 block
+  and a ten-cell line along each axis without misplacing.
 - **Logistics:** moving matter between cells takes time proportional to distance, so layout
   becomes the puzzle. Keep the enclosure next to the injection point and the power source
-  next to the enclosure. Vertical stacking could be a way to keep distances short.
-- **Multi-cell machines** (2x2x2 and so on), as the machines get more complex.
+  next to the enclosure.
+- **Multi-cell machines** (2x2 or 2x2x2 and so on), as the machines get more complex.
+- **Gravity as a field on the grid** ([COSMOLOGY.md](COSMOLOGY.md#gravity-on-the-grid)):
+  every massive body (overdensity, dark matter halo, star, remnant) adds a softened 1/r
+  potential. Loose gas is a per-cell quantity that drifts downhill each tick; bodies don't
+  drift. The two most massive bodies (earlier-created wins ties) shape the displayed field
+  and its Roche lobe borders. Rendering is staged: a clamped visual warp of the lattice
+  first, field lines and equipotentials as the grid near a well second, and transport time
+  measured in the warped space last.
+- **Binaries** ([COSMOLOGY.md](COSMOLOGY.md#binaries)): a bound pair orbits its barycentre
+  on closed-form Kepler ellipses (no integration), sweeps an exclusion zone, and hardens
+  through gas drag, common envelopes or gravitational waves until it merges. Triples are
+  hierarchical or resolved by ejecting the lightest body.
 
 ## Tech tree (implemented)
 
@@ -194,7 +232,8 @@ Irradiation is how loot boxes get better. Numbers are placeholder tuning in
   transmission medium, which could matter on the grid, where adjacent filled cells are
   the medium.
 - **Gravitational radiation:** gravitational waves, ripples in spacetime. It's a late-game
-  or exotic tier.
+  or exotic tier. Its source is a compact binary inspiralling (a steady emitter) and its
+  merger (a burst); see *Binaries* in [COSMOLOGY.md](COSMOLOGY.md#binaries).
 
 Tier (the order you unlock it) and energy (how strong it is) are separate on purpose.
 Microwaves come fourth but carry little energy.
@@ -204,8 +243,14 @@ Microwaves come fourth but carry little energy.
 - Should there be offline or idle progress? Real-time cooldowns were the Rails behaviour.
 - Does each loot box type get its own table (the `carbon_loot_box` and `iron_loot_box`
   tables exist but are unused)? Maybe the enclosure material chooses the box type?
-- What is the goal or ending? A tech ladder up the radiation tiers is one candidate.
+- What is the goal or ending? [COSMOLOGY.md](COSMOLOGY.md#phase-3-stars-late-game) proposes
+  two: reach today's universe (a complete periodic table, maybe a rocky planet), or dive
+  into a stellar black hole made inside the pocket universe, which is the recursion.
 - Does anything occupy grid cells from the start (resource nodes, "anomalies" in the pocket
-  universe) so that position matters before logistics arrive?
+  universe) so that position matters before logistics arrive? The perturbation plan answers
+  this: perturbations seed overdensity nodes at coordinates that keep growing on their own.
 - Where does injected matter appear: at a fixed "injection point" cell, or straight in your
-  inventory, as now?
+  inventory, as now? With gas as a cell quantity, injected hydrogen fills the target cell and
+  drifts from there; primordial materials from Perturb may still land in the inventory.
+- How is the game paced across 13.8 billion years? A cosmic clock on a log scale, with epoch
+  checks in the tech tree, is the proposal in COSMOLOGY.md.

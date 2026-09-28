@@ -204,6 +204,8 @@ The architecture in one breath:
   UnrealScript.
 - [docs/DESIGN.md](docs/DESIGN.md): game design, radiation tables, 3D grid and logistics
   ideas.
+- [docs/COSMOLOGY.md](docs/COSMOLOGY.md): the cosmology behind the theme and how each epoch
+  maps onto a game phase.
 - [docs/ROADMAP.md](docs/ROADMAP.md): suggested next milestones.
 
 ## The backdrop
