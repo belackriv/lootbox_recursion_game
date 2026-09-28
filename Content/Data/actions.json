@@ -49,7 +49,7 @@
 		{
 			"name": "use",
 			"label": "Open",
-			"tooltip": "Collapse the cache in the selected cell, or in the enclosure there. Its contents land in that cell.",
+			"tooltip": "Collapse the cache in the selected cell, or in the irradiator there. Its contents land in that cell.",
 			"cooldown": 5,
 			"castTime": 5,
 			"revealRequirements": [
@@ -64,7 +64,7 @@
 		{
 			"name": "dismantle",
 			"label": "Dismantle",
-			"tooltip": "Take apart what's in the selected cell and return what it cost to the cell. An enclosure comes apart a layer at a time: its source, then its cache, then the enclosure.",
+			"tooltip": "Take apart what's in the selected cell and return what it cost to the cell. An irradiator comes apart a layer at a time: its source, then its cache, then the irradiator.",
 			"cooldown": 1,
 			"castTime": 0,
 			"revealRequirements": [

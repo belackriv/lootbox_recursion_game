@@ -22,7 +22,7 @@ there is no player character and the camera is a free "god view". What you *can*
   it stays fixed. Gamma mutation means a cache can collapse into more caches, which is the
   recursion.
 - **Assemble and place** machines on the pocket universe's grid, starting with irradiation
-  enclosures.
+  irradiators.
 
 The progression arc is Factorio-shaped. Early on, you perturb the vacuum by hand. Later,
 the pocket universe's own structures and machines produce, transform and move matter for
@@ -41,7 +41,7 @@ universe*).
    own cell every few seconds, depending on the epoch: nothing during inflation, then
    hydrogen, then hydrogen and helium.
 2. **Build** in a selected cell, paying with matter within reach: caches, irradiation
-   enclosures, and radiation sources (built into an enclosure). A cache crushes hydrogen and
+   irradiators, and radiation sources (built into an irradiator). A cache crushes hydrogen and
    helium, and collapses back into them plus some fused carbon and a little iron. Caches are
    the only source of carbon and iron until there are stars.
 3. **Open** a cache where it sits (the `use` action) for randomized loot from weighted loot
@@ -54,7 +54,7 @@ Loot boxes carry **modifiers**, which rewrite their loot table before it's rolle
 - a multiplied weight for one item
 - multiplied counts for one item
 
-Irradiation enclosures create them (see below).
+Irradiators create them (see below).
 
 ## The pocket universe (implemented)
 
@@ -85,7 +85,7 @@ announces each one.
   so a full-mass host lasts `lifetimeSeconds` (an hour) and the loss speeds up as it
   shrinks. Each perturbation draws 2% of its mass, and a perturbation is refused if it
   would take the last of it. **Feed the Horizon** (revealed at 90%) restores 15%. At zero
-  the pocket universe freezes: ripples, enclosures and the clock stop until you feed it.
+  the pocket universe freezes: ripples, irradiators and the clock stop until you feed it.
   That's the soft fail; nothing is lost.
 - **The plasma** is a glowing veil in the sky whose opacity comes from the epoch, fading over
   a few seconds between epochs. It clears at recombination.
@@ -103,12 +103,12 @@ nowhere outside it for a stockpile to live. Everything is contained in the pocke
   matter in cells within `reachRadius` steps of it (`universe.json`, currently 2), in its
   layer: the cell itself first, then ring by ring. Distance is the hex grid's own.
 - **Where things go.** A cache goes into an empty cell, or into the empty chamber of an
-  enclosure there. A radiation source goes into the enclosure in the cell. A machine takes an
+  irradiator there. A radiation source goes into the irradiator in the cell. A machine takes an
   empty cell. Materials can go anywhere.
 - **Nested caches** from an opened cache land in its spot, then the nearest empty cell
   within reach. With no room, they're lost (the log says so).
-- **Dismantle** returns what something cost to its cell. An enclosure comes apart a layer at
-  a time: its source, then its cache, then the enclosure itself. Refunds don't count as
+- **Dismantle** returns what something cost to its cell. An irradiator comes apart a layer at
+  a time: its source, then its cache, then the irradiator itself. Refunds don't count as
   gained for the tech tree.
 - **Conveyors deliver, they don't extend reach** (planned). Once gravity conveyors unlock, the
   radius stays the same; conveyors carry matter into a build site's reach automatically.
@@ -179,8 +179,8 @@ Other shapes that tile space, for the record:
   rendering only. Its test: a fresh player builds a solid three-layer cluster and a ten-cell
   line in each direction without misplacing.
 - **Logistics:** moving matter between cells takes time proportional to distance, so layout
-  becomes the puzzle. Keep the enclosure next to the injection point and the power source
-  next to the enclosure.
+  becomes the puzzle. Keep the irradiator next to the injection point and the power source
+  next to the irradiator.
 - **Multi-cell machines** (2x2 or 2x2x2 and so on), as the machines get more complex.
 - **Gravity as a field on the grid** ([COSMOLOGY.md](COSMOLOGY.md#gravity-on-the-grid)):
   every massive body (overdensity, dark matter halo, star, remnant) adds a softened 1/r
@@ -232,12 +232,12 @@ Cheat items (`LRGive`) don't count.
 | Feed the Horizon | when the host is down to 90% of its mass |
 | Build, Quantum Cache recipe | at nucleosynthesis |
 | Open, Dismantle | after building your first cache |
-| Carbon Irradiation Enclosure | after opening a cache |
-| Grow Lamp | after building a carbon enclosure |
+| Carbon Irradiator | after opening a cache |
+| Grow Lamp | after building a carbon irradiator |
 | Infrared Emitter | after 3 visible-light exposures |
 | Microwave Emitter | after 3 infrared exposures |
-| Iron Irradiation Enclosure | after 2 microwave exposures |
-| X-Ray Tube | after crafting an iron enclosure |
+| Iron Irradiator | after 2 microwave exposures |
+| X-Ray Tube | after crafting an iron irradiator |
 | Gamma Source | after your first X-ray |
 | Perturb retires | at recombination |
 
@@ -252,7 +252,9 @@ and requirements with OR.
 Irradiation is how loot boxes get better. Numbers are placeholder tuning in
 `Content/Data/items.json` and `radiation.json`.
 
-**Enclosures** are built in a cell. Each one has:
+**Irradiators** are built in a cell. (Ids and code still call them enclosures, e.g.
+`carbon_irradiation_enclosure` and `IsEnclosure()`.) They draw see-through (`opacity` 0.25 in
+`items.json`), so the cache and source inside are visible. Each one has:
 
 - a **chamber** (one loot box)
 - a **source slot** (one radiation source)
@@ -260,12 +262,12 @@ Irradiation is how loot boxes get better. Numbers are placeholder tuning in
 - a **max number of stacks** it can add to a box
 - an **exposure interval** in seconds
 
-| Enclosure | Max tier | Max stacks | Interval |
+| Irradiator | Max tier | Max stacks | Interval |
 |---|---|---|---|
 | Carbon (graphite-lined) | 4 (up to microwaves) | 3 | 10s |
 | Iron (steel-plated) | 7 (up to gamma) | 5 | 12s |
 
-**Sources** are built into an enclosure and emit one radiation type. Each radiation's `effect` in
+**Sources** are built into an irradiator and emit one radiation type. Each radiation's `effect` in
 `radiation.json` is the loot modifier one exposure adds:
 
 | Source | Radiation (tier) | Effect per stack | From the notes |
@@ -280,32 +282,32 @@ Irradiation is how loot boxes get better. Numbers are placeholder tuning in
 
 - A plain cache returns about 90% of its cost by value: a small gamble, not a farm. The
   tool values a unit of hydrogen at 1, helium 2, carbon 4 and iron 8, by rarity.
-- Each exposure stack adds roughly 15–25% value, so a full carbon enclosure is +40–60% and
-  a full iron enclosure roughly doubles a cache.
-- Enclosures are the scaling: many of them work in parallel, while Perturb is manual.
+- Each exposure stack adds roughly 15–25% value, so a full carbon irradiator is +40–60% and
+  a full iron irradiator roughly doubles a cache.
+- Irradiators are the scaling: many of them work in parallel, while Perturb is manual.
 
 **How it plays:**
 
-1. Build an enclosure in a cell, then, with that cell selected, build a cache and a source
+1. Build an irradiator in a cell, then, with that cell selected, build a cache and a source
    into it.
-2. While both are in, the enclosure adds one modifier stack per interval until the cache
-   reaches the enclosure's cap. The log reports each exposure.
+2. While both are in, the irradiator adds one modifier stack per interval until the cache
+   reaches the irradiator's cap. The log reports each exposure.
 3. X-rays are special. They add no stack; they roll the cache's (already modified) table
    right away and lock the result. The cache then shows exactly what's inside, and it can't
    be changed any further. Irradiate first, then inspect.
-4. **Open** the cache right there; its loot lands in the enclosure's cell. To change sources,
+4. **Open** the cache right there; its loot lands in the irradiator's cell. To change sources,
    **Dismantle** once (the source comes out first, refunded) and build the next one in.
-   Caches can't move between enclosures any more, so stacking different radiation on one
+   Caches can't move between irradiators any more, so stacking different radiation on one
    cache means swapping sources while it stays in the chamber.
 
 **Ideas for later:**
 
 - Sources that decay, or that need power: alpha / Pu-238 RTGs are the natural power source.
 - Ultraviolet (lithography → chips), radio, beta and neutron sources once there are items
-  for them. Graphite moderating neutrons in the carbon enclosure is a natural fit.
-- Gamma's downside: a chance to destroy contents, or to need shielding around the enclosure
+  for them. Graphite moderating neutrons in the carbon irradiator is a natural fit.
+- Gamma's downside: a chance to destroy contents, or to need shielding around the irradiator
   (lead or concrete blocks in neighbouring cells, which uses the 3D grid).
-- Enclosure upgrades, and multi-cell enclosures.
+- Irradiator upgrades, and multi-cell irradiators.
 
 ## Radiation catalogue (data in `Content/Data/radiation.json`)
 
@@ -345,7 +347,7 @@ Microwaves come fourth but carry little energy.
 
 - Should there be offline or idle progress? Real-time cooldowns were the Rails behaviour.
 - Does each loot box type get its own table (the `carbon_loot_box` and `iron_loot_box`
-  tables exist but are unused)? Maybe the enclosure material chooses the box type?
+  tables exist but are unused)? Maybe the irradiator material chooses the box type?
 - What is the goal or ending? [COSMOLOGY.md](COSMOLOGY.md#phase-3-stars-late-game) proposes
   two: reach today's universe (a complete periodic table, maybe a rocky planet), or dive
   into a stellar black hole made inside the pocket universe, which is the recursion.

@@ -622,6 +622,14 @@ bool FLRGameDataValidationTest::RunTest(const FString& Parameters)
 		}
 	}
 	TestTrue(TEXT("seeding something that isn't an overdensity reported"), PlacesMaterial.Validate().Num() > 0);
+
+	FLRGameData SeeThrough = Cosmos;
+	SeeThrough.Items.FindChecked(LRTest::Ripple).Opacity = 0.15f;
+	TestEqual(TEXT("a see-through item is valid"), SeeThrough.Validate().Num(), 0);
+	SeeThrough.Items.FindChecked(LRTest::Ripple).Opacity = 0.f;
+	TestTrue(TEXT("an invisible item reported"), SeeThrough.Validate().Num() > 0);
+	SeeThrough.Items.FindChecked(LRTest::Ripple).Opacity = 1.5f;
+	TestTrue(TEXT("opacity above 1 reported"), SeeThrough.Validate().Num() > 0);
 	return true;
 }
 

@@ -21,6 +21,15 @@ namespace LRUnlit
 	inline const TCHAR* const OpaqueMaterialPath = TEXT("/Engine/EngineMaterials/Widget3DPassThrough_Opaque");
 	inline const TCHAR* const TranslucentMaterialPath = TEXT("/Engine/EngineMaterials/Widget3DPassThrough_Translucent");
 
+	/**
+	 * The one-sided translucent variant (UWidgetComponent uses it for one-sided widgets). Only the
+	 * near side of a closed shape draws, so its opacity is exactly the tint's alpha instead of
+	 * doubling where the back faces show through. A package and object path for LoadObject;
+	 * check the package exists first and fall back to TranslucentMaterialPath.
+	 */
+	inline const TCHAR* const TranslucentOneSidedPackage = TEXT("/Engine/EngineMaterials/Widget3DPassThrough_Translucent_OneSided");
+	inline const TCHAR* const TranslucentOneSidedObject = TEXT("/Engine/EngineMaterials/Widget3DPassThrough_Translucent_OneSided.Widget3DPassThrough_Translucent_OneSided");
+
 	/** A transient 1x1 texture of one colour. */
 	UTexture2D* MakeSolidTexture(const FColor& Color);
 

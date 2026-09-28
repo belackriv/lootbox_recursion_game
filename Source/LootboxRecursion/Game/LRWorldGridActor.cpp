@@ -90,10 +90,12 @@ ALRWorldGridActor::ALRWorldGridActor()
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> SphereFinder(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MaterialFinder(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> UnlitFinder(LRUnlit::OpaqueMaterialPath);
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> TranslucentFinder(LRUnlit::TranslucentMaterialPath);
 	CubeMesh = CubeFinder.Object;
 	SphereMesh = SphereFinder.Object;
 	BaseMaterial = MaterialFinder.Object;
 	UnlitMaterial = UnlitFinder.Object;
+	TranslucentMaterial = TranslucentFinder.Object;
 }
 
 FVector ALRWorldGridActor::CellToLocal(const FIntVector& Cell) const
@@ -111,6 +113,14 @@ void ALRWorldGridActor::BeginPlay()
 	if (!BeamMaterialPath.IsNull() && FPackageName::DoesPackageExist(BeamMaterialPath.GetLongPackageName()))
 	{
 		BeamMaterial = Cast<UMaterialInterface>(BeamMaterialPath.TryLoad());
+	}
+	// Prefer the one-sided translucent material, so see-through shapes get exactly their opacity.
+	if (FPackageName::DoesPackageExist(LRUnlit::TranslucentOneSidedPackage))
+	{
+		if (UMaterialInterface* OneSided = LoadObject<UMaterialInterface>(nullptr, LRUnlit::TranslucentOneSidedObject))
+		{
+			TranslucentMaterial = OneSided;
+		}
 	}
 	for (int32 Step = 0; Step < BrightnessSteps; ++Step)
 	{
@@ -190,6 +200,27 @@ UStaticMeshComponent* ALRWorldGridActor::CreateMesh(UStaticMesh* Mesh, UMaterial
 	if (OutMaterial)
 	{
 		Component->SetMaterial(0, OutMaterial);
+	}
+	return Component;
+}
+
+UStaticMeshComponent* ALRWorldGridActor::CreateEntityMesh(UStaticMesh* Mesh, const FLinearColor& Color, float Opacity, bool bTraceable)
+{
+	UMaterialInstanceDynamic* Material = nullptr;
+	UStaticMeshComponent* Component = CreateMesh(Mesh, Material, bTraceable);
+	if (Opacity < 1.f && TranslucentMaterial)
+	{
+		// Unlit, so the tint's alpha is the opacity as given (0.25 = a quarter covered).
+		if (UMaterialInstanceDynamic* SeeThrough = LRUnlit::MakeMaterial(TranslucentMaterial, this, WhiteTexture, FLinearColor(Color.R, Color.G, Color.B, Opacity)))
+		{
+			Component->SetMaterial(0, SeeThrough);
+		}
+		Component->SetCastShadow(false);
+		LRUnlit::ExcludeFromLighting(Component);
+	}
+	else if (Material)
+	{
+		Material->SetVectorParameterValue(ColorParam, Color);
 	}
 	return Component;
 }
@@ -545,17 +576,15 @@ void ALRWorldGridActor::RebuildEntities()
 		{
 			Size = FVector(0.4f, 0.4f, 0.8f);
 		}
-		UMaterialInstanceDynamic* Material = nullptr;
-		UStaticMeshComponent* Mesh = CreateMesh(bOverdensity ? SphereMesh.Get() : CubeMesh.Get(), Material, /*bTraceable*/ true);
+		const FLinearColor Color = Def ? Def->GetLinearColor() : FLinearColor::Gray;
+		UStaticMeshComponent* Mesh = CreateEntityMesh(bOverdensity ? SphereMesh.Get() : CubeMesh.Get(), Color, Def ? Def->Opacity : 1.f, /*bTraceable*/ true);
 		Mesh->SetRelativeLocation(Floor + FVector(0.f, 0.f, 50.f * Size.Z * Scale));
 		Mesh->SetRelativeScale3D(Size * Scale);
-		if (Material)
-		{
-			Material->SetVectorParameterValue(ColorParam, Def ? Def->GetLinearColor() : FLinearColor::Gray);
-		}
 
-		// Irradiation enclosures: a small cube in the radiation's colour on top when a source is
-		// loaded, and chamber progress in the label. Overdensities show their amplitude.
+		// Irradiators (enclosures) are see-through, with their contents inside on the floor: the
+		// cache as a small prism a little off centre, and the source as a small cube in the radiation's
+		// colour in the opposite corner. The label shows chamber progress. Overdensities show
+		// their amplitude.
 		FString LabelText = Def ? Def->Abbrev : Entity.Item.ToString();
 		if (bOverdensity)
 		{
@@ -563,19 +592,23 @@ void ALRWorldGridActor::RebuildEntities()
 		}
 		if (Def && Def->IsEnclosure())
 		{
+			const auto AddInside = [&](const FLRItemDef* PartDef, const FLinearColor& PartColor, const FVector& Offset, const FVector& PartSize)
+			{
+				UStaticMeshComponent* Part = CreateEntityMesh(CubeMesh, PartColor, PartDef ? PartDef->Opacity : 1.f, /*bTraceable*/ false);
+				Part->SetRelativeLocation(Floor + (Offset + FVector(0.f, 0.f, 50.f * PartSize.Z)) * Scale);
+				Part->SetRelativeScale3D(PartSize * Scale);
+				EntityExtras.Add(Part);
+			};
+			if (!Entity.Chamber.IsEmpty())
+			{
+				const FLRItemDef* CacheDef = Simulation->GetData().FindItem(Entity.Chamber.Item);
+				AddInside(CacheDef, CacheDef ? CacheDef->GetLinearColor() : FLinearColor::Gray, FVector(6.f, 6.f, 0.f), FVector(0.26f, 0.26f, 0.5f));
+			}
 			const FLRItemDef* SourceDef = Entity.Source.IsEmpty() ? nullptr : Simulation->GetData().FindItem(Entity.Source.Item);
 			const FLRRadiationDef* Radiation = SourceDef ? Simulation->GetData().FindRadiation(SourceDef->Radiation) : nullptr;
 			if (SourceDef)
 			{
-				UMaterialInstanceDynamic* SourceMaterial = nullptr;
-				UStaticMeshComponent* SourceMesh = CreateMesh(CubeMesh, SourceMaterial, /*bTraceable*/ false);
-				SourceMesh->SetRelativeLocation(Floor + FVector(0.f, 0.f, 85.f * Scale));
-				SourceMesh->SetRelativeScale3D(FVector(0.2f * Scale));
-				if (SourceMaterial)
-				{
-					SourceMaterial->SetVectorParameterValue(ColorParam, Radiation ? Radiation->GetLinearColor() : SourceDef->GetLinearColor());
-				}
-				EntityExtras.Add(SourceMesh);
+				AddInside(SourceDef, Radiation ? Radiation->GetLinearColor() : SourceDef->GetLinearColor(), FVector(-19.f, -19.f, 0.f), FVector(0.18f));
 			}
 			if (const FLRLootBoxInstance* Box = Entity.Chamber.IsEmpty() ? nullptr : Simulation->FindLootBox(Entity.Chamber.InstanceId))
 			{

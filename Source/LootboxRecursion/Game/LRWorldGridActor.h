@@ -72,6 +72,8 @@ protected:
 
 private:
 	UStaticMeshComponent* CreateMesh(UStaticMesh* Mesh, UMaterialInstanceDynamic*& OutMaterial, bool bTraceable);
+	/** A cell entity's shape (or a part of one) in Color. Below Opacity 1 it draws see-through and unlit. */
+	UStaticMeshComponent* CreateEntityMesh(UStaticMesh* Mesh, const FLinearColor& Color, float Opacity, bool bTraceable);
 	UInstancedStaticMeshComponent* CreateBeamLayer(const FLinearColor& Tint);
 	FIntVector GetFocusCell() const;
 	void BuildTilePattern();
@@ -100,6 +102,10 @@ private:
 	/** Unlit (see LRUnlit): grid beams and cell outlines. */
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> UnlitMaterial;
+
+	/** Unlit translucent (one-sided if the engine has it): see-through entities, e.g. ripples and irradiators. */
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> TranslucentMaterial;
 
 	/** BeamMaterialPath, if that asset exists; used instead of UnlitMaterial for the beams. */
 	UPROPERTY()
@@ -132,7 +138,7 @@ private:
 	UPROPERTY()
 	TArray<TObjectPtr<UTextRenderComponent>> EntityLabels;
 
-	/** Decorations that aren't hover targets (e.g. the radiation source on an enclosure). */
+	/** Decorations that aren't hover targets (e.g. the cache and radiation source inside an irradiator). */
 	UPROPERTY()
 	TArray<TObjectPtr<UStaticMeshComponent>> EntityExtras;
 

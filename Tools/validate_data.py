@@ -82,6 +82,9 @@ def main() -> int:
             errors.append(f"{where}: lootbox items need a lootTable")
         if (item.get("category") in ("placeable", "source", "structure") or table) and stack != 1:
             errors.append(f"{where}: placeable, lootbox, source and structure items must have stackSize 1")
+        opacity = item.get("opacity", 1)
+        if not 0 < opacity <= 1:
+            errors.append(f"{where}: opacity must be above 0 and at most 1")
         amplitude = item.get("maxAmplitude", 0)
         if amplitude < 0 or (amplitude > 0 and (item.get("category") != "structure" or item.get("yieldSeconds", 10) <= 0)):
             errors.append(f"{where}: maxAmplitude is for structure items, and needs yieldSeconds > 0")

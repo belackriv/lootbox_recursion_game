@@ -24,11 +24,11 @@ rules are ported:
 - loot tables with modifiers
 - opening boxes, including boxes inside boxes
 - building in place on a layered hexagonal grid (no inventory: matter lives in the cells)
-- **new:** irradiating loot boxes in enclosures with radiation sources
+- **new:** irradiating loot boxes in irradiators with radiation sources
 - **new:** a data-driven tech tree: recipes and actions unlock as you play
 - **new:** cosmic epochs from inflation to recombination, and a host black hole that evaporates
 
-It also adds save/load, a 3D view of the grid, and carbon and iron irradiation enclosures.
+It also adds save/load, a 3D view of the grid, and carbon and iron irradiators.
 
 > **Status: first playable skeleton, not yet compiled.** The code was written without an
 > Unreal Engine install available. The simulation logic was compiled and its tests run
@@ -88,11 +88,11 @@ In the editor, press **Play** (Alt+P).
 |---|---|
 | Click a grid cell, then **Perturb** | Seed a ripple there, or deepen the one there. Ripples gather matter into their cell every 10s. |
 | Click **Feed the Horizon** | Restore the host black hole's mass. At zero, the pocket universe freezes until fed. |
-| Click a **Craft** recipe | Quantum Cache (hydrogen and helium), enclosures, radiation sources (as they unlock) |
-| Select a cell, then click a **Build** recipe | Build it there, paid from the matter within 2 cells. Caches and machines take the cell; a source goes into the enclosure there. |
-| Select a cache (or an enclosure holding one), then **Open** | Collapse it; the loot lands in that cell |
-| Select an enclosure, then build a cache and a source into it | Irradiate the cache. Each exposure adds a modifier; X-rays observe it (revealing and fixing the contents). Open it in place when done. |
-| Select an occupied cell, then **Dismantle** | Take it apart and get its cost back in the cell (an enclosure: source first, then cache). Ripples stay. |
+| Click a **Craft** recipe | Quantum Cache (hydrogen and helium), irradiators, radiation sources (as they unlock) |
+| Select a cell, then click a **Build** recipe | Build it there, paid from the matter within 2 cells. Caches and machines take the cell; a source goes into the irradiator there. |
+| Select a cache (or an irradiator holding one), then **Open** | Collapse it; the loot lands in that cell |
+| Select an irradiator, then build a cache and a source into it | Irradiate the cache. Each exposure adds a modifier; X-rays observe it (revealing and fixing the contents). Open it in place when done. |
+| Select an occupied cell, then **Dismantle** | Take it apart and get its cost back in the cell (an irradiator: source first, then cache). Ripples stay. |
 | Hold `W`/`A`/`S`/`D` or arrow keys | Pan across the grid |
 | Mouse wheel | Zoom |
 | Hold right mouse and drag | Free look: orbit and tilt (tilt up swings below the layer to look up at the sky) |

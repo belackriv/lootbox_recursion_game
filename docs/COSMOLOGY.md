@@ -74,8 +74,8 @@ get reordered:
 | Heavy | strontium, barium, lead | slow neutron capture in giant stars |
 | Heaviest | gold, platinum, uranium | rapid neutron capture in neutron star mergers |
 
-Early caches are compressed hydrogen and helium. The carbon and iron enclosures become
-mid-game unlocks, and the enclosure material still caps the radiation tier.
+Early caches are compressed hydrogen and helium. The carbon and iron irradiators become
+mid-game unlocks, and the irradiator material still caps the radiation tier.
 
 **Self-sustaining by the end of the phase.** A perturbation seeds an overdensity node on the
 grid that keeps accreting on its own (the resource nodes at coordinates already on the

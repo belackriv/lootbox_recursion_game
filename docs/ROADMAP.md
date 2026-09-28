@@ -17,7 +17,7 @@ and play.
       `FLRItemDef`, drawn in the HUD's lists instead of the abbreviations.
 - [ ] A loot box opening moment: a reveal panel listing what dropped, a Niagara burst on the
       box, and a sound. `OnActionCompleted` already carries `Gained`.
-- [ ] Real meshes for the enclosures in the world (a Blueprint subclass of
+- [ ] Real meshes for the irradiators in the world (a Blueprint subclass of
       `ALRWorldGridActor`, or per-item mesh paths in data).
 - [x] Hover highlight and selection on grid cells.
 - [x] Cosmic look: grey/amber HUD, a grid of glowing light beams in the void, starfield, and
@@ -37,11 +37,11 @@ and play.
 
 See [DESIGN.md](DESIGN.md#irradiation-implemented-v1).
 
-- [x] Enclosures hold a cache and a radiation source (now built into them in place).
-- [x] Five source items driven by `radiation.json` effects; enclosure material caps the tier.
+- [x] Irradiators hold a cache and a radiation source (now built into them in place).
+- [x] Five source items driven by `radiation.json` effects; irradiator material caps the tier.
 - [x] Exposure over simulation time adds modifiers; X-rays reveal and lock the contents.
 - [x] Modifiers and revealed contents in the loot box tooltip.
-- [ ] Tuning pass, and a visual effect while an enclosure is active (Niagara glow).
+- [ ] Tuning pass, and a visual effect while an irradiator is active (Niagara glow).
 
 ## M2.2: Tech tree
 
@@ -105,7 +105,7 @@ Matter moves into the pocket universe first (see *Matter lives in the pocket uni
 - [x] Cells hold matter: an amount per material next to the entity. Ripples deposit into
       their own cell, and the grid draws a gas disc per cell.
 - [x] Costs are paid from cells within `reachRadius` (data, in cells) of the build site.
-- [x] Caches, enclosures and sources become cell entities, built and dismantled in place.
+- [x] Caches, irradiators and sources become cell entities, built and dismantled in place.
 - [x] Remove the player inventory, Sort and Annihilate. Add a universe totals readout and a
       hovered-cell contents panel.
 - [ ] Sources irradiate caches within a radius, so irradiation becomes spatial (idea).

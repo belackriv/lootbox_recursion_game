@@ -101,19 +101,23 @@ struct LOOTBOXRECURSION_API FLRItemDef
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FString Color;
 
-	/** Radiation sources: which radiation (radiation.json id) this item emits. Sources are built into an enclosure. */
+	/** How solid the item draws in the world, 0 (invisible) to 1 (opaque). Below 1 it draws see-through, so irradiators show their contents. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float Opacity = 1.f;
+
+	/** Radiation sources: which radiation (radiation.json id) this item emits. Sources are built into an irradiator (an enclosure). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FName Radiation;
 
-	/** Irradiation enclosures: highest radiation tier the enclosure can contain. */
+	/** Irradiators (enclosures): highest radiation tier the enclosure can contain. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	int32 MaxRadiationTier = 0;
 
-	/** Irradiation enclosures: most modifier stacks a loot box can pick up inside it. 0 = not an enclosure. */
+	/** Irradiators (enclosures): most modifier stacks a loot box can pick up inside it. 0 = not an enclosure. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	int32 MaxExposureStacks = 0;
 
-	/** Irradiation enclosures: seconds of exposure per modifier stack. */
+	/** Irradiators (enclosures): seconds of exposure per modifier stack. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	float ExposureSeconds = 10.f;
 

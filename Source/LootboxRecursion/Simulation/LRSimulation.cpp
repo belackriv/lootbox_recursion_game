@@ -44,10 +44,10 @@ FString FLRSimulation::DescribeReason(FName Reason)
 	if (Reason == ReasonNoCell) { return TEXT("select a grid cell first"); }
 	if (Reason == ReasonOccupied) { return TEXT("that cell is occupied"); }
 	if (Reason == ReasonNothingPlaced) { return TEXT("there's nothing to dismantle in that cell"); }
-	if (Reason == ReasonNeedsEnclosure) { return TEXT("sources are built into an irradiation enclosure"); }
-	if (Reason == ReasonChamberFull) { return TEXT("the enclosure already holds a cache"); }
-	if (Reason == ReasonSourceFull) { return TEXT("the enclosure already holds a source"); }
-	if (Reason == ReasonTooStrong) { return TEXT("this enclosure can't contain radiation that strong"); }
+	if (Reason == ReasonNeedsEnclosure) { return TEXT("sources are built into an irradiator"); }
+	if (Reason == ReasonChamberFull) { return TEXT("the irradiator already holds a cache"); }
+	if (Reason == ReasonSourceFull) { return TEXT("the irradiator already holds a source"); }
+	if (Reason == ReasonTooStrong) { return TEXT("this irradiator can't contain radiation that strong"); }
 	if (Reason == ReasonCantDismantle) { return TEXT("that is part of the pocket universe now"); }
 	if (Reason == ReasonRippleAtMax) { return TEXT("that ripple can't get any deeper"); }
 	if (Reason == ReasonHorizonWeak) { return TEXT("the horizon is too weak, feed it first"); }
