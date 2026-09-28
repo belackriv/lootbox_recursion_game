@@ -175,13 +175,16 @@ can be the only ones that contribute to the *displayed* field and to the well bo
 below. The restricted three-body problem (two masses plus massless test particles) is well
 understood, and it's what "the top two masses control gravity" is.
 
-**Matter drifts, it doesn't orbit.** Loose matter moves at a speed proportional to the pull
+**Gas drifts, bodies orbit.** Loose matter moves at a speed proportional to the pull
 (overdamped, or "Aristotelian" gravity): each tick it steps to the neighbouring cell best
-aligned with the downhill direction, with probability proportional to the slope. Nothing has
-velocity, so nothing orbits, and that is what makes the many-body case safe: three-body
-chaos comes from orbital dynamics, not from the potential. Gradient descent on a potential
-with N wells just sorts everything into N basins. The top-two rule is a readability choice
-rather than a stability requirement, and can be relaxed later.
+aligned with the downhill direction, with probability proportional to the slope. Gas has no
+velocity, so it never orbits, and that is what makes the many-body case safe for gas:
+three-body chaos comes from orbital dynamics, not from the potential. Gradient descent on a
+potential with N wells just sorts everything into N basins.
+
+Massive bodies are different: a bound pair of them orbits for real. Two bodies are the one
+case Newton solved in closed form, so a binary's positions at any time come from Kepler's
+laws with no integration and no drift. See *Binaries*.
 
 **Wells have borders.** In the two-body field the boundary between basins is the L1 saddle
 point, and each body's basin is its Roche lobe. Hydrogen injected inside a star's Roche lobe
@@ -198,7 +201,8 @@ mechanism. Massive bodies (stars, remnants, halos) don't drift: they are the wel
 is what falls. See *Binaries* for the one case where bodies do move.
 
 **Which two bodies.** The two most massive bodies shape the displayed field and define the
-well borders. When masses tie, the body created earlier wins, which keeps the grid from
+well borders. When they are bound, they are the binary and the whole figure-eight rotates
+with them. When masses tie, the body created earlier wins, which keeps the grid from
 flickering when a growing star overtakes an older one only briefly.
 
 **Rendering the bend.** Stage it:
@@ -225,24 +229,54 @@ the two-body field is the game's excuse to make them. Binaries form when a colla
 fragments rather than making one star, so a gravity well fed past a threshold can split into
 two stars instead of one bigger one: over-feed the cloud and you get a pair.
 
-In the drift-only model nothing orbits, so a binary is a *relationship* between two bodies
-rather than motion: two stars whose Roche lobes touch are bound, the grid warps into the
-figure-eight around them, and the pair becomes the top-two system. Its separation is the
-cell distance between them. What a binary does:
+**Orbits come for free.** Two bodies orbit their common centre of mass on ellipses, and
+their positions at any time are a closed-form function of six numbers: the two masses, the
+semi-major axis, the eccentricity, the orientation and the phase. Nothing is integrated, so
+nothing drifts or blows up, and the pair is exactly as stable after a billion years as on
+day one. The sim keeps a `Binary` record (members, masses, axis, eccentricity, phase) whose
+barycentre is anchored to a grid cell. Each tick it advances the phase and places each body
+at its Kepler position, on the far side of the barycentre from its partner, with the lighter
+body on the wider circle. Whichever cell a body sits in right now is the cell that absorbs
+gas. Version 1 uses circular orbits (an angle that advances at a constant rate, no Kepler
+equation to solve); eccentric orbits are a Newton solve of Kepler's equation and can come
+later for the visual variety.
+
+Orbital periods are for show. Real periods run from hours to centuries, and the cosmic clock
+runs on a log scale, so tune the on-screen period for readability (seconds to tens of
+seconds) and let Kepler's third law set the ratios: a tighter orbit is a faster one, and
+that ratio is what sells the inspiral below.
+
+**The pair claims a region.** The ellipse the orbits sweep is an exclusion zone on the grid,
+like a multi-cell machine: nothing can be deployed inside it, and anything already there is
+destroyed or thrown clear when the pair forms. The bent grid rotates with the pair, so the
+Roche lobes, the L1 saddle between them and the L4/L5 points sixty degrees ahead of and
+behind each body are visible as the field turns. Gas drifting in the field of a rotating pair
+naturally leaks through L1 from the fuller lobe to the emptier one, which is Roche lobe
+overflow, and piles up around L4 and L5, which is where Trojans live.
+
+**What a binary does:**
 
 - **Mass transfer.** When one star swells into a giant it overflows its Roche lobe, and gas
-  streams along the grid to the companion, raising its class. This is the Algol paradox
-  (the less massive star of a pair being the more evolved one) and it's how the player gets
-  to move mass between stars without touching it.
+  streams through L1 to the companion, raising its class. This is the Algol paradox (the
+  less massive star of a pair being the more evolved one) and it's how the player moves mass
+  between stars without touching it.
 - **Type Ia.** A white dwarf with a giant companion accretes past the Chandrasekhar limit and
   detonates, making iron. Two white dwarfs merging does the same.
-- **Inspiral and merger.** A binary's separation shrinks over time: quickly when a giant's
-  envelope engulfs the companion (a common envelope drags them together), and slowly for
-  compact remnants, which lose orbital energy to gravitational waves. Time to merge by
-  gravitational waves scales as separation to the fourth power over the product of the
-  masses, so only close, heavy pairs merge on game timescales. On the grid, the lighter body
-  steps towards the heavier one as the separation shrinks, then they merge into one body in
-  the heavier one's cell with the combined mass, minus some ejected as gas.
+- **Hardening.** The semi-major axis shrinks over time, and by Kepler's third law the orbit
+  speeds up as it does, which is the chirp. Three things harden a binary, and all three are
+  real:
+  - *Gas drag.* A binary embedded in gas loses orbital energy to it. Dumping hydrogen on the
+    pair is how the player pushes it towards a merger, which is the most useful lever.
+  - *Common envelope.* A giant's envelope engulfs the companion and drags it in fast.
+  - *Gravitational waves.* Compact remnants lose orbital energy to gravitational radiation.
+    Peters (1964): the axis shrinks at a rate proportional to the product of the masses
+    times their sum, divided by the axis cubed, so the last stretch is a runaway. Time to
+    merge scales as axis to the fourth power over the mass product, which is why only
+    close, heavy pairs merge on their own.
+- **Merger.** Inspiral, merger, ringdown. The two bodies become one at the barycentre with
+  the combined mass, less what was radiated (the first black hole merger seen by LIGO,
+  GW150914, turned three solar masses out of sixty-five into gravitational waves). An
+  optional recoil kick can throw the remnant a few cells, which is real for black holes.
 
 Merger products by type:
 
@@ -259,9 +293,18 @@ catalogue in [DESIGN.md](DESIGN.md), which had no source until now. A compact bi
 inspiralling is a gravitational wave emitter for as long as it lasts, and the merger is a
 burst. What that radiation does to a cache is open; it's the exotic top tier.
 
+**A third body.** Real triples survive only when hierarchical: a tight inner pair and a third
+body orbiting the pair's barycentre from well outside, at roughly four or more times the
+inner axis (Alpha Centauri A and B with Proxima far out is the local example). That is
+two-body all the way down: the inner pair is one point mass as far as the outer orbit is
+concerned, so the sim's `Binary` record can nest. A third body that gets closer than that
+is resolved the way nature resolves it, without simulating the chaos: the lightest of the
+three is flung out to a far cell (or out of the universe) and the surviving pair is left
+tighter. So three-body encounters are an ejection rule, not a physics problem.
+
 Player control comes from placement and feeding. Where hydrogen lands decides which star
-grows, feeding a well past the fragmentation threshold makes a pair, and a dark matter
-scaffold or a third well placed between two stars can pull them close enough to merge.
+grows, feeding a well past the fragmentation threshold makes a pair, dumping gas on a pair
+hardens it, and a third star placed too close ejects the lightest of the three.
 
 ## Pressure mechanics
 
@@ -307,6 +350,11 @@ and the HUD shows the current epoch by name.
   anchor and the sim lays them out?
 - Does a fragmentation threshold on wells make binaries too easy or too random? A visible
   "this cloud will fragment above N" hint on the well keeps it a choice rather than a roll.
+- How many binaries at once? Version 1 is one (the top-two pair); the rest are static
+  wells. Several independent pairs, each dominating its own neighbourhood, is the next step,
+  and nested pairs after that.
+- Do the sweeping bodies destroy machines, or does the exclusion zone simply refuse
+  deployment? Destroying is more dramatic and matches a supernova's blast.
 - Do caches stay the loot mechanic throughout, or does the late game roll supernova yields
   through the same loot table system? (Probably yes: a supernova is a very large cache.)
 
@@ -317,6 +365,8 @@ and the HUD shows the current epoch by name.
   *Hawking radiation*, *Cosmological natural selection*, *Algol paradox*, *Common envelope*,
   *Blue straggler*, *GW170817* (the neutron star merger seen in gravitational waves and
   light, which confirmed where gold comes from).
+- P. C. Peters, "Gravitational radiation and the motion of two point masses" (1964), for the
+  inspiral rates.
 - N. Popławski, "Radial motion into an Einstein–Rosen bridge" (2010) and "Cosmology with
   torsion" (2010).
 - E. Farhi and A. Guth, "An obstacle to creating a universe in the laboratory" (1987);
