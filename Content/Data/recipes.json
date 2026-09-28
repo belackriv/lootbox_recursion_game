@@ -77,10 +77,10 @@
 			]
 		},
 		{
-			"id": "grow_lamp",
-			"label": "Grow Lamp",
-			"tooltip": "A broad-spectrum lamp. Visible light drives photosynthesis: caches yield more carbon.",
-			"output": "grow_lamp",
+			"id": "optical_emitter",
+			"label": "Optical Emitter",
+			"tooltip": "Bathes a cache in visible light, which favours carbon: caches yield more carbon.",
+			"output": "optical_emitter",
 			"outputCount": 1,
 			"cost": [
 				{
@@ -152,10 +152,10 @@
 			]
 		},
 		{
-			"id": "xray_tube",
-			"label": "X-Ray Tube",
+			"id": "xray_emitter",
+			"label": "X-Ray Emitter",
 			"tooltip": "Observation: collapses a cache early. Its contents are revealed and fixed, and nothing changes it after that.",
-			"output": "xray_tube",
+			"output": "xray_emitter",
 			"outputCount": 1,
 			"cost": [
 				{
@@ -177,10 +177,10 @@
 			]
 		},
 		{
-			"id": "gamma_source",
-			"label": "Gamma Source",
+			"id": "gamma_emitter",
+			"label": "Gamma Emitter",
 			"tooltip": "Mutation: caches may collapse into more caches. Needs a corona irradiator.",
-			"output": "gamma_source",
+			"output": "gamma_emitter",
 			"outputCount": 1,
 			"cost": [
 				{

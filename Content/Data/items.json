@@ -86,10 +86,10 @@
 			"exposureSeconds": 12
 		},
 		{
-			"id": "grow_lamp",
-			"displayName": "Grow Lamp",
-			"abbrev": "GL",
-			"tooltip": "A broad-spectrum lamp. Visible light drives photosynthesis: caches yield more carbon. Built into an irradiator.",
+			"id": "optical_emitter",
+			"displayName": "Optical Emitter",
+			"abbrev": "OP",
+			"tooltip": "Bathes a cache in visible light, which favours carbon: caches yield more carbon. Built into an irradiator.",
 			"category": "source",
 			"stackSize": 1,
 			"radiation": "visible_light",
@@ -116,8 +116,8 @@
 			"color": "#4FC3A1"
 		},
 		{
-			"id": "xray_tube",
-			"displayName": "X-Ray Tube",
+			"id": "xray_emitter",
+			"displayName": "X-Ray Emitter",
 			"abbrev": "XR",
 			"tooltip": "Observation: collapses a cache early. Its contents are revealed and fixed, and nothing changes it after that. Built into an irradiator.",
 			"category": "source",
@@ -126,9 +126,9 @@
 			"color": "#7FD4FF"
 		},
 		{
-			"id": "gamma_source",
-			"displayName": "Gamma Source",
-			"abbrev": "GS",
+			"id": "gamma_emitter",
+			"displayName": "Gamma Emitter",
+			"abbrev": "GR",
 			"tooltip": "Mutation: caches may collapse into more caches. Built into a corona irradiator.",
 			"category": "source",
 			"stackSize": 1,

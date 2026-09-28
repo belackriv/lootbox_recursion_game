@@ -23,10 +23,10 @@
 class LOOTBOXRECURSION_API FLRSimulation
 {
 public:
-	/** 2: 3D grid, wood -> carbon. 3: irradiator contents. 4: unlocks + stats. 5: epochs, host, primordial materials. 6: matter in cells, no inventory. 7: irradiator ids renamed (nebula, corona). */
-	static constexpr int32 SaveVersion = 7;
-	/** Oldest save that still loads (newer fields just start empty). 7 renamed the irradiator ids, so older saves start fresh. */
-	static constexpr int32 MinCompatibleSaveVersion = 7;
+	/** 2: 3D grid, wood -> carbon. 3: irradiator contents. 4: unlocks + stats. 5: epochs, host, primordial materials. 6: matter in cells, no inventory. 7: irradiator ids renamed (nebula, corona). 8: source ids renamed (emitters). */
+	static constexpr int32 SaveVersion = 8;
+	/** Oldest save that still loads (newer fields just start empty). 8 renamed the source ids, so older saves start fresh. */
+	static constexpr int32 MinCompatibleSaveVersion = 8;
 	/** Simulation seconds the sky takes to fade to a new epoch's plasma opacity. */
 	static constexpr double PlasmaFadeSeconds = 6.0;
 

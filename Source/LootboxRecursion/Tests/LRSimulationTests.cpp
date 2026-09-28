@@ -24,8 +24,8 @@ namespace LRTest
 	const FName DoubleBox(TEXT("double_box"));
 	const FName Irradiator(TEXT("irradiator"));
 	const FName Lamp(TEXT("lamp"));
-	const FName XRayTube(TEXT("xray_tube"));
-	const FName GammaSource(TEXT("gamma_source"));
+	const FName XRayEmitter(TEXT("xray_emitter"));
+	const FName GammaEmitter(TEXT("gamma_emitter"));
 	/** A plain loot action: any action with a lootTable rolls it into the selected cell. */
 	const FName Gather(TEXT("gather"));
 
@@ -111,10 +111,10 @@ namespace LRTest
 		AddRadiation(TEXT("gamma"), 7, LRNames::ModifierAddEntry, Box, 10.f);
 		AddItemDef(Data, Lamp, TEXT("Lamp"), LRNames::CategorySource, 1);
 		Data.Items[Lamp].Radiation = TEXT("light");
-		AddItemDef(Data, XRayTube, TEXT("X-Ray Tube"), LRNames::CategorySource, 1);
-		Data.Items[XRayTube].Radiation = TEXT("xray");
-		AddItemDef(Data, GammaSource, TEXT("Gamma Source"), LRNames::CategorySource, 1);
-		Data.Items[GammaSource].Radiation = TEXT("gamma");
+		AddItemDef(Data, XRayEmitter, TEXT("X-Ray Emitter"), LRNames::CategorySource, 1);
+		Data.Items[XRayEmitter].Radiation = TEXT("xray");
+		AddItemDef(Data, GammaEmitter, TEXT("Gamma Emitter"), LRNames::CategorySource, 1);
+		Data.Items[GammaEmitter].Radiation = TEXT("gamma");
 
 		AddTable(Data, TEXT("box"), 2, Carbon, 10);       // always 2 x 10 carbon
 		AddTable(Data, TEXT("gather"), 1, Carbon, 30);    // always 30 carbon
@@ -126,8 +126,8 @@ namespace LRTest
 		AddRecipe(Data, DoubleBox, DoubleBox, { FLRItemAmount(Carbon, 1) });
 		AddRecipe(Data, Irradiator, Irradiator, { FLRItemAmount(Carbon, 10) });
 		AddRecipe(Data, Lamp, Lamp, { FLRItemAmount(Carbon, 5) });
-		AddRecipe(Data, XRayTube, XRayTube, { FLRItemAmount(Carbon, 1) });
-		AddRecipe(Data, GammaSource, GammaSource, { FLRItemAmount(Carbon, 1) });
+		AddRecipe(Data, XRayEmitter, XRayEmitter, { FLRItemAmount(Carbon, 1) });
+		AddRecipe(Data, GammaEmitter, GammaEmitter, { FLRItemAmount(Carbon, 1) });
 
 		Data.Actions.Add(MakeAction(Gather, 5.f, 5.f, TEXT("gather")));
 		Data.Actions.Add(MakeAction(LRNames::Craft, 0.f, 0.f));
@@ -666,7 +666,7 @@ bool FLRSimIrradiateRulesTest::RunTest(const FString& Parameters)
 	LRTest::BuildIrradiator(Sim, Cell);
 
 	Sim.GiveMatter(Cell, LRTest::Carbon, 1);
-	const FLRActionResult TooStrong = LRTest::Build(Sim, LRTest::GammaSource, Cell);
+	const FLRActionResult TooStrong = LRTest::Build(Sim, LRTest::GammaEmitter, Cell);
 	TestFalse(TEXT("gamma is too strong for a tier-5 irradiator"), TooStrong.bSuccess);
 	TestTrue(TEXT("reason"), TooStrong.Reason == FName(TEXT("radiation_too_strong")));
 
@@ -690,7 +690,7 @@ bool FLRSimXRayTest::RunTest(const FString& Parameters)
 	const FIntVector Cell(0, 0, 0);
 	LRTest::BuildIrradiator(Sim, Cell);
 	LRTest::BuildInto(Sim, LRTest::Box, Cell);
-	LRTest::BuildInto(Sim, LRTest::XRayTube, Cell);
+	LRTest::BuildInto(Sim, LRTest::XRayEmitter, Cell);
 	const int32 BoxId = LRTest::CacheIdAt(Sim, Cell);
 
 	Sim.Advance(10.0);
@@ -904,7 +904,7 @@ bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("open it"), Act(LRTest::AtCell(LRNames::Use, CacheSite)));
 
 	TestTrue(TEXT("nebula irradiator"), Craft(TEXT("nebula_irradiator"), CarbonCell));
-	TestTrue(TEXT("grow lamp into it"), Craft(TEXT("grow_lamp"), CarbonCell));
+	TestTrue(TEXT("optical emitter into it"), Craft(TEXT("optical_emitter"), CarbonCell));
 	TestTrue(TEXT("visible light run"), Irradiate(CarbonCell, 35.0));
 	// Swap sources: dismantling takes the source out first (and refunds it).
 	TestTrue(TEXT("take the lamp out"), Act(LRTest::AtCell(LRNames::Dismantle, CarbonCell)));
@@ -915,10 +915,10 @@ bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("microwave run"), Irradiate(CarbonCell, 25.0));
 
 	TestTrue(TEXT("corona irradiator"), Craft(TEXT("corona_irradiator"), IronCell));
-	TestTrue(TEXT("x-ray tube into it"), Craft(TEXT("xray_tube"), IronCell));
+	TestTrue(TEXT("x-ray emitter into it"), Craft(TEXT("xray_emitter"), IronCell));
 	TestTrue(TEXT("x-ray run"), Irradiate(IronCell, 13.0));
 	TestTrue(TEXT("take the tube out"), Act(LRTest::AtCell(LRNames::Dismantle, IronCell)));
-	TestTrue(TEXT("gamma source"), Craft(TEXT("gamma_source"), IronCell));
+	TestTrue(TEXT("gamma emitter"), Craft(TEXT("gamma_emitter"), IronCell));
 
 	// Three ripples and three opened caches: recombination, and the ripples grow on their own.
 	TestTrue(TEXT("recombination"), EpochIs(TEXT("recombination")));

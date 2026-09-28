@@ -210,7 +210,7 @@ Requirement checks:
 | `matter` | matter in the whole pocket universe (by `item` or `category`) | `{"check":"matter","item":"carbon","condition":"gte","value":100}` |
 | `placed` | entities in the grid (by `item` or `category`) | `{"check":"placed","category":"lootbox","condition":"gt","value":0}` |
 | `stat` | lifetime counters the game records | `{"check":"stat","id":"exposed:x_rays","condition":"gte","value":1}` |
-| `unlocked` | 1 if another recipe/action is unlocked | `{"check":"unlocked","id":"recipe:grow_lamp","condition":"eq","value":1}` |
+| `unlocked` | 1 if another recipe/action is unlocked | `{"check":"unlocked","id":"recipe:optical_emitter","condition":"eq","value":1}` |
 | `epoch` | 1 once an epoch has been reached | `{"check":"epoch","id":"nucleosynthesis","condition":"eq","value":1}` |
 | `host` | the host black hole's mass, in whole percent | `{"check":"host","condition":"lte","value":90}` |
 
@@ -233,12 +233,12 @@ Cheat items (`LRGive`) don't count.
 | Build, Quantum Cache recipe | at nucleosynthesis |
 | Open, Dismantle | after building your first cache |
 | Nebula Irradiator | after opening a cache |
-| Grow Lamp | after building a nebula irradiator |
+| Optical Emitter | after building a nebula irradiator |
 | Infrared Emitter | after 3 visible-light exposures |
 | Microwave Emitter | after 3 infrared exposures |
 | Corona Irradiator | after 2 microwave exposures |
-| X-Ray Tube | after crafting a corona irradiator |
-| Gamma Source | after your first X-ray |
+| X-Ray Emitter | after crafting a corona irradiator |
+| Gamma Emitter | after your first X-ray |
 | Perturb retires | at recombination |
 
 The `TechTree.ShippedTreeIsPlayable` automation test plays this tree and the epochs from a
@@ -273,11 +273,11 @@ future tier above could be the **Magnetar Irradiator** (gamma bursts). They draw
 
 | Source | Radiation (tier) | Effect per stack | From the notes |
 |---|---|---|---|
-| Grow Lamp | Visible light (1) | Carbon amounts ×1.35 | photosynthesis |
+| Optical Emitter | Visible light (1) | Carbon amounts ×1.35 | photosynthesis |
 | Infrared Emitter | Infrared (2) | +1 roll | heating, curing |
 | Microwave Emitter | Microwaves (4) | Iron amounts ×1.8 | ore extraction |
-| X-Ray Tube | X-rays (5) | Reveals the contents and **locks** them | inspection |
-| Gamma Source | Gamma (7) | Box may contain Loot Boxes (+15 weight per stack) | mutation |
+| X-Ray Emitter | X-rays (5) | Reveals the contents and **locks** them | inspection |
+| Gamma Emitter | Gamma (7) | Box may contain Loot Boxes (+15 weight per stack) | mutation |
 
 **Balance target** (check with `python Tools/balance.py`):
 
