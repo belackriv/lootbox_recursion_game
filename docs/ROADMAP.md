@@ -66,7 +66,61 @@ See [DESIGN.md](DESIGN.md#irradiation-implemented-v1).
 
 - [ ] More materials and the radiation tier ladder.
 - [ ] Carbon and iron loot box variants (their tables already exist).
-- [ ] A goal and ending.
+- [ ] A goal and ending (candidates in [COSMOLOGY.md](COSMOLOGY.md): today's universe, or
+      diving into a black hole made inside the pocket universe).
+
+## M6: Genesis (early game as the Big Bang)
+
+See [COSMOLOGY.md](COSMOLOGY.md) for the physics behind each item.
+
+- [ ] Cosmic clock: an epoch counter on a log scale, shown in the HUD by epoch name, with an
+      `epoch` check for `revealRequirements`, tested like the other checks.
+- [ ] Reorder the materials: hydrogen and helium first, carbon and iron as mid-game
+      unlocks. Update `items.json`, `recipes.json`, `loot_tables.json`, `Tools/balance.py`
+      and the tech tree playthrough test together.
+- [ ] Perturb replaces Inject Matter: a quantum perturbation seeds an overdensity node at a
+      grid cell. Nodes keep growing on their own, so Perturb retires by the end of the phase.
+- [ ] Recombination as the phase boundary: the world starts as an opaque glowing plasma and
+      clears when the epoch is reached. This is the reveal of the god view.
+- [ ] Hawking evaporation on the host black hole as a slow, accelerating mass drain that the
+      operator has to feed. Decide whether the player can lose (a pause until fed is kinder).
+
+## M7: Structure (mid game as the cosmic web)
+
+- [ ] Gas as a per-cell quantity next to the entity: hydrogen density that drifts downhill
+      and diffuses. Injecting hydrogen fills the target cell.
+- [ ] Gravity field: softened 1/r potential from every massive body, sampled on the grid.
+      The top-two bodies (earlier-created wins ties) shape the displayed field and define the
+      Roche lobe borders.
+- [ ] Dark matter placement as the gravity-altering power, budgeted about five to one
+      against ordinary matter. Filaments are the conveyors, halos the hubs.
+- [ ] Expansion: lattice spacing grows with cosmic time except inside bound regions, so
+      unbound logistics stretch. Dark energy makes it accelerate late in the phase.
+- [ ] Bent grid, stage 1: displace the drawn grid vertices by a clamped copy of the field
+      (under half a cell) while cell positions stay put for gameplay and picking.
+- [ ] Bent grid, stage 2 (if stage 1 earns it): field lines and equipotentials as the grid
+      near a well, then transport time measured in the warped space.
+
+## M8: Stars (late game as today's universe)
+
+- [ ] Gravity wells as Jeans collapse triggers; a well fed past a threshold becomes a star,
+      and fed past a higher, visible threshold fragments into a binary.
+- [ ] Stars as machines: mass sets spectral class, lifetime, products and remnant (tables in
+      COSMOLOGY.md). Absorbing gas raises the class up to the Eddington cap. Metallicity
+      of the gas decides whether small, long-lived stars are possible.
+- [ ] Supernova yields rolled through the loot table system (a supernova is a very large
+      cache), plus a blast that disperses gas and wrecks nearby structures.
+- [ ] Binaries: a `Binary` record (members, masses, axis, eccentricity, phase) anchored to a
+      barycentre cell, placing both bodies on Kepler orbits each tick. Circular first,
+      eccentric later. The swept ellipse is an exclusion zone; the bent grid rotates with
+      the pair. Test the Kepler placement in `LRSimulationTests.cpp`.
+- [ ] Binary interactions: Roche lobe overflow through L1, Type Ia from a white dwarf and a
+      companion, hardening by gas drag, common envelope and gravitational waves (Peters
+      1964), then inspiral, merger and ringdown with the merger-product table.
+- [ ] Triples: nested `Binary` records for hierarchical systems; a third body too close
+      ejects the lightest of the three and tightens the survivors.
+- [ ] Gravitational radiation as a radiation tier with binaries as its source.
+- [ ] Recursion ending: a stellar black hole inside the pocket universe as a new game plus.
 
 ## M5: Ship it
 

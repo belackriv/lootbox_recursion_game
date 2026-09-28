@@ -62,6 +62,17 @@ Irradiation enclosures create them (see below).
   becomes the puzzle. Keep the enclosure next to the injection point and the power source
   next to the enclosure. Vertical stacking could be a way to keep distances short.
 - **Multi-cell machines** (2x2x2 and so on), as the machines get more complex.
+- **Gravity as a field on the grid** ([COSMOLOGY.md](COSMOLOGY.md#gravity-on-the-grid)):
+  every massive body (overdensity, dark matter halo, star, remnant) adds a softened 1/r
+  potential. Loose gas is a per-cell quantity that drifts downhill each tick; bodies don't
+  drift. The two most massive bodies (earlier-created wins ties) shape the displayed field
+  and its Roche lobe borders. Rendering is staged: a clamped visual warp of the lattice
+  first, field lines and equipotentials as the grid near a well second, and transport time
+  measured in the warped space last.
+- **Binaries** ([COSMOLOGY.md](COSMOLOGY.md#binaries)): a bound pair orbits its barycentre
+  on closed-form Kepler ellipses (no integration), sweeps an exclusion zone, and hardens
+  through gas drag, common envelopes or gravitational waves until it merges. Triples are
+  hierarchical or resolved by ejecting the lightest body.
 
 ## Tech tree (implemented)
 
@@ -198,7 +209,8 @@ Irradiation is how loot boxes get better. Numbers are placeholder tuning in
   transmission medium, which could matter on the grid, where adjacent filled cells are
   the medium.
 - **Gravitational radiation:** gravitational waves, ripples in spacetime. It's a late-game
-  or exotic tier.
+  or exotic tier. Its source is a compact binary inspiralling (a steady emitter) and its
+  merger (a burst); see *Binaries* in [COSMOLOGY.md](COSMOLOGY.md#binaries).
 
 Tier (the order you unlock it) and energy (how strong it is) are separate on purpose.
 Microwaves come fourth but carry little energy.
@@ -208,8 +220,14 @@ Microwaves come fourth but carry little energy.
 - Should there be offline or idle progress? Real-time cooldowns were the Rails behaviour.
 - Does each loot box type get its own table (the `carbon_loot_box` and `iron_loot_box`
   tables exist but are unused)? Maybe the enclosure material chooses the box type?
-- What is the goal or ending? A tech ladder up the radiation tiers is one candidate.
+- What is the goal or ending? [COSMOLOGY.md](COSMOLOGY.md#phase-3-stars-late-game) proposes
+  two: reach today's universe (a complete periodic table, maybe a rocky planet), or dive
+  into a stellar black hole made inside the pocket universe, which is the recursion.
 - Does anything occupy grid cells from the start (resource nodes, "anomalies" in the pocket
-  universe) so that position matters before logistics arrive?
+  universe) so that position matters before logistics arrive? The perturbation plan answers
+  this: perturbations seed overdensity nodes at coordinates that keep growing on their own.
 - Where does injected matter appear: at a fixed "injection point" cell, or straight in your
-  inventory, as now?
+  inventory, as now? With gas as a cell quantity, injected hydrogen fills the target cell and
+  drifts from there; primordial materials from Perturb may still land in the inventory.
+- How is the game paced across 13.8 billion years? A cosmic clock on a log scale, with epoch
+  checks in the tech tree, is the proposal in COSMOLOGY.md.
