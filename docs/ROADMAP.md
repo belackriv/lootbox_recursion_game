@@ -94,8 +94,21 @@ See [COSMOLOGY.md](COSMOLOGY.md) for the physics behind each item.
 
 ## M7: Structure (mid game as the cosmic web)
 
-- [ ] Gas as a per-cell quantity next to the entity: hydrogen density that drifts downhill
-      and diffuses. Injecting hydrogen fills the target cell.
+Matter moves into the pocket universe first (see *Matter lives in the pocket universe* in
+[DESIGN.md](DESIGN.md)), then gravity moves it around.
+
+- [ ] Grid geometry behind one plain C++ type (neighbours, distance, cells within a radius,
+      world position), and pick the cell shape: cubes, or hexagons (see *Cell shape*).
+- [ ] Cells hold matter: an amount per material next to the entity. Ripples deposit into
+      their own cell.
+- [ ] Costs are paid from cells within `reachRadius` (data, in cells) of the build site.
+- [ ] Caches, enclosures and sources become cell entities, built and dismantled in place.
+      Sources may irradiate caches within a radius.
+- [ ] Remove the player inventory, Sort and Annihilate. Add a universe totals readout and a
+      hovered-cell contents panel.
+- [ ] Gas drifts downhill and diffuses. Injecting hydrogen fills the target cell.
+- [ ] Conveyors deliver matter into a build site's reach automatically (the radius stays the
+      same).
 - [ ] Gravity field: softened 1/r potential from every massive body, sampled on the grid.
       The top-two bodies (earlier-created wins ties) shape the displayed field and define the
       Roche lobe borders.

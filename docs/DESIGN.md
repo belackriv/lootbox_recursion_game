@@ -88,7 +88,32 @@ announces each one.
   a few seconds between epochs. It clears at recombination.
 
 Overdensity yields go straight into the inventory, and whatever doesn't fit is lost. That's
-the interim until gas becomes a per-cell quantity (roadmap M7).
+the interim until matter lives in cells (next section).
+
+## Matter lives in the pocket universe (planned)
+
+The player inventory is a leftover of the loot-box game. The operator can't reach into the
+pocket universe, so there is nowhere outside it for a stockpile to live. Everything will be
+contained in the pocket universe instead, and the inventory goes away (roadmap M7).
+
+- **Cells hold matter.** Each cell holds an amount of each material, alongside at most one
+  entity. Ripples deposit their yield into their own cell. Later that gas drifts along the
+  gravity field.
+- **Costs come from within a reach radius.** Crafting or building at a cell draws its cost
+  from the matter in cells within `reachRadius` cells of it. The radius is data (planned for
+  `universe.json`), so it's easy to tune. Distance is measured in cells, using the grid's own
+  distance function.
+- **Conveyors deliver, they don't extend reach.** Once gravity conveyors unlock, the radius
+  stays the same. Instead, conveyors carry matter into a build site's reach automatically.
+- **Caches are cell entities.** Compressing gas at a cell makes a cache there, and collapsing
+  it spills the contents into that cell.
+- **Enclosures and sources are built in place** rather than crafted and then deployed.
+  Dismantling returns their materials to the cell. A source could irradiate every cache
+  within a few cells, which would make irradiation spatial.
+- **Selection is of cells, not slots.** Load, Deploy and Recall become building and
+  dismantling at a cell. Sort and Annihilate go away.
+- **Readability.** A readout of the whole universe's totals and a panel for the hovered
+  cell's contents replace the inventory grid.
 
 ## The grid (implemented)
 
@@ -128,6 +153,17 @@ the interim until gas becomes a per-cell quantity (roadmap M7).
   becomes the puzzle. Keep the enclosure next to the injection point and the power source
   next to the enclosure.
 - **Multi-cell machines** (2x2 or 2x2x2 and so on), as the machines get more complex.
+- **Cell shape.** Cubes work, but other shapes tile space and may play better. Put the grid's
+  geometry (neighbours, distance, cells within a radius, world position, picking) behind one
+  plain C++ type before the reach radius and drift are written against it, so the shape
+  stays swappable. Candidates:
+
+  | Shape | Neighbours | Coordinates | Notes |
+  |---|---|---|---|
+  | Cube | 6 faces (26 touching) | `(x, y, z)` | Current. Diagonals are ambiguous, and a radius is a square. |
+  | Hexagon, or hexagonal prism in 3D | 6 in the plane, +2 above and below | axial `(q, r)` plus layer | All six neighbours are equally far, so a radius is a round ring. Flow and conveyors get six clean directions. Suits a mostly flat, disc-like universe. |
+  | Rhombic dodecahedron | 12, all equally far | `(x, y, z)` with an even sum | Each cell is the space around one sphere in the densest possible packing. The best true-3D option. |
+  | Truncated octahedron | 14 (8 hexagons, 6 squares) | `(x, y, z)` all even or all odd | Kelvin's foam cell. The cosmic web is a foam of voids, which is a nice tie-in, but it has two kinds of neighbour and is harder to read. |
 - **Gravity as a field on the grid** ([COSMOLOGY.md](COSMOLOGY.md#gravity-on-the-grid)):
   every massive body (overdensity, dark matter halo, star, remnant) adds a softened 1/r
   potential. Loose gas is a per-cell quantity that drifts downhill each tick; bodies don't
@@ -299,8 +335,7 @@ Microwaves come fourth but carry little energy.
 - Does anything occupy grid cells from the start (resource nodes, "anomalies" in the pocket
   universe) so that position matters before logistics arrive? The perturbation plan answers
   this: perturbations seed overdensity nodes at coordinates that keep growing on their own.
-- Where does injected matter appear: at a fixed "injection point" cell, or straight in your
-  inventory, as now? With gas as a cell quantity, injected hydrogen fills the target cell and
-  drifts from there; primordial materials from Perturb may still land in the inventory.
+- Where does injected matter appear? Decided: in the pocket universe. Injected hydrogen and
+  ripple yields fill cells and drift from there (see *Matter lives in the pocket universe*).
 - How is the game paced across 13.8 billion years? A cosmic clock on a log scale, with epoch
   checks in the tech tree, is the proposal in COSMOLOGY.md.
