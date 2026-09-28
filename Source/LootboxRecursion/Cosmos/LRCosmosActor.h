@@ -96,6 +96,28 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Cosmos")
 	bool bHideLevelEnvironment = true;
 
+	/*
+	 * Material hooks (see LRMaterialHooks and docs/MATERIALS.md): each is used if the asset
+	 * exists, otherwise the built-in flat unlit look stays. All of these are seen from inside
+	 * the sky, so make them Two Sided (or use a sphere with inward faces).
+	 */
+
+	/** The void behind everything. Opaque, unlit; gets Color (near black). */
+	UPROPERTY(Config, EditAnywhere, Category = "Cosmos|Materials")
+	FSoftObjectPath BackdropMaterialPath = FSoftObjectPath(TEXT("/Game/Materials/M_SkyBackdrop.M_SkyBackdrop"));
+
+	/** The stars (instanced cubes). Unlit, "Used with Instanced Static Meshes"; gets Color (HDR, one per star layer). */
+	UPROPERTY(Config, EditAnywhere, Category = "Cosmos|Materials")
+	FSoftObjectPath StarMaterialPath = FSoftObjectPath(TEXT("/Game/Materials/M_Star.M_Star"));
+
+	/** The black hole plane. Translucent, unlit; gets Texture (the animated frames, alpha = coverage) and Color (Brightness). */
+	UPROPERTY(Config, EditAnywhere, Category = "Cosmos|Materials")
+	FSoftObjectPath BlackHoleMaterialPath = FSoftObjectPath(TEXT("/Game/Materials/M_BlackHole.M_BlackHole"));
+
+	/** The primordial plasma veil. Translucent, unlit, Two Sided; gets Color (PlasmaColor) and Opacity (from the epoch, live). */
+	UPROPERTY(Config, EditAnywhere, Category = "Cosmos|Materials")
+	FSoftObjectPath PlasmaMaterialPath = FSoftObjectPath(TEXT("/Game/Materials/M_Plasma.M_Plasma"));
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -128,6 +150,19 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> UnlitTranslucentMaterial;
+
+	/** The hooks that exist (nullptr for the ones that don't); see the *MaterialPath settings. */
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> BackdropHook;
+
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> StarHook;
+
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> BlackHoleHook;
+
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> PlasmaHook;
 
 	UPROPERTY()
 	TObjectPtr<UStaticMeshComponent> Backdrop;

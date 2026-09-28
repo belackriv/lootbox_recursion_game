@@ -34,6 +34,9 @@ Rails app `belackriv/lootbox_recursion`.
 - Binary assets are few and live in Git LFS (so cloud sessions only see pointer files):
   so far just `Content/Materials/M_GridBeam` (the grid beams; the code sets its `Color`
   parameter). Anything that needs a `.uasset` must be created in the editor by the user.
+- Every visual goes through a material hook (`Rendering/LRMaterialHooks`, docs/MATERIALS.md):
+  an optional asset path with an engine-only fallback. New visuals get a hook too, and the
+  doc's table is kept up to date.
 
 ## Checks available without the engine
 

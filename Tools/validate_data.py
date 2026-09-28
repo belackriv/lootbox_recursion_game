@@ -82,6 +82,9 @@ def main() -> int:
             errors.append(f"{where}: lootbox items need a lootTable")
         if (item.get("category") in ("placeable", "source", "structure") or table) and stack != 1:
             errors.append(f"{where}: placeable, lootbox, source and structure items must have stackSize 1")
+        material = item.get("material", "")
+        if material and not material.startswith("/"):
+            errors.append(f"{where}: material must be an asset path such as /Game/Materials/M_Name")
         opacity = item.get("opacity", 1)
         if not 0 < opacity <= 1:
             errors.append(f"{where}: opacity must be above 0 and at most 1")

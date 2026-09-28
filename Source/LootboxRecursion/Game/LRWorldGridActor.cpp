@@ -10,17 +10,16 @@
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/Pawn.h"
+#include "Engine/Texture2D.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/PackageName.h"
+#include "Rendering/LRMaterialHooks.h"
 #include "Rendering/LRUnlit.h"
 #include "Simulation/LRHexGrid.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace
 {
-	// BasicShapeMaterial exposes a "Color" vector parameter.
-	const FName ColorParam(TEXT("Color"));
-
 	// The grid is thin beams of light in the void. Tints above 1 are HDR and glow through bloom.
 	const FLinearColor LineColor(0.85f, 0.92f, 1.f);
 	const FLinearColor SelectedColor(FColor::FromHex(TEXT("F2A93B"))); // accretion-disk amber
@@ -108,12 +107,11 @@ void ALRWorldGridActor::BeginPlay()
 	Super::BeginPlay();
 
 	WhiteTexture = LRUnlit::MakeSolidTexture(FColor::White);
-	// A project material for the beams, if one has been made (checked first so a missing
-	// asset doesn't log a load failure every time).
-	if (!BeamMaterialPath.IsNull() && FPackageName::DoesPackageExist(BeamMaterialPath.GetLongPackageName()))
-	{
-		BeamMaterial = Cast<UMaterialInterface>(BeamMaterialPath.TryLoad());
-	}
+	// Project materials, where they have been made (see docs/MATERIALS.md).
+	BeamMaterial = LRMaterialHooks::LoadOptional(BeamMaterialPath);
+	EntityMaterial = LRMaterialHooks::LoadOptional(EntityMaterialPath);
+	SeeThroughMaterial = LRMaterialHooks::LoadOptional(SeeThroughMaterialPath);
+	MatterMaterial = LRMaterialHooks::LoadOptional(MatterMaterialPath);
 	// Prefer the one-sided translucent material, so see-through shapes get exactly their opacity.
 	if (FPackageName::DoesPackageExist(LRUnlit::TranslucentOneSidedPackage))
 	{
@@ -204,25 +202,59 @@ UStaticMeshComponent* ALRWorldGridActor::CreateMesh(UStaticMesh* Mesh, UMaterial
 	return Component;
 }
 
-UStaticMeshComponent* ALRWorldGridActor::CreateEntityMesh(UStaticMesh* Mesh, const FLinearColor& Color, float Opacity, bool bTraceable)
+UStaticMeshComponent* ALRWorldGridActor::CreateEntityMesh(UStaticMesh* Mesh, const FLRItemDef* Def, const FLinearColor& Color, float Opacity, float Amount, bool bTraceable)
 {
 	UMaterialInstanceDynamic* Material = nullptr;
 	UStaticMeshComponent* Component = CreateMesh(Mesh, Material, bTraceable);
-	if (Opacity < 1.f && TranslucentMaterial)
+	const bool bSeeThrough = Opacity < 1.f;
+	const FLinearColor Tint(Color.R, Color.G, Color.B, Opacity);
+	UMaterialInterface* Hook = GetItemMaterial(Def);
+	if (!Hook)
+	{
+		Hook = bSeeThrough ? SeeThroughMaterial.Get() : EntityMaterial.Get();
+	}
+
+	UMaterialInstanceDynamic* Chosen = nullptr;
+	if (Hook)
+	{
+		Chosen = LRMaterialHooks::Make(Hook, this, Tint);
+	}
+	else if (bSeeThrough && TranslucentMaterial)
 	{
 		// Unlit, so the tint's alpha is the opacity as given (0.25 = a quarter covered).
-		if (UMaterialInstanceDynamic* SeeThrough = LRUnlit::MakeMaterial(TranslucentMaterial, this, WhiteTexture, FLinearColor(Color.R, Color.G, Color.B, Opacity)))
-		{
-			Component->SetMaterial(0, SeeThrough);
-		}
+		Chosen = LRUnlit::MakeMaterial(TranslucentMaterial, this, WhiteTexture, Tint);
+	}
+	if (Chosen)
+	{
+		Component->SetMaterial(0, Chosen);
+	}
+	else
+	{
+		Chosen = Material;
+		LRMaterialHooks::SetColor(Chosen, FLinearColor(Color.R, Color.G, Color.B, 1.f));
+	}
+	LRMaterialHooks::SetAmount(Chosen, Amount);
+	if (bSeeThrough)
+	{
 		Component->SetCastShadow(false);
 		LRUnlit::ExcludeFromLighting(Component);
 	}
-	else if (Material)
-	{
-		Material->SetVectorParameterValue(ColorParam, Color);
-	}
 	return Component;
+}
+
+UMaterialInterface* ALRWorldGridActor::GetItemMaterial(const FLRItemDef* Def)
+{
+	if (!Def || Def->Material.IsEmpty())
+	{
+		return nullptr;
+	}
+	if (const TObjectPtr<UMaterialInterface>* Known = ItemMaterials.Find(Def->Material))
+	{
+		return Known->Get();
+	}
+	UMaterialInterface* Loaded = LRMaterialHooks::LoadOptional(Def->Material);
+	ItemMaterials.Add(Def->Material, Loaded);
+	return Loaded;
 }
 
 UInstancedStaticMeshComponent* ALRWorldGridActor::CreateBeamLayer(const FLinearColor& Tint)
@@ -236,13 +268,7 @@ UInstancedStaticMeshComponent* ALRWorldGridActor::CreateBeamLayer(const FLinearC
 	Beams->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	LRUnlit::ExcludeFromLighting(Beams);
 	Beams->RegisterComponent();
-	if (BeamMaterial)
-	{
-		UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(BeamMaterial, this);
-		Material->SetVectorParameterValue(ColorParam, Tint);
-		Beams->SetMaterial(0, Material);
-	}
-	else if (UMaterialInstanceDynamic* Material = LRUnlit::MakeMaterial(UnlitMaterial, this, WhiteTexture, Tint))
+	if (UMaterialInstanceDynamic* Material = LRMaterialHooks::MakeOr(BeamMaterial, UnlitMaterial, this, WhiteTexture, Tint))
 	{
 		Beams->SetMaterial(0, Material);
 	}
@@ -500,19 +526,25 @@ void ALRWorldGridActor::UpdateMatter()
 		}
 		Tint.A = 1.f;
 		const float Size = FMath::Clamp(0.25f + 0.12f * FMath::Log2(1.f + Total / 10.f), 0.25f, 0.9f);
+		const float Fullness = (Size - 0.25f) / (0.9f - 0.25f);
 
 		UStaticMeshComponent* Disc = MatterMeshes.FindRef(Pair.Key).Get();
 		if (!Disc)
 		{
 			UMaterialInstanceDynamic* NewMaterial = nullptr;
 			Disc = CreateMesh(SphereMesh, NewMaterial, /*bTraceable*/ false);
+			if (UMaterialInstanceDynamic* HookMaterial = LRMaterialHooks::Make(MatterMaterial, this, Tint))
+			{
+				Disc->SetMaterial(0, HookMaterial);
+			}
 			MatterMeshes.Add(Pair.Key, Disc);
 		}
 		Disc->SetRelativeLocation(CellToLocal(Pair.Key) + FVector(0.f, 0.f, 3.f * Scale));
 		Disc->SetRelativeScale3D(FVector(Size * Scale, Size * Scale, 0.06f * Scale));
 		if (UMaterialInstanceDynamic* Material = Cast<UMaterialInstanceDynamic>(Disc->GetMaterial(0)))
 		{
-			Material->SetVectorParameterValue(ColorParam, Tint);
+			LRMaterialHooks::SetColor(Material, Tint);
+			LRMaterialHooks::SetAmount(Material, Fullness);
 		}
 	}
 }
@@ -567,17 +599,25 @@ void ALRWorldGridActor::RebuildEntities()
 		//   under the hexagon's flat-to-flat width).
 		const bool bOverdensity = Def && Def->IsOverdensity() && SphereMesh;
 		const bool bCache = Def && Def->IsLootBox();
+		// Amount (for materials that react to it): a ripple's amplitude, an irradiator's stacks.
+		float Amount = 0.f;
 		FVector Size(0.65f);
 		if (bOverdensity)
 		{
-			Size = FVector(0.35f + 0.55f * FMath::Clamp(static_cast<float>(Entity.Amplitude) / FMath::Max(1, Def->MaxAmplitude), 0.f, 1.f));
+			Amount = FMath::Clamp(static_cast<float>(Entity.Amplitude) / FMath::Max(1, Def->MaxAmplitude), 0.f, 1.f);
+			Size = FVector(0.35f + 0.55f * Amount);
 		}
 		else if (bCache)
 		{
 			Size = FVector(0.4f, 0.4f, 0.8f);
 		}
+		const FLRLootBoxInstance* ChamberBox = (Def && Def->IsIrradiator() && !Entity.Chamber.IsEmpty()) ? Simulation->FindLootBox(Entity.Chamber.InstanceId) : nullptr;
+		if (ChamberBox)
+		{
+			Amount = ChamberBox->bRevealed ? 1.f : FMath::Clamp(static_cast<float>(ChamberBox->Modifiers.Num()) / FMath::Max(1, Def->MaxExposureStacks), 0.f, 1.f);
+		}
 		const FLinearColor Color = Def ? Def->GetLinearColor() : FLinearColor::Gray;
-		UStaticMeshComponent* Mesh = CreateEntityMesh(bOverdensity ? SphereMesh.Get() : CubeMesh.Get(), Color, Def ? Def->Opacity : 1.f, /*bTraceable*/ true);
+		UStaticMeshComponent* Mesh = CreateEntityMesh(bOverdensity ? SphereMesh.Get() : CubeMesh.Get(), Def, Color, Def ? Def->Opacity : 1.f, Amount, /*bTraceable*/ true);
 		Mesh->SetRelativeLocation(Floor + FVector(0.f, 0.f, 50.f * Size.Z * Scale));
 		Mesh->SetRelativeScale3D(Size * Scale);
 
@@ -594,7 +634,7 @@ void ALRWorldGridActor::RebuildEntities()
 		{
 			const auto AddInside = [&](const FLRItemDef* PartDef, const FLinearColor& PartColor, const FVector& Offset, const FVector& PartSize)
 			{
-				UStaticMeshComponent* Part = CreateEntityMesh(CubeMesh, PartColor, PartDef ? PartDef->Opacity : 1.f, /*bTraceable*/ false);
+				UStaticMeshComponent* Part = CreateEntityMesh(CubeMesh, PartDef, PartColor, PartDef ? PartDef->Opacity : 1.f, /*Amount*/ 0.f, /*bTraceable*/ false);
 				Part->SetRelativeLocation(Floor + (Offset + FVector(0.f, 0.f, 50.f * PartSize.Z)) * Scale);
 				Part->SetRelativeScale3D(PartSize * Scale);
 				EntityExtras.Add(Part);
@@ -610,11 +650,11 @@ void ALRWorldGridActor::RebuildEntities()
 			{
 				AddInside(SourceDef, Radiation ? Radiation->GetLinearColor() : SourceDef->GetLinearColor(), FVector(-19.f, -19.f, 0.f), FVector(0.18f));
 			}
-			if (const FLRLootBoxInstance* Box = Entity.Chamber.IsEmpty() ? nullptr : Simulation->FindLootBox(Entity.Chamber.InstanceId))
+			if (ChamberBox)
 			{
-				LabelText += Box->bRevealed
+				LabelText += ChamberBox->bRevealed
 					? TEXT(" [cache: observed]")
-					: FString::Printf(TEXT(" [cache %d/%d]"), Box->Modifiers.Num(), Def->MaxExposureStacks);
+					: FString::Printf(TEXT(" [cache %d/%d]"), ChamberBox->Modifiers.Num(), Def->MaxExposureStacks);
 			}
 		}
 

@@ -105,6 +105,13 @@ struct LOOTBOXRECURSION_API FLRItemDef
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	float Opacity = 1.f;
 
+	/**
+	 * Optional material for this item in the world, e.g. "/Game/Materials/M_Ripple". Used if the
+	 * asset exists, instead of the shared entity or see-through hook (see docs/MATERIALS.md).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FString Material;
+
 	/** Radiation sources: which radiation (radiation.json id) this item emits. Sources are built into an irradiator. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FName Radiation;

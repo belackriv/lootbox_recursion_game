@@ -26,6 +26,10 @@ and play.
       its `Color` parameter; the path is `BeamMaterialPath` on the grid actor, in
       `DefaultGame.ini`).
 - [ ] A smooth distance fade in the beam material instead of stepped brightness layers.
+- [x] Material hooks for everything drawn (docs/MATERIALS.md): entities, see-through
+      entities, matter, stars, black hole, plasma, backdrop, plus a per-item `material`.
+- [ ] Make the hook materials: `M_SeeThrough` first (a Fresnel rim keeps ripples readable
+      over matter).
 - [ ] Higher-resolution black hole bake (1024²), lensed stars near the shadow, nebula haze.
 - [ ] Verify the black hole's blend: if `Widget3DPassThrough_Translucent` turns out to be
       premultiplied (AlphaComposite), drop the `1/Alpha` scale in `FLRBlackHoleRenderer::RenderRow`

@@ -232,6 +232,10 @@ TArray<FString> FLRGameData::Validate() const
 		{
 			Errors.Add(FString::Printf(TEXT("%s: placeable, lootbox, source and structure items must have stackSize 1"), *Where));
 		}
+		if (!Item.Material.IsEmpty() && !Item.Material.StartsWith(TEXT("/")))
+		{
+			Errors.Add(FString::Printf(TEXT("%s: material must be an asset path such as /Game/Materials/M_Name"), *Where));
+		}
 		if (Item.Opacity <= 0.f || Item.Opacity > 1.f)
 		{
 			Errors.Add(FString::Printf(TEXT("%s: opacity must be above 0 and at most 1"), *Where));

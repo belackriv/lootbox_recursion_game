@@ -12,6 +12,7 @@ class UStaticMesh;
 class UStaticMeshComponent;
 class UTextRenderComponent;
 class UTexture2D;
+struct FLRItemDef;
 
 /**
  * 3D view of the pocket universe's grid: hexagonal cells in layers, addressed as
@@ -47,14 +48,27 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Grid")
 	float CellSize = 100.f;
 
-	/**
-	 * Optional material for the grid beams, outlines included. If the asset exists it replaces
-	 * the built-in flat unlit look: the grid sets its "Color" vector parameter (HDR, so values
-	 * above 1 bloom). Make it Unlit with Color driving Emissive, and tick "Used with Instanced
-	 * Static Meshes". See docs/ROADMAP.md, M1.
+	/*
+	 * Material hooks (see LRMaterialHooks and docs/MATERIALS.md). Each is used if the asset
+	 * exists; otherwise the built-in look stays. Items can also name their own material in
+	 * items.json, which wins over the entity and see-through hooks.
 	 */
-	UPROPERTY(Config, EditAnywhere, Category = "World Grid")
+
+	/** Grid beams and cell outlines. Unlit, "Used with Instanced Static Meshes"; gets Color (HDR). */
+	UPROPERTY(Config, EditAnywhere, Category = "World Grid|Materials")
 	FSoftObjectPath BeamMaterialPath = FSoftObjectPath(TEXT("/Game/Materials/M_GridBeam.M_GridBeam"));
+
+	/** Solid entities: caches, machines, an irradiator's contents. Gets Color and Amount. */
+	UPROPERTY(Config, EditAnywhere, Category = "World Grid|Materials")
+	FSoftObjectPath EntityMaterialPath = FSoftObjectPath(TEXT("/Game/Materials/M_Entity.M_Entity"));
+
+	/** See-through entities (items with opacity below 1: ripples, irradiators). Translucent; gets Color, Opacity and Amount. */
+	UPROPERTY(Config, EditAnywhere, Category = "World Grid|Materials")
+	FSoftObjectPath SeeThroughMaterialPath = FSoftObjectPath(TEXT("/Game/Materials/M_SeeThrough.M_SeeThrough"));
+
+	/** The gas disc in a cell holding matter. Gets Color (the mix of materials) and Amount (how full). */
+	UPROPERTY(Config, EditAnywhere, Category = "World Grid|Materials")
+	FSoftObjectPath MatterMaterialPath = FSoftObjectPath(TEXT("/Game/Materials/M_Matter.M_Matter"));
 
 	/** Rings of cells drawn around the patch centre (the lines fade out before the last one). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Grid")
@@ -72,8 +86,14 @@ protected:
 
 private:
 	UStaticMeshComponent* CreateMesh(UStaticMesh* Mesh, UMaterialInstanceDynamic*& OutMaterial, bool bTraceable);
-	/** A cell entity's shape (or a part of one) in Color. Below Opacity 1 it draws see-through and unlit. */
-	UStaticMeshComponent* CreateEntityMesh(UStaticMesh* Mesh, const FLinearColor& Color, float Opacity, bool bTraceable);
+	/**
+	 * A cell entity's shape (or a part of one) in Color, with the material chosen in this order:
+	 * Def's own material, then the see-through hook (Opacity below 1) or the entity hook, then
+	 * the built-in look (flat translucent below Opacity 1, else lit).
+	 */
+	UStaticMeshComponent* CreateEntityMesh(UStaticMesh* Mesh, const FLRItemDef* Def, const FLinearColor& Color, float Opacity, float Amount, bool bTraceable);
+	/** An item's own material (items.json "material"), loaded once; nullptr if it has none or the asset is missing. */
+	UMaterialInterface* GetItemMaterial(const FLRItemDef* Def);
 	UInstancedStaticMeshComponent* CreateBeamLayer(const FLinearColor& Tint);
 	FIntVector GetFocusCell() const;
 	void BuildTilePattern();
@@ -107,9 +127,22 @@ private:
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> TranslucentMaterial;
 
-	/** BeamMaterialPath, if that asset exists; used instead of UnlitMaterial for the beams. */
+	/** The hooks that exist (nullptr for the ones that don't); see the *MaterialPath settings. */
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> BeamMaterial;
+
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> EntityMaterial;
+
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> SeeThroughMaterial;
+
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> MatterMaterial;
+
+	/** Items' own materials by path, nullptr for missing ones (so each is only looked up once). */
+	UPROPERTY()
+	TMap<FString, TObjectPtr<UMaterialInterface>> ItemMaterials;
 
 	UPROPERTY()
 	TObjectPtr<UTexture2D> WhiteTexture;

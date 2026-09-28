@@ -20,6 +20,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/Paths.h"
 #include "RHI.h"
+#include "Rendering/LRMaterialHooks.h"
 #include "Rendering/LRUnlit.h"
 #include "TextureResource.h"
 #include "UObject/ConstructorHelpers.h"
@@ -53,6 +54,10 @@ void ALRCosmosActor::BeginPlay()
 	}
 
 	WhiteTexture = LRUnlit::MakeSolidTexture(FColor::White);
+	BackdropHook = LRMaterialHooks::LoadOptional(BackdropMaterialPath);
+	StarHook = LRMaterialHooks::LoadOptional(StarMaterialPath);
+	BlackHoleHook = LRMaterialHooks::LoadOptional(BlackHoleMaterialPath);
+	PlasmaHook = LRMaterialHooks::LoadOptional(PlasmaMaterialPath);
 
 	// Fixed exposure: auto exposure would brighten the black void until it turns grey, blow out
 	// the disk, and pump as the grid or UI fill the view.
@@ -78,7 +83,7 @@ void ALRCosmosActor::BeginPlay()
 		LRUnlit::ExcludeFromLighting(Backdrop);
 		Backdrop->SetRelativeScale3D(FVector(SkyRadius / 50.f)); // engine sphere radius is 50
 		Backdrop->RegisterComponent();
-		Backdrop->SetMaterial(0, LRUnlit::MakeMaterial(UnlitOpaqueMaterial, this, WhiteTexture, FLinearColor(0.002f, 0.002f, 0.004f, 1.f)));
+		Backdrop->SetMaterial(0, LRMaterialHooks::MakeOr(BackdropHook, UnlitOpaqueMaterial, this, WhiteTexture, FLinearColor(0.002f, 0.002f, 0.004f, 1.f)));
 	}
 
 	BuildStars();
@@ -105,7 +110,7 @@ void ALRCosmosActor::BuildPlasmaVeil()
 	PlasmaVeil->TranslucencySortPriority = 10;
 	PlasmaVeil->SetVisibility(false);
 	PlasmaVeil->RegisterComponent();
-	PlasmaMaterial = LRUnlit::MakeMaterial(UnlitTranslucentMaterial, this, WhiteTexture, FLinearColor(PlasmaColor.R, PlasmaColor.G, PlasmaColor.B, 0.f));
+	PlasmaMaterial = LRMaterialHooks::MakeOr(PlasmaHook, UnlitTranslucentMaterial, this, WhiteTexture, FLinearColor(PlasmaColor.R, PlasmaColor.G, PlasmaColor.B, 0.f));
 	PlasmaVeil->SetMaterial(0, PlasmaMaterial);
 	UpdatePlasmaVeil();
 }
@@ -124,7 +129,7 @@ void ALRCosmosActor::UpdatePlasmaVeil()
 	}
 	ShownPlasmaOpacity = Opacity;
 	PlasmaVeil->SetVisibility(Opacity > 0.002f);
-	LRUnlit::SetTint(PlasmaMaterial, FLinearColor(PlasmaColor.R, PlasmaColor.G, PlasmaColor.B, Opacity));
+	LRMaterialHooks::SetColor(PlasmaMaterial, FLinearColor(PlasmaColor.R, PlasmaColor.G, PlasmaColor.B, Opacity));
 }
 
 UInstancedStaticMeshComponent* ALRCosmosActor::MakeStarLayer(const FLinearColor& Tint)
@@ -136,7 +141,7 @@ UInstancedStaticMeshComponent* ALRCosmosActor::MakeStarLayer(const FLinearColor&
 	Layer->SetCastShadow(false);
 	LRUnlit::ExcludeFromLighting(Layer);
 	Layer->RegisterComponent();
-	if (UMaterialInstanceDynamic* Material = LRUnlit::MakeMaterial(UnlitOpaqueMaterial, this, WhiteTexture, Tint))
+	if (UMaterialInstanceDynamic* Material = LRMaterialHooks::MakeOr(StarHook, UnlitOpaqueMaterial, this, WhiteTexture, Tint))
 	{
 		Layer->SetMaterial(0, Material);
 	}
@@ -238,7 +243,7 @@ void ALRCosmosActor::BuildBlackHole()
 	BlackHole->SetRelativeRotation(Rotation);
 	BlackHole->SetRelativeScale3D(FVector(Width / 100.f, Width / 100.f, 1.f)); // engine plane is 100cm
 	BlackHole->RegisterComponent();
-	BlackHole->SetMaterial(0, LRUnlit::MakeMaterial(UnlitTranslucentMaterial, this, BlackHoleTexture, FLinearColor(Brightness, Brightness, Brightness, 1.f)));
+	BlackHole->SetMaterial(0, LRMaterialHooks::MakeOr(BlackHoleHook, UnlitTranslucentMaterial, this, BlackHoleTexture, FLinearColor(Brightness, Brightness, Brightness, 1.f)));
 
 	UploadFrame();
 }

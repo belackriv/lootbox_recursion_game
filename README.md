@@ -211,6 +211,8 @@ The architecture in one breath:
 - [docs/COSMOLOGY.md](docs/COSMOLOGY.md): the cosmology behind the theme and how each epoch
   maps onto a game phase.
 - [docs/ROADMAP.md](docs/ROADMAP.md): suggested next milestones.
+- [docs/MATERIALS.md](docs/MATERIALS.md): the material hooks (which assets the game picks up,
+  and the parameters it sets), with a recipe for each.
 
 ## The backdrop
 

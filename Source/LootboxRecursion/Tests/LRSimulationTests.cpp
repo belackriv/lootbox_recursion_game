@@ -630,6 +630,12 @@ bool FLRGameDataValidationTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("an invisible item reported"), SeeThrough.Validate().Num() > 0);
 	SeeThrough.Items.FindChecked(LRTest::Ripple).Opacity = 1.5f;
 	TestTrue(TEXT("opacity above 1 reported"), SeeThrough.Validate().Num() > 0);
+
+	FLRGameData OwnMaterial = Cosmos;
+	OwnMaterial.Items.FindChecked(LRTest::Ripple).Material = TEXT("/Game/Materials/M_Ripple");
+	TestEqual(TEXT("an item's own material is valid"), OwnMaterial.Validate().Num(), 0);
+	OwnMaterial.Items.FindChecked(LRTest::Ripple).Material = TEXT("M_Ripple");
+	TestTrue(TEXT("a material that isn't an asset path reported"), OwnMaterial.Validate().Num() > 0);
 	return true;
 }
 
