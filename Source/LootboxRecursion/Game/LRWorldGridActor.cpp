@@ -528,18 +528,27 @@ void ALRWorldGridActor::RebuildEntities()
 		const FLRItemDef* Def = Simulation->GetData().FindItem(Entity.Item);
 		const FVector Floor = CellToLocal(Entity.Cell);
 
-		// Overdensities are spheres that swell with their amplitude (the engine sphere is 100cm
-		// across, pivot at its centre); everything else is a cube sitting on the cell floor.
+		// Shapes, as fractions of a cell (the engine cube and sphere are 100cm across, pivot at the
+		// centre), each sitting on the cell floor:
+		// - overdensities (ripples) are spheres that swell with their amplitude,
+		// - caches are square prisms, narrow and tall,
+		// - everything else (machines) is a cube that fits inside the hexagon (its diagonal is
+		//   under the hexagon's flat-to-flat width).
 		const bool bOverdensity = Def && Def->IsOverdensity() && SphereMesh;
-		const float SphereSize = bOverdensity
-			? 0.35f + 0.55f * FMath::Clamp(static_cast<float>(Entity.Amplitude) / FMath::Max(1, Def->MaxAmplitude), 0.f, 1.f)
-			: 0.f;
+		const bool bCache = Def && Def->IsLootBox();
+		FVector Size(0.65f);
+		if (bOverdensity)
+		{
+			Size = FVector(0.35f + 0.55f * FMath::Clamp(static_cast<float>(Entity.Amplitude) / FMath::Max(1, Def->MaxAmplitude), 0.f, 1.f));
+		}
+		else if (bCache)
+		{
+			Size = FVector(0.4f, 0.4f, 0.8f);
+		}
 		UMaterialInstanceDynamic* Material = nullptr;
 		UStaticMeshComponent* Mesh = CreateMesh(bOverdensity ? SphereMesh.Get() : CubeMesh.Get(), Material, /*bTraceable*/ true);
-		// A cube this size fits inside the hexagon (its diagonal is under the flat-to-flat width).
-		constexpr float CubeSize = 0.65f;
-		Mesh->SetRelativeLocation(Floor + FVector(0.f, 0.f, (bOverdensity ? 50.f * SphereSize : 50.f * CubeSize) * Scale));
-		Mesh->SetRelativeScale3D(FVector((bOverdensity ? SphereSize : CubeSize) * Scale));
+		Mesh->SetRelativeLocation(Floor + FVector(0.f, 0.f, 50.f * Size.Z * Scale));
+		Mesh->SetRelativeScale3D(Size * Scale);
 		if (Material)
 		{
 			Material->SetVectorParameterValue(ColorParam, Def ? Def->GetLinearColor() : FLinearColor::Gray);
