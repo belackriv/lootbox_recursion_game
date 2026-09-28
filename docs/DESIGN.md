@@ -56,13 +56,35 @@ Irradiation enclosures create them (see below).
 
 **Ideas, not implemented:**
 
-- **One level.** Play happens on a single layer. The other Z layers are reserved for a
-  later idea, such as extra dimensions, and not for stacking, so there are no support or
-  structural rules.
+- **One level or a true 3D grid?** Undecided, and worth a prototype. On one level, play
+  happens on a single layer and the other Z layers are reserved for a later idea, such as
+  extra dimensions. A true 3D grid (no layers, cells in a volume) is what the physics wants:
+  orbits have inclination and the cosmic web is a foam, not a sheet. There are no support or
+  structural rules either way; nothing rests on anything in space.
+
+  Making 3D navigable, in order of expected payoff:
+
+  1. *Face placement.* Raycast onto an existing entity's cube and place on the face that was
+     hit. Most things go next to other things, and this has no depth ambiguity.
+  2. *A placement plane that follows you.* The current single-plane cursor, but the plane
+     passes through the hovered or last-placed cell and faces the camera's dominant axis. A
+     modifier slides along the plane's normal, and a stalk from the cursor to the reference
+     plane makes depth readable in empty space.
+  3. *Depth cues from the grid.* Beams only near existing entities or in a translucent slab
+     around the active plane, with distance fade. Near a well the bent grid becomes shells
+     and radial lines, which are landmarks for free.
+  4. *Camera.* Orbit around a focus point, with snap views along the three axes.
+
+  The universe helps: anything that spins flattens (solar systems, galaxies, accretion
+  discs), so a net spin from the first perturbations settles structure toward a plane. That
+  plane is the ecliptic, a natural reference without being a cheat, and most builds sit near
+  it while stars and remnants stray. The sim already stores unbounded `(X, Y, Z)`, so the
+  prototype is picking and rendering only. Its test: a fresh player builds a 3x3x3 block
+  and a ten-cell line along each axis without misplacing.
 - **Logistics:** moving matter between cells takes time proportional to distance, so layout
   becomes the puzzle. Keep the enclosure next to the injection point and the power source
   next to the enclosure.
-- **Multi-cell machines** (2x2 and so on), as the machines get more complex.
+- **Multi-cell machines** (2x2 or 2x2x2 and so on), as the machines get more complex.
 - **Gravity as a field on the grid** ([COSMOLOGY.md](COSMOLOGY.md#gravity-on-the-grid)):
   every massive body (overdensity, dark matter halo, star, remnant) adds a softened 1/r
   potential. Loose gas is a per-cell quantity that drifts downhill each tick; bodies don't

@@ -58,6 +58,10 @@ See [DESIGN.md](DESIGN.md#irradiation-implemented-v1).
 
 ## M3: Logistics on the grid
 
+- [ ] Spike: true 3D grid navigation (see *The grid* in [DESIGN.md](DESIGN.md)). Face
+      placement on existing entities, a placement plane that follows the cursor with a
+      slide-along-normal modifier and a depth stalk, snap camera views. Decide one level
+      versus 3D from how it plays; the sim needs no change either way.
 - [ ] Resource nodes at coordinates, so scavenging happens *somewhere*.
 - [ ] Transport time proportional to distance between cells.
 - [ ] Simple automation: an entity that moves items to its neighbour.
