@@ -444,8 +444,8 @@ struct LOOTBOXRECURSION_API FLREpochDef
  * - The injectors feed it at a dial-set rate, with inertia, no faster than the rated limit
  *   (EddingtonRate * mass).
  * - The safeties trip when its 1 g radius reaches the chamber wall (ChamberRadius), dumping
- *   the storage ring, which must recharge before feeding resumes.
- * - At zero the pocket universe freezes until Ignite fires the storage ring's charge.
+ *   the stored charge, which must rebuild before feeding resumes.
+ * - At zero the pocket universe freezes until Ignite fires the stored charge.
  */
 USTRUCT(BlueprintType)
 struct LOOTBOXRECURSION_API FLRHostDef
@@ -488,13 +488,13 @@ struct LOOTBOXRECURSION_API FLRHostDef
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	float SafetyGravity = 9.80665f;
 
-	/** The storage ring's full charge, kg: dumped when the safeties trip, fired by Ignite. */
+	/** The full stored charge, kg: dumped when the safeties trip, fired by Ignite. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	double RingMass = 0.0;
+	double ChargeCapacity = 0.0;
 
-	/** How fast the storage ring refills, kg/s. Feeding is locked out while it recharges. */
+	/** How fast the stored charge rebuilds, kg/s. Feeding is locked out while it recharges. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	double RingRefillRate = 0.0;
+	double RechargeRate = 0.0;
 
 	/** The log warns when the host, shrinking, has less than this many seconds left unfed. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
@@ -529,7 +529,7 @@ struct LOOTBOXRECURSION_API FLRHostDef
 
 	/**
 	 * The point of no return: below this mass, evaporation outruns even the most the injectors
-	 * can feed (the rated limit, or their maximum), so nothing but the storage ring can save it.
+	 * can feed (the rated limit, or their maximum), so the host can't be saved (only replaced, by Ignite once it's gone).
 	 * 0 if the host never evaporates.
 	 */
 	double GetTippingMass() const;

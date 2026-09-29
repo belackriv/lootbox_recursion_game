@@ -26,7 +26,7 @@ struct FLRPlacedEntity;
  * player makes lives in grid cells, so most actions work on the selected cell.
  *
  * That's the inside view. The outside panel (the facility's injectors: the feed dial, the host
- * in its chamber, the storage ring and Ignite) drops down from the top when the status bar's
+ * in its chamber, the stored charge and Ignite) drops down from the top when the status bar's
  * OUTSIDE button or F / Tab is pressed (docs/DESIGN.md, "Two views").
  */
 class LOOTBOXRECURSION_API SLRGameHud : public SCompoundWidget
@@ -66,7 +66,7 @@ private:
 	TSharedRef<SWidget> BuildOutsidePanel();
 	/** The controls, opened with the status bar's (?) button. */
 	TSharedRef<SWidget> BuildHelpDialog();
-	/** Something outside needs the player: the host is shrinking, gone, near the cap, or the ring is recharging. */
+	/** Something outside needs the player: the host is shrinking, gone, near the cap, or the charge is rebuilding. */
 	bool DoesOutsideNeedAttention() const;
 	TSharedRef<SWidget> MakePanel(const FText& Title, const TSharedRef<SWidget>& Content,
 		const TSharedRef<SWidget>& HeaderExtra, bool bFillHeight = false, bool bConsole = false);

@@ -127,11 +127,11 @@ well swells toward the chamber wall, so you (literally) dial it back.
 - **Why the flow can't change instantly.** The graviton lens runs on superconducting magnets,
   and a magnet's current can't change instantly. Inductance limits how fast it can ramp, just
   as the LHC's magnets take minutes to ramp. So the flow follows the dial with inertia.
-- **The container is a storage ring.** The neutronium waiting to be injected circulates in a
-  magnetic storage ring: the mass "bucket".
+- **The stored charge.** The neutronium waiting to be injected is held in a magnetic trap:
+  the mass "bucket". The panel calls it the **stored charge**, measured in tonnes.
 - **Emergency shutdown.** The safeties do what particle accelerators do. A **beam dump**
-  sends the ring's whole charge into an absorber instantly, and the magnets **quench**
-  (shed their stored energy). Before feeding can resume, the ring has to be refilled and the
+  sends the whole stored charge into an absorber instantly, and the magnets **quench**
+  (shed their stored energy). Before feeding can resume, the charge has to be rebuilt and the
   magnets ramped back up. That's the lockout, and the ramp afterwards is the inertia again.
 
 ### The dial
@@ -199,9 +199,9 @@ the sphere around it inside which its pull is stronger than 1 g. That radius is
   tech-tree upgrade, and 10 times the radius allows 100 times the mass: 10 cm allows
   1.5 million t, and 1 m about 150 million t (a small mountain).
 - **The trip.** Injection stops **instantly** (the beam dump), with no inertia, and the
-  storage ring's charge is lost.
-- **Locked out.** Nothing can be fed until the ring has refilled (`containerMass /
-  refillRate`). After that, the flow ramps up again from zero, with inertia.
+  stored charge is lost.
+- **Locked out.** Nothing can be fed until the charge has rebuilt (`chargeCapacity /
+  rechargeRate`). After that, the flow ramps up again from zero, with inertia.
 - **Why it's a skill.** Because of the inertia, turning the dial down near the cap takes
   effect late. At 20 t/s, 15 s of lag is about 300 t more mass, so you have to dial back
   before the cap, not at it.
@@ -229,7 +229,7 @@ universe freezes. Nothing is lost, as now.
 - **Why the dial can't restart it.** The rated limit is proportional to mass, so an empty
   host can't be fed at all. And a tiny new host evaporates faster than anything can reach
   it.
-- **Ignite.** The kick-start is a button that fires the storage ring's whole charge at the
+- **Ignite.** The kick-start is a button that fires the whole stored charge at the
   singularity in one go. A charge that big collapses straight into a new horizon, with no
   Eddington limit. This is hand-feeding coal to restart a dead power grid (as in
   Satisfactory).
@@ -249,7 +249,7 @@ setting can save the host. It's shown, so the player can see it coming:
 **You can shoot yourself in the foot.** Nothing stops seeding from spending the host below
 the line: over-perturbing early is a mistake the player is allowed to make, and learns from.
 The way back is to let the host go and Ignite a new one. (A playtest tried an "emergency
-charge", firing the storage ring into a living host, plus a guard on seeding. Both were
+charge", firing the stored charge into a living host, plus a guard on seeding. Both were
 dropped: the charge didn't fit the fiction, and the guard took the lesson away.)
 
 ### The dial's buttons
@@ -303,8 +303,8 @@ kg/s, while it evaporates 324 kg/s.
 | Safety cap | the 1 g sphere reaches the chamber wall | first chamber 1 cm: 14,700 t (74 hours unfed) |
 | Injector maximum | 20 t/s | the top of the dial, until injector upgrades |
 | `injectorResponseSeconds` (to 90%) | 15 s | ω ≈ 0.26 /s |
-| Storage ring (Ignite charge) | 2,000 t | above the tipping point |
-| Refill rate | 10 t/s | 200 s lockout after a trip, or to recharge Ignite |
+| Stored charge (Ignite) | 2,000 t | above the tipping point |
+| Recharge rate | 10 t/s | 200 s lockout after a trip, or to recharge Ignite |
 | Seed a ripple | 500 t | three seeds take a fresh host from 3,500 t to 2,000 t, 11 minutes from death |
 | Deepen a ripple | 70 t | |
 
@@ -326,7 +326,7 @@ The game has two UIs, one for each side of the horizon.
 - **Outside** is the facility's control panel for the host. It holds only the injector
   controls:
   - the dial, with the Eddington and break-even marks and the setting and flow needles;
-  - the container (the mass "bucket"): its charge, refill progress and any lockout;
+  - the stored charge (the mass "bucket"): how full it is, and any lockout;
   - Ignite;
   - the host's mass and net rate next to the dial.
 
@@ -386,7 +386,7 @@ expanding universe. Alan Guth called inflation "the ultimate free lunch" for thi
 - **Hawking power.** The host's glow (3×10¹⁹ W at the start) could be the facility's power
   supply. A small, hot host gives plenty of power but dies fast, and a big, cool one is safe
   but gives little. Power could then limit the injectors or the tech.
-- A buffer in the container, so the injectors can briefly run faster than it refills.
+- A buffer in the stored charge, so the injectors can briefly run faster than it rebuilds.
 
 ## Time controls (planned)
 

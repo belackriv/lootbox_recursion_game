@@ -243,7 +243,7 @@ int32 SLRFeedDial::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 		Status = TEXT("NO HOST");
 		StatusColor = Style.Red;
 	}
-	else if (Sim->IsRingRecharging())
+	else if (Sim->IsRecharging())
 	{
 		Status = TEXT("LOCKED OUT");
 		StatusColor = Style.Red;

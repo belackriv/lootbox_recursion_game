@@ -107,14 +107,14 @@ See [COSMOLOGY.md](COSMOLOGY.md) for the physics behind each item.
         Eddington, 0.004 /s × mass) and the break-even mark.
   - [x] Injector inertia as a critically damped `StepInjector` that's easy to swap.
   - [x] The safety cap is the gravity well: it trips when the 1 g radius reaches the chamber
-        wall (1 cm at first, 14,700 t), dumps the storage ring and locks out until it's
-        refilled.
+        wall (1 cm at first, 14,700 t), dumps the stored charge and locks out until it's
+        rebuilt.
   - [x] Seeing the host: a to-scale chamber cross-section with the 1 g bubble, glowing by
         temperature, with the horizon and Hawking output as numbers.
   - [x] Ignite, the kick-start, to restart after the host evaporates.
   - [x] Tests for each.
   - [x] The outside panel: it drops down from the top of the screen (the OUTSIDE button, F
-        or Tab), and holds the dial, the chamber, the storage ring and Ignite. The status bar
+        or Tab), and holds the dial, the chamber, the stored charge and Ignite. The status bar
         always shows mass and net rate, and the button pulses when the outside needs
         attention.
   - [x] The point of no return, shown in the chamber view, readouts, status bar and log.

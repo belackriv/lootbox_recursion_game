@@ -23,10 +23,10 @@
 class LOOTBOXRECURSION_API FLRSimulation
 {
 public:
-	/** 2: 3D grid, wood -> carbon. 3: irradiator contents. 4: unlocks + stats. 5: epochs, host, primordial materials. 6: matter in cells, no inventory. 7: irradiator ids renamed (nebula, corona). 8: source ids renamed (emitters). 9: host mass in kg, feed dial and storage ring. */
-	static constexpr int32 SaveVersion = 9;
-	/** Oldest save that still loads (newer fields just start empty). 9 made the host's mass a real mass, so older saves start fresh. */
-	static constexpr int32 MinCompatibleSaveVersion = 9;
+	/** 2: 3D grid, wood -> carbon. 3: irradiator contents. 4: unlocks + stats. 5: epochs, host, primordial materials. 6: matter in cells, no inventory. 7: irradiator ids renamed (nebula, corona). 8: source ids renamed (emitters). 9: host mass in kg, feed dial and storage ring. 10: the storage ring renamed (stored charge). */
+	static constexpr int32 SaveVersion = 10;
+	/** Oldest save that still loads (newer fields just start empty). 10 renamed the stored charge's fields, so older saves start fresh. */
+	static constexpr int32 MinCompatibleSaveVersion = 10;
 	/** The host and injectors advance in steps of at most this many seconds (feeding and evaporation are coupled). */
 	static constexpr double HostStepSeconds = 0.25;
 	/** Simulation seconds the sky takes to fade to a new epoch's plasma opacity. */
@@ -136,12 +136,12 @@ public:
 	double GetTimeToEvaporation() const;
 	/** The mass at which the safeties trip (0 = no cap). */
 	double GetSafetyCap() const { return Data.Host.GetSafetyCap(); }
-	double GetRingCharge() const { return RingCharge; }
-	/** The safeties tripped (or Ignite fired) and the storage ring is refilling: no feeding until it's full. */
-	bool IsRingRecharging() const { return bRingRecharging; }
-	/** The host is gone and the storage ring is full. */
+	double GetStoredCharge() const { return StoredCharge; }
+	/** The safeties tripped (or Ignite fired) and the stored charge is rebuilding: no feeding until it's full. */
+	bool IsRecharging() const { return bRecharging; }
+	/** The host is gone and the stored charge is full. */
 	bool CanIgnite() const;
-	/** The kick-start: fire the storage ring's whole charge at the singularity to make a new host. */
+	/** The kick-start: fire the whole stored charge at the singularity to make a new host. */
 	FLRActionResult Ignite();
 	/** Below this mass the host can't be fed out of evaporating (see FLRHostDef::GetTippingMass). */
 	double GetTippingMass() const { return Data.Host.GetTippingMass(); }
@@ -227,7 +227,7 @@ private:
 	void AdvanceIrradiation(double DeltaSeconds);
 	/** Apply one exposure of Radiation to Box; returns a log message. */
 	FString ApplyExposure(FLRLootBoxInstance& Box, const FLRRadiationDef& Radiation, const FLRItemDef& IrradiatorDef);
-	/** The host: evaporation, feeding, the safeties and the storage ring. */
+	/** The host: evaporation, feeding, the safeties and the stored charge. */
 	void AdvanceHost(double DeltaSeconds);
 	/** In an auto mode, point the dial at its mark for the host's current mass. */
 	void UpdateAutoTarget();
@@ -289,8 +289,8 @@ private:
 	double InjectorTarget = 0.0;
 	ELRInjectorAuto InjectorAuto = ELRInjectorAuto::Off;
 	FLRInjectorState Injector;
-	double RingCharge = 0.0;
-	bool bRingRecharging = false;
+	double StoredCharge = 0.0;
+	bool bRecharging = false;
 	/** The low-mass warning has been logged (until the host recovers). Not saved. */
 	bool bHostWarned = false;
 	/** The point-of-no-return warning has been logged (until the host climbs back above it). Not saved. */

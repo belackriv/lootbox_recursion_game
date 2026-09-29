@@ -1,5 +1,5 @@
 {
-	"_comment": "The pocket universe's history, its host black hole, and how far building reaches (see docs/COSMOLOGY.md). reachRadius: building at a cell pays from the matter in cells up to this many steps away. Epochs run in order: a new game starts in the first, and each later one begins once its advanceRequirements are met (requirements work like revealRequirements). Times are cosmic seconds since the Big Bang. The cosmic clock sweeps from startTime to endTime (default: the next epoch's startTime) over clockSeconds of play, on a log scale, and waits there. yieldTable is what overdensities gather during the epoch; rippleGrowthSeconds > 0 lets gravity deepen them on its own; plasma is the sky's opacity. The host black hole and the facility's injectors (docs/DESIGN.md, 'Feeding the host'); masses in kg, rates in kg/s. It evaporates by Hawking radiation (mass cubed falls linearly, so a startMass host lasts lifetimeSeconds unfed; 3,500 t and an hour are real physics). The feed dial injects up to injectorMaxRate, following the dial with inertia (injectorResponseSeconds to 90%), and never faster than the rated limit, eddingtonRate x mass. The safeties trip when the host's 1 g radius (at safetyGravity) reaches chamberRadius (m): the storage ring (ringMass) is dumped and feeding is locked out until it refills at ringRefillRate. seedCost / perturbCost are what seeding / deepening a ripple draws from the host. At zero the pocket universe freezes until Ignite fires the full storage ring.",
+	"_comment": "The pocket universe's history, its host black hole, and how far building reaches (see docs/COSMOLOGY.md). reachRadius: building at a cell pays from the matter in cells up to this many steps away. Epochs run in order: a new game starts in the first, and each later one begins once its advanceRequirements are met (requirements work like revealRequirements). Times are cosmic seconds since the Big Bang. The cosmic clock sweeps from startTime to endTime (default: the next epoch's startTime) over clockSeconds of play, on a log scale, and waits there. yieldTable is what overdensities gather during the epoch; rippleGrowthSeconds > 0 lets gravity deepen them on its own; plasma is the sky's opacity. The host black hole and the facility's injectors (docs/DESIGN.md, 'Feeding the host'); masses in kg, rates in kg/s. It evaporates by Hawking radiation (mass cubed falls linearly, so a startMass host lasts lifetimeSeconds unfed; 3,500 t and an hour are real physics). The feed dial injects up to injectorMaxRate, following the dial with inertia (injectorResponseSeconds to 90%), and never faster than the rated limit, eddingtonRate x mass. The safeties trip when the host's 1 g radius (at safetyGravity) reaches chamberRadius (m): the stored charge (chargeCapacity) is dumped and feeding is locked out until it recharges at rechargeRate. seedCost / perturbCost are what seeding / deepening a ripple draws from the host. At zero the pocket universe freezes until Ignite fires the full stored charge.",
 	"reachRadius": 2,
 	"host": {
 		"startMass": 3500000,
@@ -11,8 +11,8 @@
 		"injectorResponseSeconds": 15,
 		"chamberRadius": 0.01,
 		"safetyGravity": 9.80665,
-		"ringMass": 2000000,
-		"ringRefillRate": 10000,
+		"chargeCapacity": 2000000,
+		"rechargeRate": 10000,
 		"warningSeconds": 300
 	},
 	"epochs": [

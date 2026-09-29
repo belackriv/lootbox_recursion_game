@@ -283,8 +283,8 @@ namespace LRTest
 		Host.InjectorMaxRate = 50.0;
 		Host.InjectorResponseSeconds = 10.f;
 		Host.ChamberRadius = 0.f; // no cap unless a test sets one (see SetSafetyCap)
-		Host.RingMass = 400.0;
-		Host.RingRefillRate = 100.0; // 4 s to recharge
+		Host.ChargeCapacity = 400.0;
+		Host.RechargeRate = 100.0; // 4 s to recharge
 		Host.WarningSeconds = 50.f;
 		return Data;
 	}
@@ -1260,32 +1260,32 @@ bool FLRHostSafetyTest::RunTest(const FString& Parameters)
 	FLRSimulation Sim(Data, 1);
 	LRTest::FMessageLog Log(Sim);
 	Sim.SetInjectorTarget(50.0);
-	for (int32 Step = 0; Step < 240 && !Sim.IsRingRecharging(); ++Step)
+	for (int32 Step = 0; Step < 240 && !Sim.IsRecharging(); ++Step)
 	{
 		Sim.Advance(0.5);
 	}
-	TestTrue(TEXT("tripped"), Sim.IsRingRecharging() && Log.Contains(TEXT("SAFETIES TRIPPED")));
+	TestTrue(TEXT("tripped"), Sim.IsRecharging() && Log.Contains(TEXT("SAFETIES TRIPPED")));
 	TestTrue(TEXT("at the cap"), Sim.GetHostMass() >= 1100.0 && Sim.GetHostMass() < 1105.0);
 	TestTrue(TEXT("the beam stopped at once"), Sim.GetInjectorFlow() == 0.0 && Sim.GetIntakeRate() == 0.0);
-	TestTrue(TEXT("the ring was dumped (and has only begun to refill)"), Sim.GetRingCharge() < 100.0);
+	TestTrue(TEXT("the charge was dumped (and has only begun to rebuild)"), Sim.GetStoredCharge() < 100.0);
 	TestTrue(TEXT("the dial keeps its setting"), Sim.GetInjectorTarget() == 50.0);
 
 	const double Tripped = Sim.GetHostMass();
 	Sim.Advance(2.0);
-	TestTrue(TEXT("nothing is fed while the ring recharges"), Sim.GetHostMass() == Tripped && Sim.IsRingRecharging());
+	TestTrue(TEXT("nothing is fed while the charge rebuilds"), Sim.GetHostMass() == Tripped && Sim.IsRecharging());
 
-	// Dialed back, the injectors come back ready (the ring takes ringMass / ringRefillRate = 4 s).
+	// Dialed back, the injectors come back ready (the charge takes chargeCapacity / rechargeRate = 4 s).
 	Sim.SetInjectorTarget(0.0);
 	Sim.Advance(2.5);
-	TestFalse(TEXT("recharged"), Sim.IsRingRecharging());
+	TestFalse(TEXT("recharged"), Sim.IsRecharging());
 	TestTrue(TEXT("announced"), Log.Contains(TEXT("recharged")));
 	Sim.Advance(10.0);
-	TestFalse(TEXT("and stays ready"), Sim.IsRingRecharging());
+	TestFalse(TEXT("and stays ready"), Sim.IsRecharging());
 
 	// Feeding again at the cap trips it again.
 	Sim.SetInjectorTarget(50.0);
 	Sim.Advance(1.0);
-	TestTrue(TEXT("feeding at the cap trips it again"), Sim.IsRingRecharging());
+	TestTrue(TEXT("feeding at the cap trips it again"), Sim.IsRecharging());
 	return true;
 }
 
@@ -1300,17 +1300,17 @@ bool FLRHostIgniteTest::RunTest(const FString& Parameters)
 
 	Sim.Advance(1001.0);
 	TestTrue(TEXT("evaporated"), Sim.IsFrozen());
-	TestTrue(TEXT("the ring is full"), Sim.CanIgnite());
+	TestTrue(TEXT("the charge is full"), Sim.CanIgnite());
 	const FLRActionResult Ignited = Sim.Ignite();
 	TestTrue(TEXT("ignited"), Ignited.bSuccess && Log.Contains(TEXT("Ignited")));
 	TestFalse(TEXT("no longer frozen"), Sim.IsFrozen());
-	TestTrue(TEXT("the new host is the ring's charge"), Sim.GetHostMass() == 400.0);
-	TestTrue(TEXT("the ring recharges before feeding resumes"), Sim.IsRingRecharging() && Sim.GetRingCharge() == 0.0);
+	TestTrue(TEXT("the new host is the stored charge"), Sim.GetHostMass() == 400.0);
+	TestTrue(TEXT("the charge rebuilds before feeding resumes"), Sim.IsRecharging() && Sim.GetStoredCharge() == 0.0);
 
 	// Unfed, the small new host evaporates fast (400 kg lasts 64 s), and can be ignited again.
 	Sim.Advance(70.0);
 	TestTrue(TEXT("gone again"), Sim.IsFrozen());
-	TestTrue(TEXT("the ring refilled meanwhile"), Sim.CanIgnite());
+	TestTrue(TEXT("the charge rebuilt meanwhile"), Sim.CanIgnite());
 	return true;
 }
 
@@ -1363,8 +1363,8 @@ bool FLRHostSeedCostTest::RunTest(const FString& Parameters)
 	TooDear.Host.SeedCost = 1000.0;
 	TestTrue(TEXT("a seed costing the whole host reported"), TooDear.Validate().Num() > 0);
 	FLRGameData NoRefill = Data;
-	NoRefill.Host.RingRefillRate = 0.0;
-	TestTrue(TEXT("a storage ring that never refills reported"), NoRefill.Validate().Num() > 0);
+	NoRefill.Host.RechargeRate = 0.0;
+	TestTrue(TEXT("a stored charge that never recharges reported"), NoRefill.Validate().Num() > 0);
 	FLRGameData TinyChamber = Data;
 	LRTest::SetSafetyCap(TinyChamber, 500.0);
 	TestTrue(TEXT("a chamber too small for the starting host reported"), TinyChamber.Validate().Num() > 0);
@@ -1402,7 +1402,7 @@ bool FLRCosmosSaveTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("epoch"), Loaded.GetEpochIndex(), 1);
 	TestTrue(TEXT("host mass"), Loaded.GetHostMass() == Sim.GetHostMass());
 	TestTrue(TEXT("feed dial"), Loaded.GetInjectorTarget() == Sim.GetInjectorTarget() && Loaded.GetInjectorFlow() == Sim.GetInjectorFlow());
-	TestTrue(TEXT("storage ring"), Loaded.GetRingCharge() == Sim.GetRingCharge() && Loaded.IsRingRecharging() == Sim.IsRingRecharging());
+	TestTrue(TEXT("stored charge"), Loaded.GetStoredCharge() == Sim.GetStoredCharge() && Loaded.IsRecharging() == Sim.IsRecharging());
 	TestTrue(TEXT("cosmic time"), Loaded.GetCosmicTime() == Sim.GetCosmicTime());
 	TestEqual(TEXT("plasma fade"), Loaded.GetPlasmaOpacity(), Sim.GetPlasmaOpacity());
 	const FLRPlacedEntity* Ripple = Loaded.FindPlaced(FIntVector(0, 0, 0));

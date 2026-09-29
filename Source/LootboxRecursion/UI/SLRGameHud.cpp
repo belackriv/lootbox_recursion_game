@@ -369,7 +369,7 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 				.ButtonStyle(&Style.ButtonStyle)
 				.IsFocusable(false)
 				.ContentPadding(FMargin(10.f, 3.f))
-				.ToolTipText(LOCTEXT("OutsideTip", "The facility's injectors: the feed dial, the host in its chamber, the storage ring and Ignite (F or Tab)"))
+				.ToolTipText(LOCTEXT("OutsideTip", "The facility's injectors: the feed dial, the host in its chamber, the stored charge and Ignite (F or Tab)"))
 				.ButtonColorAndOpacity_Lambda([this]() -> FSlateColor
 				{
 					if (!DoesOutsideNeedAttention())
@@ -1758,7 +1758,7 @@ bool SLRGameHud::DoesOutsideNeedAttention() const
 		return false;
 	}
 	const double Cap = Sim->GetSafetyCap();
-	return Sim->IsFrozen() || Sim->IsRingRecharging() || Sim->GetNetRate() < 0.0
+	return Sim->IsFrozen() || Sim->IsRecharging() || Sim->GetNetRate() < 0.0
 		|| (Cap > 0.0 && Sim->GetHostMass() >= Cap * 0.95);
 }
 
@@ -2057,14 +2057,14 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			}, Style.SmallFont)
 		];
 
-	// Far right: the storage ring and Ignite.
+	// Far right: the stored charge and Ignite.
 	TSharedRef<SWidget> Ring = SNew(SBox)
 		.WidthOverride(210.f)
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
 			[
-				SNew(STextBlock).Font(Style.HeadingFont).ColorAndOpacity(Style.ConsoleAccent).Text(LOCTEXT("RingTitle", "STORAGE RING"))
+				SNew(STextBlock).Font(Style.HeadingFont).ColorAndOpacity(Style.ConsoleAccent).Text(LOCTEXT("ChargeTitle", "STORED CHARGE"))
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 4.f))
 			[
@@ -2076,14 +2076,14 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 					.Percent_Lambda([this]() -> TOptional<float>
 					{
 						const FLRSimulation* Sim = GetSimulation();
-						const double Full = Sim ? Sim->GetData().Host.RingMass : 0.0;
-						return Full > 0.0 ? static_cast<float>(Sim->GetRingCharge() / Full) : 0.f;
+						const double Full = Sim ? Sim->GetData().Host.ChargeCapacity : 0.0;
+						return Full > 0.0 ? static_cast<float>(Sim->GetStoredCharge() / Full) : 0.f;
 					})
 					.FillColorAndOpacity_Lambda([this]() -> FSlateColor
 					{
 						const FLRHudStyle& S = FLRHudStyle::Get();
 						const FLRSimulation* Sim = GetSimulation();
-						return (Sim && Sim->IsRingRecharging()) ? S.Red : S.Green;
+						return (Sim && Sim->IsRecharging()) ? S.Red : S.Green;
 					})
 				]
 			]
@@ -2091,12 +2091,12 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			[
 				Readout([](const FLRSimulation& Sim)
 				{
-					const double Full = Sim.GetData().Host.RingMass;
-					if (Sim.IsRingRecharging())
+					const double Full = Sim.GetData().Host.ChargeCapacity;
+					if (Sim.IsRecharging())
 					{
-						return FString::Printf(TEXT("Recharging (%.0f%%): feeding is locked out"), Full > 0.0 ? 100.0 * Sim.GetRingCharge() / Full : 0.0);
+						return FString::Printf(TEXT("Recharging (%.0f%%): feeding is locked out"), Full > 0.0 ? 100.0 * Sim.GetStoredCharge() / Full : 0.0);
 					}
-					return FString::Printf(TEXT("Charged: %s of neutronium"), *FLRSimulation::FormatMass(Sim.GetRingCharge()));
+					return FString::Printf(TEXT("Charged: %s of neutronium"), *FLRSimulation::FormatMass(Sim.GetStoredCharge()));
 				}, Style.BodyFont)
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 6.f))
@@ -2111,7 +2111,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 					const FLRSimulation* Sim = GetSimulation();
 					return Sim && Sim->CanIgnite();
 				})
-				.ToolTipText(LOCTEXT("IgniteTip", "Once the host has evaporated: fire the storage ring's whole charge at the singularity. A charge that big collapses straight into a new horizon."))
+				.ToolTipText(LOCTEXT("IgniteTip", "Once the host has evaporated: fire the whole stored charge at the singularity. A charge that big collapses straight into a new horizon."))
 				.OnClicked_Lambda([this]()
 				{
 					if (ULRGameSubsystem* Sub = GetSubsystem())

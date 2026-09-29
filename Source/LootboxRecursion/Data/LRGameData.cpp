@@ -388,9 +388,9 @@ TArray<FString> FLRGameData::Validate() const
 	if (Host.IsDefined())
 	{
 		if (Host.LifetimeSeconds < 0.f || Host.EddingtonRate < 0.f || Host.InjectorMaxRate < 0.0 || Host.ChamberRadius < 0.f
-			|| Host.RingMass < 0.0 || Host.RingRefillRate < 0.0 || Host.WarningSeconds < 0.f)
+			|| Host.ChargeCapacity < 0.0 || Host.RechargeRate < 0.0 || Host.WarningSeconds < 0.f)
 		{
-			Errors.Add(TEXT("host: lifetimeSeconds, eddingtonRate, injectorMaxRate, chamberRadius, ringMass, ringRefillRate and warningSeconds must be >= 0"));
+			Errors.Add(TEXT("host: lifetimeSeconds, eddingtonRate, injectorMaxRate, chamberRadius, chargeCapacity, rechargeRate and warningSeconds must be >= 0"));
 		}
 		if (Host.SeedCost < 0.0 || Host.PerturbCost < 0.0 || Host.SeedCost >= Host.StartMass || Host.PerturbCost >= Host.StartMass)
 		{
@@ -400,9 +400,9 @@ TArray<FString> FLRGameData::Validate() const
 		{
 			Errors.Add(TEXT("host: injectorResponseSeconds and safetyGravity must be > 0"));
 		}
-		if (Host.RingMass > 0.0 && Host.RingRefillRate <= 0.0)
+		if (Host.ChargeCapacity > 0.0 && Host.RechargeRate <= 0.0)
 		{
-			Errors.Add(TEXT("host: a storage ring (ringMass > 0) needs ringRefillRate > 0"));
+			Errors.Add(TEXT("host: a stored charge (chargeCapacity > 0) needs rechargeRate > 0"));
 		}
 		if (Host.GetSafetyCap() > 0.0 && Host.GetSafetyCap() <= Host.StartMass)
 		{

@@ -25,7 +25,7 @@ namespace
 	const FName ReasonRippleAtMax(TEXT("ripple_at_max"));
 	const FName ReasonHorizonWeak(TEXT("horizon_too_weak"));
 	const FName ReasonNoHost(TEXT("no_host"));
-	const FName ReasonRingCharging(TEXT("ring_charging"));
+	const FName ReasonRecharging(TEXT("recharging"));
 	const FName ReasonHostAlive(TEXT("host_alive"));
 
 	const FName IrradiateEvent(TEXT("irradiate"));
@@ -53,7 +53,7 @@ FString FLRSimulation::DescribeReason(FName Reason)
 	if (Reason == ReasonRippleAtMax) { return TEXT("that ripple can't get any deeper"); }
 	if (Reason == ReasonHorizonWeak) { return TEXT("the host black hole can't spare that much mass, feed it first"); }
 	if (Reason == ReasonNoHost) { return TEXT("there is no host black hole"); }
-	if (Reason == ReasonRingCharging) { return TEXT("the storage ring is still recharging"); }
+	if (Reason == ReasonRecharging) { return TEXT("the stored charge is still recharging"); }
 	if (Reason == ReasonHostAlive) { return TEXT("the host is still there, feed it with the dial"); }
 	return Reason.ToString();
 }
@@ -107,8 +107,8 @@ void FLRSimulation::Reset(int32 Seed)
 	InjectorTarget = 0.0;
 	InjectorAuto = ELRInjectorAuto::Off;
 	Injector = FLRInjectorState();
-	RingCharge = Data.Host.RingMass;
-	bRingRecharging = false;
+	StoredCharge = Data.Host.ChargeCapacity;
+	bRecharging = false;
 	bHostWarned = false;
 	bWarnedTipping = false;
 	CosmicTime = 0.0;
@@ -151,8 +151,8 @@ FLRSaveData FLRSimulation::Save() const
 	Out.InjectorAuto = InjectorAuto;
 	Out.InjectorFlow = Injector.Flow;
 	Out.InjectorChange = Injector.Change;
-	Out.RingCharge = RingCharge;
-	Out.bRingRecharging = bRingRecharging;
+	Out.StoredCharge = StoredCharge;
+	Out.bRecharging = bRecharging;
 	return Out;
 }
 
@@ -200,8 +200,8 @@ bool FLRSimulation::Load(const FLRSaveData& SaveData)
 	InjectorAuto = SaveData.InjectorAuto;
 	Injector.Flow = FMath::Clamp(SaveData.InjectorFlow, 0.0, Data.Host.InjectorMaxRate);
 	Injector.Change = SaveData.InjectorChange;
-	RingCharge = FMath::Clamp(SaveData.RingCharge, 0.0, Data.Host.RingMass);
-	bRingRecharging = SaveData.bRingRecharging;
+	StoredCharge = FMath::Clamp(SaveData.StoredCharge, 0.0, Data.Host.ChargeCapacity);
+	bRecharging = SaveData.bRecharging;
 	bHostWarned = false;
 	bWarnedTipping = false;
 	CosmicTime = SaveData.CosmicTime;
@@ -292,19 +292,19 @@ void FLRSimulation::AdvanceHost(double DeltaSeconds)
 		const double Step = FMath::Min(Remaining, HostStepSeconds);
 		Remaining -= Step;
 
-		// The storage ring refills; after a trip (or Ignite) nothing is fed until it's full.
-		if (RingCharge < Host.RingMass)
+		// The stored charge rebuilds; after a trip (or Ignite) nothing is fed until it's full.
+		if (StoredCharge < Host.ChargeCapacity)
 		{
-			RingCharge = FMath::Min(Host.RingMass, RingCharge + Host.RingRefillRate * Step);
+			StoredCharge = FMath::Min(Host.ChargeCapacity, StoredCharge + Host.RechargeRate * Step);
 		}
-		if (bRingRecharging && RingCharge >= Host.RingMass)
+		if (bRecharging && StoredCharge >= Host.ChargeCapacity)
 		{
-			bRingRecharging = false;
-			Messages.Add(TEXT("Storage ring recharged: the injectors are ready and ramp back up to the dial."));
+			bRecharging = false;
+			Messages.Add(TEXT("Charge restored: the injectors are ready and ramp back up to the dial."));
 		}
 
 		UpdateAutoTarget();
-		const bool bFeeding = HostMass > 0.0 && !bRingRecharging;
+		const bool bFeeding = HostMass > 0.0 && !bRecharging;
 		Injector = bFeeding ? StepInjector(Injector, InjectorTarget, Step, Host.InjectorResponseSeconds) : FLRInjectorState();
 		if (Injector.Flow > Host.InjectorMaxRate)
 		{
@@ -338,9 +338,9 @@ void FLRSimulation::AdvanceHost(double DeltaSeconds)
 		if (Cap > 0.0 && Intake > 0.0 && HostMass >= Cap)
 		{
 			Injector = FLRInjectorState();
-			RingCharge = 0.0;
-			bRingRecharging = true;
-			Messages.Add(FString::Printf(TEXT("SAFETIES TRIPPED: the host's gravity well reached the chamber wall at %s. The beam was dumped, and feeding is locked out while the storage ring recharges. Dial back before the cap."),
+			StoredCharge = 0.0;
+			bRecharging = true;
+			Messages.Add(FString::Printf(TEXT("SAFETIES TRIPPED: the host's gravity well reached the chamber wall at %s. The beam was dumped, and feeding is locked out while the charge rebuilds. Dial back before the cap."),
 				*FormatMass(HostMass)));
 		}
 	}
@@ -437,7 +437,7 @@ void FLRSimulation::UpdateAutoTarget()
 
 double FLRSimulation::GetIntakeRate() const
 {
-	if (HostMass <= 0.0 || bRingRecharging)
+	if (HostMass <= 0.0 || bRecharging)
 	{
 		return 0.0;
 	}
@@ -471,14 +471,14 @@ double FLRSimulation::GetTimeToEvaporation() const
 
 bool FLRSimulation::CanIgnite() const
 {
-	return Data.Host.IsDefined() && HostMass <= 0.0 && Data.Host.RingMass > 0.0
-		&& !bRingRecharging && RingCharge >= Data.Host.RingMass;
+	return Data.Host.IsDefined() && HostMass <= 0.0 && Data.Host.ChargeCapacity > 0.0
+		&& !bRecharging && StoredCharge >= Data.Host.ChargeCapacity;
 }
 
 FLRActionResult FLRSimulation::Ignite()
 {
 	FName Reason = NAME_None;
-	if (!Data.Host.IsDefined() || Data.Host.RingMass <= 0.0)
+	if (!Data.Host.IsDefined() || Data.Host.ChargeCapacity <= 0.0)
 	{
 		Reason = ReasonNoHost;
 	}
@@ -488,7 +488,7 @@ FLRActionResult FLRSimulation::Ignite()
 	}
 	else if (!CanIgnite())
 	{
-		Reason = ReasonRingCharging;
+		Reason = ReasonRecharging;
 	}
 	if (!Reason.IsNone())
 	{
@@ -498,16 +498,16 @@ FLRActionResult FLRSimulation::Ignite()
 	}
 
 	// A charge this big collapses straight into a new horizon: no Eddington limit applies.
-	HostMass = RingCharge;
-	RingCharge = 0.0;
-	bRingRecharging = true;
+	HostMass = StoredCharge;
+	StoredCharge = 0.0;
+	bRecharging = true;
 	Injector = FLRInjectorState();
 	bHostWarned = false;
 
 	FLRActionResult Result;
 	Result.Action = LRNames::Ignite;
 	Result.bSuccess = true;
-	Result.Message = FString::Printf(TEXT("Ignited: the storage ring's %s collapsed into a new horizon. The pocket universe stirs again. Open the feed dial as soon as the ring recharges."),
+	Result.Message = FString::Printf(TEXT("Ignited: the stored charge (%s) collapsed into a new horizon. The pocket universe stirs again. Open the feed dial as soon as the charge is back."),
 		*FormatMass(HostMass));
 	OnWorldChanged.Broadcast();
 	Complete(Result);

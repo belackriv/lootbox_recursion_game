@@ -376,12 +376,12 @@ struct LOOTBOXRECURSION_API FLRSaveData
 	UPROPERTY()
 	double InjectorChange = 0.0;
 
-	/** The storage ring's charge, kg, and whether feeding is locked out until it's full. */
+	/** The stored charge, kg, and whether feeding is locked out until it's full. */
 	UPROPERTY()
-	double RingCharge = 0.0;
+	double StoredCharge = 0.0;
 
 	UPROPERTY()
-	bool bRingRecharging = false;
+	bool bRecharging = false;
 
 	/** Whether the feed dial follows the HOLD or LIMIT mark by itself. */
 	UPROPERTY()

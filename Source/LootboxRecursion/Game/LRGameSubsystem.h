@@ -101,7 +101,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Outside")
 	ELRInjectorAuto GetInjectorAuto() const;
 
-	/** Fire the storage ring at the singularity to make a new host (only once the host is gone). */
+	/** Fire the stored charge at the singularity to make a new host (only once the host is gone). */
 	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Outside")
 	FLRActionResult Ignite();
 
