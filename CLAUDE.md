@@ -29,6 +29,9 @@ Rails app `belackriv/lootbox_recursion`.
 
 - Follow the Epic C++ coding standard: tabs, `F`/`U`/`A`/`S` prefixes, `b` prefix on bools.
 - Avoid variable shadowing. UE treats it as an error.
+- Unity builds merge `.cpp` files, so names in anonymous namespaces must be unique across the
+  module (and locals shouldn't reuse them). Share helpers through a named namespace in a
+  header instead (e.g. `UI/LRSlateDraw.h`).
 - New gameplay rules go in `FLRSimulation` with an automation test in
   `Tests/LRSimulationTests.cpp`. New content goes in JSON, not code.
 - Binary assets are few and live in Git LFS (so cloud sessions only see pointer files):

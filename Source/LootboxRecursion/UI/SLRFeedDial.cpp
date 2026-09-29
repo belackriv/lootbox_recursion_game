@@ -1,12 +1,10 @@
 #include "UI/SLRFeedDial.h"
 
-#include "Fonts/FontMeasure.h"
-#include "Framework/Application/SlateApplication.h"
 #include "Game/LRGameSubsystem.h"
 #include "Rendering/DrawElements.h"
-#include "Rendering/SlateRenderer.h"
 #include "Simulation/LRSimulation.h"
 #include "UI/LRHudStyle.h"
+#include "UI/LRSlateDraw.h"
 
 namespace
 {
@@ -50,14 +48,6 @@ namespace
 		FSlateDrawElement::MakeLines(Out, Layer, Geometry.ToPaintGeometry(), Points, ESlateDrawEffect::None, Color, true, Thickness);
 	}
 
-	void DrawLabel(FSlateWindowElementList& Out, int32 Layer, const FGeometry& Geometry, const FString& Text,
-		const FSlateFontInfo& Font, const FVector2f& CentredAt, const FLinearColor& Color)
-	{
-		const FVector2f Size(FVector2D(FSlateApplication::Get().GetRenderer()->GetFontMeasureService()->Measure(Text, Font)));
-		const FVector2f TopLeft = CentredAt - Size * 0.5f;
-		FSlateDrawElement::MakeText(Out, Layer, Geometry.ToPaintGeometry(Size, FSlateLayoutTransform(1.f, TopLeft)),
-			Text, Font, ESlateDrawEffect::None, Color);
-	}
 }
 
 void SLRFeedDial::Construct(const FArguments& InArgs)
@@ -211,7 +201,7 @@ int32 SLRFeedDial::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 		{ 10.0, TEXT("10 kg/s") }, { 100.0, TEXT("100") }, { 1000.0, TEXT("1 t/s") }, { 10000.0, TEXT("10 t/s") }, { 100000.0, TEXT("100 t/s") },
 	};
 	DrawRadial(OutDrawElements, LayerId + 2, AllottedGeometry, Centre, 0.0, Radius - 6.f, Radius + 6.f, Style.TextDim, 1.5f);
-	DrawLabel(OutDrawElements, LayerId + 2, AllottedGeometry, TEXT("OFF"), Style.SmallFont, PointAt(Centre, Radius + 20.f, 0.0), Style.TextDim);
+	LRSlateDraw::Label(OutDrawElements, LayerId + 2, AllottedGeometry, TEXT("OFF"), Style.SmallFont, PointAt(Centre, Radius + 20.f, 0.0), Style.TextDim);
 	for (const TPair<double, const TCHAR*>& Tick : Ticks)
 	{
 		if (Tick.Key > MaxRate * 1.001)
@@ -220,16 +210,16 @@ int32 SLRFeedDial::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 		}
 		const double Fraction = RateToFraction(Tick.Key, MaxRate);
 		DrawRadial(OutDrawElements, LayerId + 2, AllottedGeometry, Centre, Fraction, Radius - 6.f, Radius + 6.f, Style.TextDim, 1.5f);
-		DrawLabel(OutDrawElements, LayerId + 2, AllottedGeometry, Tick.Value, Style.SmallFont, PointAt(Centre, Radius + 22.f, Fraction), Style.TextDim);
+		LRSlateDraw::Label(OutDrawElements, LayerId + 2, AllottedGeometry, Tick.Value, Style.SmallFont, PointAt(Centre, Radius + 22.f, Fraction), Style.TextDim);
 	}
 
 	// The moving marks: the rated limit and the break-even (evaporation) rate.
 	if (bHostAlive)
 	{
 		DrawRadial(OutDrawElements, LayerId + 3, AllottedGeometry, Centre, Limit, Radius - 14.f, Radius + 10.f, Style.Orange, 3.f);
-		DrawLabel(OutDrawElements, LayerId + 3, AllottedGeometry, TEXT("LIMIT"), Style.SmallFont, PointAt(Centre, Radius - 26.f, Limit), Style.Orange);
+		LRSlateDraw::Label(OutDrawElements, LayerId + 3, AllottedGeometry, TEXT("LIMIT"), Style.SmallFont, PointAt(Centre, Radius - 26.f, Limit), Style.Orange);
 		DrawRadial(OutDrawElements, LayerId + 3, AllottedGeometry, Centre, Hold, Radius - 14.f, Radius + 10.f, HoldColor, 3.f);
-		DrawLabel(OutDrawElements, LayerId + 3, AllottedGeometry, TEXT("HOLD"), Style.SmallFont, PointAt(Centre, Radius - 26.f, Hold), HoldColor);
+		LRSlateDraw::Label(OutDrawElements, LayerId + 3, AllottedGeometry, TEXT("HOLD"), Style.SmallFont, PointAt(Centre, Radius - 26.f, Hold), HoldColor);
 	}
 
 	// Needles: the dial setting (thin) and the actual flow (thick, red above the limit).
@@ -258,8 +248,8 @@ int32 SLRFeedDial::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 		Status = TEXT("LOCKED OUT");
 		StatusColor = Style.Red;
 	}
-	DrawLabel(OutDrawElements, LayerId + 6, AllottedGeometry, Status, Style.HeadingFont, Centre + FVector2f(0.f, Radius * 0.45f), StatusColor);
-	DrawLabel(OutDrawElements, LayerId + 6, AllottedGeometry, FString::Printf(TEXT("dial %s"), *FLRSimulation::FormatRate(Target)),
+	LRSlateDraw::Label(OutDrawElements, LayerId + 6, AllottedGeometry, Status, Style.HeadingFont, Centre + FVector2f(0.f, Radius * 0.45f), StatusColor);
+	LRSlateDraw::Label(OutDrawElements, LayerId + 6, AllottedGeometry, FString::Printf(TEXT("dial %s"), *FLRSimulation::FormatRate(Target)),
 		Style.SmallFont, Centre + FVector2f(0.f, Radius * 0.45f + 16.f), Style.TextDim);
 	return LayerId + 6;
 }
