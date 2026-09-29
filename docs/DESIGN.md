@@ -300,14 +300,18 @@ The game has two UIs, one for each side of the horizon.
   - Ignite;
   - the host's mass and net rate next to the dial.
 
+**How it looks.** The outside is the inverse of the inside: a light grey console with dark
+text, with its instruments (the dial, the chamber) set in dark screens.
+
 **How you open it.** The outside panel drops down from the top of the screen when you press a
 button on the top status bar, or a hotkey (Tab, say; any free key will do). The same button or
 key raises it again.
 - The inside view stays live behind it, and the simulation keeps running while it's open.
 - Keep it compact, so you can watch a ripple while nudging the dial.
 
-**The status bar is the link between the two.** It always shows the host's mass (in tonnes)
-and net rate, whichever view is up. Its outside button lights up or pulses when the outside
+**The status bar is the link between the two.** It always shows the host's mass (in tonnes),
+its net rate and, while it shrinks, how long it has left at that rate, whichever view is up.
+The controls are behind its (?) button. Its outside button lights up or pulses when the outside
 needs attention:
 - the host is below break-even (shrinking);
 - the safeties have tripped, or the host is closing on the cap;

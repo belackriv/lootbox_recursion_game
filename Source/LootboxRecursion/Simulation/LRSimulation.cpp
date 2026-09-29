@@ -404,6 +404,31 @@ double FLRSimulation::GetIntakeRate() const
 	return FMath::Min(Injector.Flow, GetRatedLimit());
 }
 
+double FLRSimulation::GetTimeToEvaporation() const
+{
+	const double K = Data.Host.GetEvaporationConstant();
+	if (HostMass <= 0.0)
+	{
+		return 0.0;
+	}
+	if (K <= 0.0 || GetNetRate() >= 0.0)
+	{
+		return TNumericLimits<double>::Max();
+	}
+	// dM/dt = I - K / M^2 with a steady intake I. Shrinking means M < a = sqrt(K / I), and the
+	// time to reach zero is (a artanh(M / a) - M) / I. With little or no intake that tends to
+	// the unfed lifetime, M^3 / 3K, which is also the numerically safe form there.
+	const double Intake = GetIntakeRate();
+	if (Intake * HostMass * HostMass < 1e-6 * K)
+	{
+		return Data.Host.GetUnfedLifetime(HostMass);
+	}
+	const double Balance = FMath::Sqrt(K / Intake);
+	const double Ratio = FMath::Min(HostMass / Balance, 1.0 - 1e-12);
+	const double Artanh = 0.5 * FMath::Loge((1.0 + Ratio) / (1.0 - Ratio));
+	return (Balance * Artanh - HostMass) / Intake;
+}
+
 bool FLRSimulation::CanIgnite() const
 {
 	return Data.Host.IsDefined() && HostMass <= 0.0 && Data.Host.RingMass > 0.0

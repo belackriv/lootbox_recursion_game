@@ -1180,6 +1180,30 @@ bool FLRHostFeedingTest::RunTest(const FString& Parameters)
 	Sim.Advance(10.0);
 	TestTrue(TEXT("exponential growth at the limit"), FMath::IsNearlyEqual(Sim.GetHostMass() / Before, FMath::Exp(0.1), 0.005));
 	TestTrue(TEXT("the net rate is intake minus evaporation"), FMath::IsNearlyEqual(Sim.GetNetRate(), Sim.GetIntakeRate(), 1e-9));
+	TestTrue(TEXT("a growing host never evaporates"), Sim.GetTimeToEvaporation() > 1e30);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostTimeLeftTest, "LootboxRecursion.Host.TimeToEvaporationCountsTheIntake", LR_TEST_FLAGS)
+bool FLRHostTimeLeftTest::RunTest(const FString& Parameters)
+{
+	// 1,000 kg lasting 1,000 s unfed. Fed a steady 0.2 kg/s (below the 0.333 kg/s it loses), it
+	// still shrinks, but lasts longer.
+	FLRSimulation Unfed(LRTest::MakeCosmosData(), 1);
+	TestTrue(TEXT("unfed, the Hawking lifetime"), FMath::IsNearlyEqual(Unfed.GetTimeToEvaporation(), 1000.0, 1e-6));
+
+	FLRSimulation Fed(LRTest::MakeCosmosData(), 1);
+	Fed.SetInjectorTarget(0.2);
+	Fed.Advance(30.0); // let the flow settle
+	const double Predicted = Fed.GetTimeToEvaporation();
+	TestTrue(TEXT("feeding buys time"), Predicted > Fed.GetData().Host.GetUnfedLifetime(Fed.GetHostMass()));
+	double Elapsed = 0.0;
+	while (!Fed.IsFrozen() && Elapsed < 5000.0)
+	{
+		Fed.Advance(1.0);
+		Elapsed += 1.0;
+	}
+	TestTrue(TEXT("and the prediction holds"), FMath::Abs(Elapsed - Predicted) < 3.0);
 	return true;
 }
 

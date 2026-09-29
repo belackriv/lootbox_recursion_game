@@ -172,6 +172,17 @@ void SLRGameHud::Construct(const FArguments& InArgs)
 				BuildOutsidePanel()
 			]
 		]
+		// Help: the (?) button on the status bar opens it.
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Center)
+		[
+			SNew(SBox)
+			.Visibility_Lambda([this]() { return bHelpOpen ? EVisibility::Visible : EVisibility::Collapsed; })
+			[
+				BuildHelpDialog()
+			]
+		]
 	];
 }
 
@@ -184,7 +195,7 @@ void SLRGameHud::Tick(const FGeometry& AllottedGeometry, const double InCurrentT
 }
 
 TSharedRef<SWidget> SLRGameHud::MakePanel(const FText& Title, const TSharedRef<SWidget>& Content,
-	const TSharedRef<SWidget>& HeaderExtra, bool bFillHeight)
+	const TSharedRef<SWidget>& HeaderExtra, bool bFillHeight, bool bConsole)
 {
 	const FLRHudStyle& Style = FLRHudStyle::Get();
 
@@ -195,7 +206,7 @@ TSharedRef<SWidget> SLRGameHud::MakePanel(const FText& Title, const TSharedRef<S
 			// Title bar (Rails: .fac-title-bar)
 			SNew(SBorder)
 			.BorderImage(&Style.WhiteBrush)
-			.BorderBackgroundColor(Style.PanelInner)
+			.BorderBackgroundColor(bConsole ? Style.ConsoleInner : Style.PanelInner)
 			.Padding(FMargin(8.f, 4.f))
 			[
 				SNew(SHorizontalBox)
@@ -206,7 +217,7 @@ TSharedRef<SWidget> SLRGameHud::MakePanel(const FText& Title, const TSharedRef<S
 					SNew(STextBlock)
 					.Text(Title)
 					.Font(Style.HeadingFont)
-					.ColorAndOpacity(Style.Orange)
+					.ColorAndOpacity(bConsole ? Style.ConsoleAccent : Style.Orange)
 				]
 				+ SHorizontalBox::Slot()
 				.AutoWidth()
@@ -229,12 +240,12 @@ TSharedRef<SWidget> SLRGameHud::MakePanel(const FText& Title, const TSharedRef<S
 	// Outer border + panel fill (Rails: .fac-panel)
 	return SNew(SBorder)
 		.BorderImage(&Style.WhiteBrush)
-		.BorderBackgroundColor(Style.Border)
+		.BorderBackgroundColor(bConsole ? Style.ConsoleBorder : Style.Border)
 		.Padding(FMargin(2.f))
 		[
 			SNew(SBorder)
 			.BorderImage(&Style.WhiteBrush)
-			.BorderBackgroundColor(Style.Panel)
+			.BorderBackgroundColor(bConsole ? Style.ConsolePanel : Style.Panel)
 			.Padding(FMargin(0.f))
 			[
 				Body
@@ -260,15 +271,33 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 				.Font(Style.TitleFont)
 				.ColorAndOpacity(Style.Orange)
 			]
+			// (?): the controls, in a dialog.
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(FMargin(12.f, 0.f, 0.f, 0.f))
+			[
+				SNew(SButton)
+				.ButtonStyle(&Style.ButtonStyle)
+				.IsFocusable(false)
+				.ContentPadding(FMargin(8.f, 1.f))
+				.ToolTipText(LOCTEXT("HelpTip", "Controls and help"))
+				.OnClicked_Lambda([this]()
+				{
+					bHelpOpen = !bHelpOpen;
+					return FReply::Handled();
+				})
+				[
+					SNew(STextBlock)
+					.Font(Style.HeadingFont)
+					.ColorAndOpacity(Style.Orange)
+					.Text(LOCTEXT("HelpButton", "?"))
+				]
+			]
 			+ SHorizontalBox::Slot()
 			.FillWidth(1.f)
-			.VAlign(VAlign_Center)
-			.Padding(FMargin(16.f, 0.f))
 			[
-				SNew(STextBlock)
-				.Text(LOCTEXT("Help", "Click a cell to select it  |  WASD pan, wheel zoom, hold right mouse to look, Q/E orbit, PgUp/PgDn layer, R reset view, H home, F outside  |  ~ console: LRGive hydrogen 500 (into the selected cell), LRTimeScale 10"))
-				.Font(Style.SmallFont)
-				.ColorAndOpacity(Style.TextDim)
+				SNew(SSpacer)
 			]
 			// The cosmic clock: epoch and time since the pocket universe's Big Bang.
 			+ SHorizontalBox::Slot()
@@ -308,8 +337,12 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 					{
 						return LOCTEXT("HostFrozen", "Host evaporated: universe frozen. Ignite a new one (F)");
 					}
-					return AsText(FString::Printf(TEXT("Host %s  %s"), *FLRSimulation::FormatMass(Sim->GetHostMass()),
-						*FormatSignedRate(Sim->GetNetRate())));
+					const double Net = Sim->GetNetRate();
+					const FString Trend = Net < 0.0
+						? FString::Printf(TEXT("evaporates in %s"), *FormatDuration(Sim->GetTimeToEvaporation()))
+						: FString(TEXT("growing"));
+					return AsText(FString::Printf(TEXT("Host %s  %s  %s"), *FLRSimulation::FormatMass(Sim->GetHostMass()),
+						*FormatSignedRate(Net), *Trend));
 				})
 				.ColorAndOpacity_Lambda([this]() -> FSlateColor
 				{
@@ -1157,11 +1190,11 @@ TSharedRef<SWidget> SLRGameHud::MakeDeployedRow(const FLRPlacedEntity& Entity)
 		];
 }
 
-TSharedRef<SWidget> SLRGameHud::MakeSmallButton(const FText& Label, TFunction<void()> OnClick)
+TSharedRef<SWidget> SLRGameHud::MakeSmallButton(const FText& Label, TFunction<void()> OnClick, bool bConsole)
 {
 	const FLRHudStyle& Style = FLRHudStyle::Get();
 	return SNew(SButton)
-		.ButtonStyle(&Style.ButtonStyle)
+		.ButtonStyle(bConsole ? &Style.ConsoleButtonStyle : &Style.ButtonStyle)
 		.IsFocusable(false)
 		.ContentPadding(FMargin(8.f, 2.f))
 		.OnClicked_Lambda([OnClick]()
@@ -1172,7 +1205,7 @@ TSharedRef<SWidget> SLRGameHud::MakeSmallButton(const FText& Label, TFunction<vo
 		[
 			SNew(STextBlock)
 			.Font(Style.SmallFont)
-			.ColorAndOpacity(Style.Text)
+			.ColorAndOpacity(bConsole ? Style.ConsoleText : Style.Text)
 			.Text(Label)
 		];
 }
@@ -1645,6 +1678,70 @@ void SLRGameHud::RebuildLog()
 	}
 }
 
+TSharedRef<SWidget> SLRGameHud::BuildHelpDialog()
+{
+	const FLRHudStyle& Style = FLRHudStyle::Get();
+	struct FHelpRow
+	{
+		const TCHAR* Keys;
+		const TCHAR* Does;
+	};
+	const FHelpRow Rows[] = {
+		{ TEXT("Click a cell"), TEXT("Select it (click again to deselect). Building, Perturb, Open and Dismantle act on the selected cell.") },
+		{ TEXT("WASD / arrows"), TEXT("Pan across the build layer") },
+		{ TEXT("Mouse wheel"), TEXT("Zoom") },
+		{ TEXT("Right mouse (hold)"), TEXT("Look around: orbit and tilt") },
+		{ TEXT("Q / E"), TEXT("Orbit") },
+		{ TEXT("PgUp / PgDn, ] / ["), TEXT("Build layer up / down") },
+		{ TEXT("R"), TEXT("Reset the camera angle and zoom") },
+		{ TEXT("H / Home"), TEXT("Fly to the first thing you placed") },
+		{ TEXT("F / Tab, OUTSIDE"), TEXT("The outside console: feed the host with the dial (drag or scroll), watch it in its chamber, Ignite a new one if it evaporates") },
+		{ TEXT("~"), TEXT("Console: LRGive hydrogen 500 (into the selected cell), LRTimeScale 10, LRSave, LRReset") },
+	};
+
+	TSharedRef<SVerticalBox> List = SNew(SVerticalBox);
+	for (const FHelpRow& Row : Rows)
+	{
+		List->AddSlot()
+		.AutoHeight()
+		.Padding(FMargin(0.f, 3.f))
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			[
+				SNew(SBox)
+				.WidthOverride(150.f)
+				[
+					SNew(STextBlock).Font(Style.HeadingFont).ColorAndOpacity(Style.Orange).Text(AsText(Row.Keys))
+				]
+			]
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.f)
+			[
+				SNew(STextBlock).Font(Style.BodyFont).ColorAndOpacity(Style.Text).AutoWrapText(true).Text(AsText(Row.Does))
+			]
+		];
+	}
+	List->AddSlot()
+	.AutoHeight()
+	.Padding(FMargin(0.f, 10.f, 0.f, 0.f))
+	[
+		SNew(STextBlock)
+		.Font(Style.SmallFont)
+		.ColorAndOpacity(Style.TextDim)
+		.AutoWrapText(true)
+		.Text(LOCTEXT("HelpGoal", "Keep the host black hole alive from outside while the pocket universe grows inside it: seed ripples, gather matter, build caches and irradiators. The status bar shows the host's mass, how fast it's changing and how long it has left."))
+	];
+
+	return SNew(SBox)
+		.WidthOverride(620.f)
+		[
+			MakePanel(LOCTEXT("HelpTitle", "HELP"), List,
+				MakeSmallButton(LOCTEXT("HelpClose", "Close"), [this]() { bHelpOpen = false; }))
+		];
+}
+
 // ---------------------------------------------------------------------------------------
 // Outside: the facility's injectors
 // ---------------------------------------------------------------------------------------
@@ -1670,7 +1767,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 	{
 		return SNew(STextBlock)
 			.Font(Font)
-			.ColorAndOpacity(Style.Text)
+			.ColorAndOpacity(Style.ConsoleText)
 			.AutoWrapText(true)
 			.Text_Lambda([this, Describe]()
 			{
@@ -1682,7 +1779,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 	{
 		const FLRHudStyle& S = FLRHudStyle::Get();
 		return SNew(SButton)
-			.ButtonStyle(&S.ButtonStyle)
+			.ButtonStyle(&S.ConsoleButtonStyle)
 			.IsFocusable(false)
 			.ContentPadding(FMargin(8.f, 2.f))
 			.ToolTipText(Tip)
@@ -1696,7 +1793,25 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 				return FReply::Handled();
 			})
 			[
-				SNew(STextBlock).Font(S.SmallFont).ColorAndOpacity(S.Text).Text(Label)
+				SNew(STextBlock).Font(S.SmallFont).ColorAndOpacity(S.ConsoleText).Text(Label)
+			];
+	};
+
+	// The instruments (the dial, the chamber) sit in dark screens set into the light console.
+	auto Screen = [&Style](const TSharedRef<SWidget>& Instrument) -> TSharedRef<SWidget>
+	{
+		return SNew(SBorder)
+			.BorderImage(&Style.WhiteBrush)
+			.BorderBackgroundColor(Style.ConsoleScreenBorder)
+			.Padding(FMargin(2.f))
+			[
+				SNew(SBorder)
+				.BorderImage(&Style.WhiteBrush)
+				.BorderBackgroundColor(Style.ConsoleScreen)
+				.Padding(FMargin(4.f))
+				[
+					Instrument
+				]
 			];
 	};
 
@@ -1706,7 +1821,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 		.AutoHeight()
 		.HAlign(HAlign_Center)
 		[
-			SNew(SLRFeedDial).Subsystem(Subsystem)
+			Screen(SNew(SLRFeedDial).Subsystem(Subsystem))
 		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
@@ -1738,7 +1853,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			[
 				SNew(STextBlock)
 				.Font(Style.SmallFont)
-				.ColorAndOpacity(Style.TextDim)
+				.ColorAndOpacity(Style.ConsoleTextDim)
 				.AutoWrapText(true)
 				.Text(LOCTEXT("DialHelp", "Drag or scroll the dial. Green: the host grows. Above LIMIT the flow is blown back out. The flow lags the dial (the lens magnets ramp), so dial back before the cap."))
 			]
@@ -1793,8 +1908,14 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			[
 				Readout([](const FLRSimulation& Sim)
 				{
-					return Sim.IsFrozen() ? FString()
-						: FString::Printf(TEXT("Unfed, it evaporates in %s"), *FormatDuration(Sim.GetData().Host.GetUnfedLifetime(Sim.GetHostMass())));
+					if (Sim.IsFrozen())
+					{
+						return FString();
+					}
+					const FString Unfed = FormatDuration(Sim.GetData().Host.GetUnfedLifetime(Sim.GetHostMass()));
+					return Sim.GetNetRate() < 0.0
+						? FString::Printf(TEXT("At this rate it evaporates in %s (unfed: %s)"), *FormatDuration(Sim.GetTimeToEvaporation()), *Unfed)
+						: FString::Printf(TEXT("Growing. Unfed, it would last %s"), *Unfed);
 				}, Style.BodyFont)
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 2.f))
@@ -1814,7 +1935,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 		.AutoHeight()
 		.HAlign(HAlign_Center)
 		[
-			SNew(SLRChamberView).Subsystem(Subsystem)
+			Screen(SNew(SLRChamberView).Subsystem(Subsystem))
 		]
 		+ SVerticalBox::Slot().AutoHeight()
 		[
@@ -1843,7 +1964,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
 			[
-				SNew(STextBlock).Font(Style.HeadingFont).ColorAndOpacity(Style.Orange).Text(LOCTEXT("RingTitle", "STORAGE RING"))
+				SNew(STextBlock).Font(Style.HeadingFont).ColorAndOpacity(Style.ConsoleAccent).Text(LOCTEXT("RingTitle", "STORAGE RING"))
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 4.f))
 			[
@@ -1881,7 +2002,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 6.f))
 			[
 				SNew(SButton)
-				.ButtonStyle(&Style.ButtonStyle)
+				.ButtonStyle(&Style.ConsoleButtonStyle)
 				.IsFocusable(false)
 				.HAlign(HAlign_Center)
 				.ContentPadding(FMargin(8.f, 5.f))
@@ -1900,14 +2021,14 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 					return FReply::Handled();
 				})
 				[
-					SNew(STextBlock).Font(Style.HeadingFont).ColorAndOpacity(Style.Orange).Text(LOCTEXT("Ignite", "IGNITE"))
+					SNew(STextBlock).Font(Style.HeadingFont).ColorAndOpacity(Style.ConsoleAccent).Text(LOCTEXT("Ignite", "IGNITE"))
 				]
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 6.f, 0.f, 0.f))
 			[
 				SNew(STextBlock)
 				.Font(Style.SmallFont)
-				.ColorAndOpacity(Style.TextDim)
+				.ColorAndOpacity(Style.ConsoleTextDim)
 				.AutoWrapText(true)
 				.Text(LOCTEXT("InjectorLore", "Neutronium injectors: neutral matter the host's glow barely pushes, focused by a graviton lens. The safeties dump the beam when the 1 g sphere reaches the chamber wall."))
 			]
@@ -1926,7 +2047,8 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			{
 				Sub->SetOutsideViewOpen(false);
 			}
-		}));
+		}, /*bConsole*/ true),
+		/*bFillHeight*/ false, /*bConsole*/ true);
 }
 
 #undef LOCTEXT_NAMESPACE

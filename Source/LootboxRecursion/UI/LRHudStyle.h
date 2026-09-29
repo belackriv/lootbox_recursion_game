@@ -32,10 +32,25 @@ struct FLRHudStyle
 	FLinearColor Red;
 	FLinearColor Green;
 
+	/*
+	 * The outside panel is the facility's console, the inverse of the inside: light grey, with
+	 * dark text, and its instruments (the dial, the chamber) set in dark screens.
+	 */
+	FLinearColor ConsolePanel;
+	FLinearColor ConsoleInner;
+	FLinearColor ConsoleBorder;
+	FLinearColor ConsoleText;
+	FLinearColor ConsoleTextDim;
+	/** A darker amber that reads on light grey. */
+	FLinearColor ConsoleAccent;
+	FLinearColor ConsoleScreen;
+	FLinearColor ConsoleScreenBorder;
+
 	/** One white brush, tinted per use via BorderBackgroundColor. */
 	FSlateColorBrush WhiteBrush;
 
 	FButtonStyle ButtonStyle;
+	FButtonStyle ConsoleButtonStyle;
 	FButtonStyle SlotButtonStyle;
 	FProgressBarStyle ProgressStyle;
 

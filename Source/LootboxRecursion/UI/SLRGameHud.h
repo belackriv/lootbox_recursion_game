@@ -64,16 +64,19 @@ private:
 	TSharedRef<SWidget> BuildLogPanel();
 	/** The outside view: the facility's injector controls. */
 	TSharedRef<SWidget> BuildOutsidePanel();
+	/** The controls, opened with the status bar's (?) button. */
+	TSharedRef<SWidget> BuildHelpDialog();
 	/** Something outside needs the player: the host is shrinking, gone, near the cap, or the ring is recharging. */
 	bool DoesOutsideNeedAttention() const;
 	TSharedRef<SWidget> MakePanel(const FText& Title, const TSharedRef<SWidget>& Content,
-		const TSharedRef<SWidget>& HeaderExtra, bool bFillHeight = false);
+		const TSharedRef<SWidget>& HeaderExtra, bool bFillHeight = false, bool bConsole = false);
 	TSharedRef<SWidget> MakeActionButton(FName ActionName, TFunction<void()> OnClick, TFunction<bool()> ExtraEnabled = nullptr);
 	TSharedRef<SWidget> MakeActionProgress(FName ActionName);
 	TSharedRef<SWidget> MakeRecipeButton(FName RecipeId);
 	TSharedRef<SWidget> MakeMatterRow(FName Item);
 	TSharedRef<SWidget> MakeDeployedRow(const FLRPlacedEntity& Entity);
-	TSharedRef<SWidget> MakeSmallButton(const FText& Label, TFunction<void()> OnClick);
+	/** bConsole: styled for the light outside console. */
+	TSharedRef<SWidget> MakeSmallButton(const FText& Label, TFunction<void()> OnClick, bool bConsole = false);
 
 	// Data helpers
 	ULRGameSubsystem* GetSubsystem() const { return Subsystem.Get(); }
@@ -128,6 +131,7 @@ private:
 	/** The outside panel, and how far it has dropped down (0 = hidden, 1 = fully down). */
 	TSharedPtr<SWidget> OutsidePanel;
 	float OutsideDrop = 0.f;
+	bool bHelpOpen = false;
 
 	/** Log history kept for scrolling back; the panel shows LogVisibleLines of it at a time. */
 	static constexpr int32 MaxLogLines = 200;

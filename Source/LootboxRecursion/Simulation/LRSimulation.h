@@ -120,6 +120,11 @@ public:
 	double GetEvaporationRate() const { return Data.Host.GetEvaporationRate(HostMass); }
 	/** Intake minus evaporation, kg/s. */
 	double GetNetRate() const { return GetIntakeRate() - GetEvaporationRate(); }
+	/**
+	 * Seconds until the host evaporates if the intake stays as it is now (it's still shrinking
+	 * and speeding up as it goes). A very large number if it isn't shrinking.
+	 */
+	double GetTimeToEvaporation() const;
 	/** The mass at which the safeties trip (0 = no cap). */
 	double GetSafetyCap() const { return Data.Host.GetSafetyCap(); }
 	double GetRingCharge() const { return RingCharge; }
