@@ -357,7 +357,8 @@ expanding universe. Alan Guth called inflation "the ultimate free lunch" for thi
 ## Time controls (planned)
 
 The log-scale cosmic clock stays as it is. On top of it the player gets a speed control: a
-**speed level** from -1 to 3, which buttons (and keys) step up or down one at a time.
+**speed level** from -1 to 3, which buttons (and keys) step up or down one at a time
+(These are placeholder for real graphics / icons)
 
 | Level | Speed | Display |
 |---|---|---|
