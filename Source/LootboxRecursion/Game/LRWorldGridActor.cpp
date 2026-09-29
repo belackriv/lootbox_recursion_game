@@ -513,6 +513,7 @@ void ALRWorldGridActor::UpdateMatter()
 	}
 
 	const float Scale = CellSize / 100.f;
+	const float DiscScale = Scale * FMath::Max(MatterScale, 0.05f);
 	for (const TPair<FIntVector, FLRCellMatter>& Pair : Matter)
 	{
 		// Tint: the materials' colours weighted by amount. Size: grows with the log of the total,
@@ -540,7 +541,7 @@ void ALRWorldGridActor::UpdateMatter()
 			MatterMeshes.Add(Pair.Key, Disc);
 		}
 		Disc->SetRelativeLocation(CellToLocal(Pair.Key) + FVector(0.f, 0.f, 3.f * Scale));
-		Disc->SetRelativeScale3D(FVector(Size * Scale, Size * Scale, 0.06f * Scale));
+		Disc->SetRelativeScale3D(FVector(Size * DiscScale, Size * DiscScale, 0.06f * Scale));
 		if (UMaterialInstanceDynamic* Material = Cast<UMaterialInstanceDynamic>(Disc->GetMaterial(0)))
 		{
 			LRMaterialHooks::SetColor(Material, Tint);
@@ -584,7 +585,9 @@ void ALRWorldGridActor::RebuildEntities()
 		return;
 	}
 
-	const float Scale = CellSize / 100.f;
+	// CellScale is the cell (the engine shapes are 100cm across); Scale is an entity's size in it.
+	const float CellScale = CellSize / 100.f;
+	const float Scale = CellScale * FMath::Max(EntityScale, 0.05f);
 	for (const TPair<FIntVector, FLRPlacedEntity>& Pair : Simulation->GetPlaced())
 	{
 		const FLRPlacedEntity& Entity = Pair.Value;
@@ -662,9 +665,9 @@ void ALRWorldGridActor::RebuildEntities()
 		Label->SetupAttachment(RootComponent);
 		Label->SetHorizontalAlignment(EHTA_Center);
 		Label->SetVerticalAlignment(EVRTA_TextCenter);
-		Label->SetWorldSize(28.f * Scale);
+		Label->SetWorldSize(28.f * CellScale);
 		Label->SetTextRenderColor(EntityLabelColor);
-		Label->SetRelativeLocation(Floor + FVector(0.f, 0.f, 100.f * Scale));
+		Label->SetRelativeLocation(Floor + FVector(0.f, 0.f, 100.f * Scale + 12.f * CellScale));
 		Label->SetText(FText::FromString(LabelText));
 		Label->RegisterComponent();
 

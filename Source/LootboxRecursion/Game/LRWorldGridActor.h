@@ -48,6 +48,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Grid")
 	float CellSize = 100.f;
 
+	/** Size of entities (ripples, caches, irradiators and what's inside them) relative to their cell. 1 = the original sizes. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "World Grid")
+	float EntityScale = 0.7f;
+
+	/** Size of the gas discs of matter relative to their cell. 1 = the original sizes. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "World Grid")
+	float MatterScale = 1.f;
+
 	/*
 	 * Material hooks (see LRMaterialHooks and docs/MATERIALS.md). Each is used if the asset
 	 * exists; otherwise the built-in look stays. Items can also name their own material in
