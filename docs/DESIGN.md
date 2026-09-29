@@ -99,31 +99,59 @@ This replaces the Feed button and the host-as-a-percentage (the version implemen
 on the facility's mass injectors. The challenge is keeping three things in balance:
 
 - Hawking evaporation, which takes mass away, fastest when the host is small.
-- Feeding, which adds mass, but no faster than the Eddington limit.
-- The facility's safety cap on how big the host may grow.
+- Feeding, which adds mass, but no faster than the injectors' rated limit (a multiple of the
+  Eddington limit).
+- The host's gravity well, which must stay inside the containment chamber. That's the real
+  cap on its size.
 
 **The arc.** Early on the host is small and hot, and ripples cost it mass, so you run the dial
-aggressively, near the Eddington mark, to grow it. As it grows, evaporation slows and the cap
-gets close, so you (literally) dial it back.
+aggressively, near the rated limit, to grow it. As it grows, evaporation slows and its gravity
+well swells toward the chamber wall, so you (literally) dial it back.
+
+### The facility (lore)
+
+- **Why feeding is possible at all.** A black hole's glow pushes infalling gas away. That's
+  the Eddington limit, and for a mini black hole it's crippling: its Hawking glow is about
+  10¹² times its Eddington luminosity. The limit comes from radiation scattering off the
+  electrons in ionized gas.
+- **Neutronium injectors.** The facility injects cold, degenerate **neutronium**: neutral
+  matter, so radiation has almost nothing to push on. Scattering off a neutron is weaker than
+  off an electron by (electron mass / neutron mass)², which alone raises the limit about
+  3×10⁶ times.
+- **Graviton lens.** A (made-up) field focuses the stream through the glow onto a target
+  100,000 times smaller than a proton. It gains the remaining factor of about 10⁶.
+- **The rating.** Together the injectors are rated at **3×10¹² × the Eddington limit**, and
+  the panel says so. That's the point beyond which even they can't push, and flow above it is
+  blown back out as jets. Better injectors (tech tree) could raise the multiple.
+- **Why the flow can't change instantly.** The graviton lens runs on superconducting magnets,
+  and a magnet's current can't change instantly. Inductance limits how fast it can ramp, just
+  as the LHC's magnets take minutes to ramp. So the flow follows the dial with inertia.
+- **The container is a storage ring.** The neutronium waiting to be injected circulates in a
+  magnetic storage ring: the mass "bucket".
+- **Emergency shutdown.** The safeties do what particle accelerators do. A **beam dump**
+  sends the ring's whole charge into an absorber instantly, and the magnets **quench**
+  (shed their stored energy). Before feeding can resume, the ring has to be refilled and the
+  magnets ramped back up. That's the lockout, and the ramp afterwards is the inertia again.
 
 ### The dial
 
 - **What it sets.** The dial sets a **target** injection rate, in mass per second. It's
-  logarithmic, because useful rates span three orders of magnitude (tens of kg/s at a large
+  logarithmic, because useful rates span several orders of magnitude (tens of kg/s at a large
   host, tens of t/s at full throttle).
-- **The Eddington mark.** The dial shows where the Eddington limit is. The mark moves as the
-  host grows and shrinks, because the limit is proportional to its mass. Anything injected
-  above the mark is blown back out as jets and never reaches the host: wasted.
-- **The break-even mark.** A second mark worth having shows the evaporation rate, which is
-  the flow that just holds the mass steady. Between the two marks the host grows. Below the
-  break-even mark it shrinks.
+- **The rated limit mark.** The dial shows where the injectors' rated limit is (3×10¹² ×
+  Eddington). The mark moves as the host grows and shrinks, because the limit is
+  proportional to its mass. Anything injected above the mark is blown back out as jets and
+  never reaches the host: wasted.
+- **The break-even mark.** A second mark shows the evaporation rate, which is the flow that
+  just holds the mass steady. Between the two marks the host grows. Below the break-even
+  mark it shrinks.
 - **Two needles.** The dial shows the setting and, as a second needle, the actual flow, which
   lags behind it (see "Injector inertia" below).
 
 ### Injector inertia
 
-The dial moves instantly, but the injected mass has inertia, so the actual flow follows the
-setting smoothly: it starts slowly (a parabolic start), then settles, without overshooting.
+The dial moves instantly, but the lens magnets ramp, so the actual flow follows the setting
+smoothly: it starts slowly (a parabolic start), then settles, without overshooting.
 
 **No "time since the last dial change" is needed.** The flow needs one extra piece of state, its
 current rate of change, and then it can be worked out from the dial setting, the current
@@ -152,32 +180,58 @@ flow'   = change
   constant-acceleration ramp with a top speed, or doing the same in log space so every
   decade takes equally long.
 
-### The safety cap
+### The safety cap: the gravity well
 
-The injectors have safety systems that stop the host growing too big (the facility's
-**containment rating**).
-- **The trip.** When the host reaches the cap, the safeties trip. Injection stops
-  **instantly**, with no inertia. The mass meant for the host (the injectors' **container**)
-  is dumped.
-- **Locked out.** Nothing can be fed until the container has refilled
-  (`containerMass / refillRate`). After that, the flow ramps up again from zero, with
-  inertia.
+The host is held in a containment chamber. What limits its size is its **gravity well**:
+the sphere around it inside which its pull is stronger than 1 g. That radius is
+√(G·M / g), so it grows with the square root of the mass:
+
+| Host mass | 1 g radius |
+|---|---|
+| 1,260 t | 2.9 mm |
+| 2,000 t | 3.7 mm |
+| 3,500 t | 4.9 mm |
+| 14,700 t | 10 mm |
+
+- **The chamber rating.** The first chamber's field emitters sit 1 cm from the host, so the
+  safeties trip when the 1 g sphere reaches them, at 14,700 t. Each larger chamber is a
+  tech-tree upgrade, and 10 times the radius allows 100 times the mass: 10 cm allows
+  1.5 million t, and 1 m about 150 million t (a small mountain).
+- **The trip.** Injection stops **instantly** (the beam dump), with no inertia, and the
+  storage ring's charge is lost.
+- **Locked out.** Nothing can be fed until the ring has refilled (`containerMass /
+  refillRate`). After that, the flow ramps up again from zero, with inertia.
 - **Why it's a skill.** Because of the inertia, turning the dial down near the cap takes
-  effect late. At full throttle, 20 s of lag is about 400 t more mass, so you have to dial
-  back before the cap, not at it.
-- **Progression.** The cap is a facility rating, and raising it is a natural tech-tree
-  unlock.
+  effect late. At 20 t/s, 15 s of lag is about 300 t more mass, so you have to dial back
+  before the cap, not at it.
+- **Later game.** Evaporation is negligible for a big host. In the later game the gravity well
+  is the constraint, and chamber upgrades are how the host (and the injectors' flow) keeps
+  growing.
+
+### Seeing the host
+
+The outside panel shows the host itself, not only numbers:
+
+- **A chamber cross-section, drawn to scale.** It shows the chamber wall (the trip line), and
+  the 1 g sphere as a glowing bubble that swells and shrinks with the mass. At the start
+  (3,500 t) it's about halfway to the wall.
+- **The horizon,** as an inset with a scale bar: 5×10⁻²¹ m, far too small to draw otherwise.
+- **The glow.** The host's temperature and Hawking output, shown as a colour or glow that's
+  hottest and brightest when it's small and in danger (3.5×10¹⁶ K and 3×10¹⁹ W at the start).
+- **Size is readable at a glance.** How close the bubble is to the wall shows how close the
+  trip is, with no arithmetic.
 
 ### Losing the host, and the kick-start
 
 When the host evaporates completely (in a final flash as its last tonnes go), the pocket
 universe freezes. Nothing is lost, as now.
-- **Why the dial can't restart it.** It's physics: the Eddington limit is proportional to
-  mass, so an empty host can't be fed at all. And a tiny new host evaporates faster than
-  anything can reach it.
-- **Ignite.** The kick-start is a button that fires the full container at the singularity
-  in one go. A charge that big collapses straight into a new horizon, with no Eddington
-  limit. This is hand-feeding coal to restart a dead power grid (as in Satisfactory).
+- **Why the dial can't restart it.** The rated limit is proportional to mass, so an empty
+  host can't be fed at all. And a tiny new host evaporates faster than anything can reach
+  it.
+- **Ignite.** The kick-start is a button that fires the storage ring's whole charge at the
+  singularity in one go. A charge that big collapses straight into a new horizon, with no
+  Eddington limit. This is hand-feeding coal to restart a dead power grid (as in
+  Satisfactory).
 - **Size the charge above the tipping point.** Then a freshly ignited host survives, as long
   as you open the dial right away.
 
@@ -194,48 +248,43 @@ deepening one costs a smaller mass.
 **Hawking evaporation (real).** Lifetime is t = 8.41×10⁻¹⁷ s × (M/kg)³, and mass is lost at
 3.96×10¹⁵ / M² kg/s. A host that lasts an hour unfed weighs about 3,500 t. For comparison:
 
-| Host mass | Lifetime unfed | Evaporation | Temperature | Horizon radius |
-|---|---|---|---|---|
-| 1,000 t | 84 s | 4.0 t/s | 1.2×10¹⁷ K | 1.5×10⁻²¹ m |
-| 2,000 t | 11 min | 1.0 t/s | 6×10¹⁶ K | 3×10⁻²¹ m |
-| **3,500 t** (start) | **1 hour** | 0.32 t/s | 3.5×10¹⁶ K | 5×10⁻²¹ m |
-| **6,000 t** (first cap) | 5 hours | 0.11 t/s | 2×10¹⁶ K | 9×10⁻²¹ m |
-| 10,000 t | 23 hours | 0.04 t/s | 1.2×10¹⁶ K | 1.5×10⁻²⁰ m |
+| Host mass | Lifetime unfed | Evaporation | Temperature | Horizon radius | 1 g radius |
+|---|---|---|---|---|---|
+| 1,000 t | 84 s | 4.0 t/s | 1.2×10¹⁷ K | 1.5×10⁻²¹ m | 2.6 mm |
+| 2,000 t | 11 min | 1.0 t/s | 6×10¹⁶ K | 3×10⁻²¹ m | 3.7 mm |
+| **3,500 t** (start) | **1 hour** | 0.32 t/s | 3.5×10¹⁶ K | 5×10⁻²¹ m | 4.9 mm |
+| **14,700 t** (first chamber) | 74 hours | 18 kg/s | 8×10¹⁵ K | 2.2×10⁻²⁰ m | 10 mm |
 
-The horizon is about 100,000 times smaller than a proton, and it glows at about 3×10¹⁹ W.
-
-**The Eddington limit (real, then scaled).** The real limit is 6.3 W per kg of black hole.
+**The Eddington limit (real, then rated).** The real limit is 6.3 W per kg of black hole.
 Accreting at 10% efficiency, that allows 7×10⁻¹⁶ of the host's mass per second: an
 e-folding time (the Salpeter time) of 45 million years. For the 3,500 t host that's 2.5×10⁻⁹
 kg/s, while it evaporates 324 kg/s.
-- **The honest physics:** a mini black hole can't be fed. Its own Hawking glow is about 10¹²
-  times its Eddington luminosity, and it blows everything away.
-- **The game keeps the shape and scales the constant.** The limit stays proportional to mass,
-  but the facility's beamed, compressed injection beats spherical Eddington accretion (real
-  super-Eddington flows exist, in beams and thick disks) by about 3×10¹²:
-  `eddingtonRate` = 0.002 per second (an e-folding of 500 s).
+- **The injectors' rating** (3×10¹² ×, see "The facility") keeps the physics' shape, a
+  limit proportional to mass.
+- **In game units** that's `eddingtonRate` = 0.002 per second (an e-folding of 500 s).
 
 | Setting | Value | Why |
 |---|---|---|
 | Starting host mass | 3,500 t | 1 hour unfed |
 | Evaporation | 3.96×10¹⁵ / M² kg/s | real |
-| `eddingtonRate` | 0.002 /s × M | 7 t/s at the start, 12 t/s at the first cap |
-| Tipping point | about 1,260 t | where the Eddington limit just equals evaporation: below it, nothing can save the host |
-| Safety cap (first rating) | 6,000 t | 5 hours unfed; later ratings 10,000 t and up |
-| Injector maximum | 20 t/s | the top of the dial |
+| Rated limit (`eddingtonRate`) | 0.002 /s × M (3×10¹² × Eddington) | 7 t/s at the start, 29 t/s at the first chamber |
+| Tipping point | about 1,260 t | where the rated limit just equals evaporation: below it, nothing can save the host |
+| Safety cap | the 1 g sphere reaches the chamber wall | first chamber 1 cm: 14,700 t (74 hours unfed) |
+| Injector maximum | 20 t/s | the top of the dial, until injector upgrades |
 | `injectorResponseSeconds` (to 90%) | 15 s | ω ≈ 0.26 /s |
-| Container (Ignite charge) | 2,000 t | above the tipping point |
+| Storage ring (Ignite charge) | 2,000 t | above the tipping point |
 | Refill rate | 10 t/s | 200 s lockout after a trip, or to recharge Ignite |
 | Seed a ripple | 500 t | three seeds take a fresh host from 3,500 t to 2,000 t, 11 minutes from death |
 | Deepen a ripple | 70 t | |
 
 **How the opening plays out:**
-1. Seed three ripples, leaving 2,000 t, with evaporation at 1 t/s and the Eddington mark at
-   4 t/s.
-2. Open the dial toward the mark. At the limit, 2,000 t grows to the 6,000 t cap in about 10
-   minutes.
-3. Start dialing back around 5,600 t to avoid tripping, and settle a little above the
-   evaporation mark (0.11 t/s at the cap).
+1. Seed three ripples, leaving 2,000 t, with evaporation at 1 t/s and the rated limit at
+   4 t/s. The 1 g bubble shrinks to 3.7 mm.
+2. Open the dial toward the mark. At the limit, and then at the injectors' 20 t/s maximum,
+   2,000 t grows to the 14,700 t cap in about 18 minutes, with the bubble swelling toward the
+   wall.
+3. Start dialing back around 14,000 t to avoid tripping, and settle a little above the
+   break-even mark (18 kg/s at the cap).
 
 ### Two views: inside and outside
 
@@ -299,6 +348,9 @@ expanding universe. Alan Guth called inflation "the ultimate free lunch" for thi
 
 **Later ideas.**
 - Black holes that form inside the pocket universe (from dead stars) could anchor the host.
+- **Hawking power.** The host's glow (3×10¹⁹ W at the start) could be the facility's power
+  supply. A small, hot host gives plenty of power but dies fast, and a big, cool one is safe
+  but gives little. Power could then limit the injectors or the tech.
 - A buffer in the container, so the injectors can briefly run faster than it refills.
 
 ## Time controls (planned)

@@ -103,10 +103,14 @@ See [COSMOLOGY.md](COSMOLOGY.md) for the physics behind each item.
 - [x] Seeding a ripple costs one feed of host mass (`seedFeeds`).
 - [ ] The feed dial (DESIGN.md, "Feeding the host"), replacing the Feed button:
   - [ ] Host mass in tonnes, with real Hawking evaporation.
-  - [ ] A log dial for the target injection rate, with the Eddington mark (0.002 /s × mass)
-        and the break-even mark.
+  - [ ] A log dial for the target injection rate, with the rated-limit mark (3×10¹² ×
+        Eddington, 0.002 /s × mass) and the break-even mark.
   - [ ] Injector inertia as a critically damped `StepInjector` that's easy to swap.
-  - [ ] The safety cap: it trips, dumps the container and locks out until refilled.
+  - [ ] The safety cap is the gravity well: it trips when the 1 g radius reaches the chamber
+        wall (1 cm at first, 14,700 t), dumps the storage ring and locks out until it's
+        refilled. Larger chambers come from the tech tree.
+  - [ ] Seeing the host: a to-scale chamber cross-section with the 1 g bubble, a horizon
+        inset, and a glow that shows its temperature.
   - [ ] Ignite, the kick-start, to restart after the host evaporates.
   - [ ] Seed and deepen costs in tonnes.
   - [ ] Tests for each.
