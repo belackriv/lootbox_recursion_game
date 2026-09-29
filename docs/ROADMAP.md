@@ -30,6 +30,9 @@ and play.
       entities, matter, stars, black hole, plasma, backdrop, plus a per-item `material`.
 - [ ] Make the hook materials: `M_SeeThrough` first (a Fresnel rim keeps ripples readable
       over matter).
+- [ ] Time controls (DESIGN.md, "Time controls"): a speed level from -1 (paused) to 3 (8x),
+      stepped by buttons and keys, shown as `||`, `|>`, `|> >`, `|> >>`, `|> >>>` next to the
+      cosmic time. Built on the existing `SetTimeScale`.
 - [ ] Higher-resolution black hole bake (1024²), lensed stars near the shadow, nebula haze.
 - [ ] Verify the black hole's blend: if `Widget3DPassThrough_Translucent` turns out to be
       premultiplied (AlphaComposite), drop the `1/Alpha` scale in `FLRBlackHoleRenderer::RenderRow`
@@ -96,6 +99,12 @@ See [COSMOLOGY.md](COSMOLOGY.md) for the physics behind each item.
 - [ ] Play it in the engine: compile, run the automation tests, and tune the host lifetime,
       perturbation cost, ripple yields and epoch thresholds by feel.
 - [ ] A visible hint for the next epoch (what it needs), like the tech tree viewer's hints.
+- [ ] Expansion, stage 1 (DESIGN.md, "Expansion"): the grid shrinks and a bigger grid fades
+      in over it, an endless zoom out. The rate is per epoch in `universe.json`. Prototype
+      aperture-7 nesting against a plain ×2 cross-fade. Visual only.
+- [ ] Expansion, stage 2: coarse-graining when the level changes (matter sums, ripples
+      merge, machines keep a sub-cell spot or are refunded), with parent/child cells in
+      `FLRHexGrid` and tests.
 
 ## M7: Structure (mid game as the cosmic web)
 

@@ -90,6 +90,78 @@ announces each one.
 - **The plasma** is a glowing veil in the sky whose opacity comes from the epoch, fading over
   a few seconds between epochs. It clears at recombination.
 
+## Time controls (planned)
+
+The log-scale cosmic clock stays as it is. On top of it the player gets a speed control: a
+**speed level** from -1 to 3, which buttons (and keys) step up or down one at a time.
+
+| Level | Speed | Display |
+|---|---|---|
+| -1 | paused | `\|\|` |
+| 0 | 1x | `\|>` |
+| 1 | 2x | `\|> >` |
+| 2 | 4x | `\|> >>` |
+| 3 | 8x | `\|> >>>` |
+
+- Speed is 2^level, and paused is 0. The plumbing exists: `ULRGameSubsystem::SetTimeScale`
+  (and the `LRTimeScale` console command) already multiply what the simulation advances each
+  frame. The feature is the control and its display in the HUD header, next to the cosmic
+  time.
+- Everything scales together (the epoch clock, ripple yields and growth, exposures, build
+  times, Hawking evaporation), so speed is comfort, not an exploit, and pausing is safe.
+- Commands still work while paused: build, perturb and open are accepted, and anything with
+  a duration waits for time to run.
+- A new game and a loaded game start at 1x.
+- Later: higher levels for the late game, when the clock spans billions of years.
+
+## Expansion: an infinite zoom out (planned)
+
+Time expands; space should too. Ripples start out tiny, and as the universe expands the grid
+should shrink away from the camera and be replaced by a bigger grid growing out of it, like a
+slow, endless zoom out. Expect to iterate on this until it feels right.
+
+**The physics lines up with the log clock.** How big the universe is, its scale factor `a`,
+grows as a power of time in each era: `a ∝ t^½` while radiation dominates, `t^⅔` while
+matter does, and exponentially during inflation (about e^60 in 10^-32 s). On a log-time clock
+a power law is a straight line, so **within an epoch the zoom-out runs at a constant rate**.
+Inflation is one fast plunge, and the later eras are steady drifts. That makes the rate a
+per-epoch number in `universe.json`, e.g. `zoomLevels`: how many grid levels the epoch
+passes through.
+
+**How it looks.**
+- The grid (and what's on it) is drawn at a view scale that shrinks continuously.
+- When the current cells get small on screen, the next level's larger hexagons fade in over
+  them, and the old lines fade out. Every level looks the same, so it loops seamlessly
+  (a Droste effect).
+- It must rebase rather than truly scale by 7^k, or world coordinates overflow.
+- The camera's own zoom stays the player's.
+
+**How the levels nest.** Hexagons don't subdivide into hexagons exactly. There are three
+options, and the first two are worth prototyping:
+- **Aperture 7:** each big cell is a small cell plus its six neighbours. It's √7 ≈ 2.65 times
+  larger and turned about 19.1° each level, so the zoom spirals gently. That could look great
+  or be disorienting. Membership is exact (every small cell belongs to exactly one big cell),
+  so gameplay can merge cells cleanly.
+- **Scale ×2 with a cross-fade:** the lines never line up, but the fade hides that. It's
+  simplest, and visual only.
+- **Aperture 3:** √3 larger, turned 30°.
+
+Level conversions belong in `FLRHexGrid` (a cell's parent and children), so nothing does the
+maths inline.
+
+**What happens to things when the level changes** (the open part):
+- **Stage 1, visual only.** The grid zooms and swaps, and entities shrink with it. This
+  finds the right rate and look.
+- **Stage 2, coarse-graining.** Seven cells become one:
+  - Their matter sums.
+  - Ripples in the group merge into one deeper ripple, like small structure merging into
+    larger (structure in the real universe grows hierarchically).
+  - Machines either keep a sub-cell position and are drawn smaller, or are refunded.
+- **Reach stays in cells.** Physical reach grows with every level, so logistics scale with
+  the universe for free.
+- **It tells the story.** Quantum ripples from inflation become the seeds of galaxies, and
+  each epoch's structures become the fine detail of the next.
+
 ## Matter lives in the pocket universe (implemented)
 
 There is no player inventory: the operator can't reach into the pocket universe, so there is
