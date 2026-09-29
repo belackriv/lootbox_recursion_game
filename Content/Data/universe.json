@@ -1,9 +1,10 @@
 {
-	"_comment": "The pocket universe's history, its host black hole, and how far building reaches (see docs/COSMOLOGY.md). reachRadius: building at a cell pays from the matter in cells up to this many steps away. Epochs run in order: a new game starts in the first, and each later one begins once its advanceRequirements are met (requirements work like revealRequirements). Times are cosmic seconds since the Big Bang. The cosmic clock sweeps from startTime to endTime (default: the next epoch's startTime) over clockSeconds of play, on a log scale, and waits there. yieldTable is what overdensities gather during the epoch; rippleGrowthSeconds > 0 lets gravity deepen them on its own; plasma is the sky's opacity. The host evaporates by Hawking radiation (its mass cubed falls linearly, so a full-mass host lasts lifetimeSeconds); masses are fractions of the starting mass. At zero the pocket universe freezes until fed.",
+	"_comment": "The pocket universe's history, its host black hole, and how far building reaches (see docs/COSMOLOGY.md). reachRadius: building at a cell pays from the matter in cells up to this many steps away. Epochs run in order: a new game starts in the first, and each later one begins once its advanceRequirements are met (requirements work like revealRequirements). Times are cosmic seconds since the Big Bang. The cosmic clock sweeps from startTime to endTime (default: the next epoch's startTime) over clockSeconds of play, on a log scale, and waits there. yieldTable is what overdensities gather during the epoch; rippleGrowthSeconds > 0 lets gravity deepen them on its own; plasma is the sky's opacity. The host evaporates by Hawking radiation (its mass cubed falls linearly, so a full-mass host lasts lifetimeSeconds); masses are fractions of the starting mass. perturbCost is what deepening a ripple draws from the host; seeding a new one draws seedFeeds feeds' worth (seedFeeds * feedAmount; 0 = perturbCost). At zero the pocket universe freezes until fed.",
 	"reachRadius": 2,
 	"host": {
 		"lifetimeSeconds": 3600,
 		"perturbCost": 0.02,
+		"seedFeeds": 1,
 		"feedAmount": 0.15,
 		"warningMass": 0.25
 	},

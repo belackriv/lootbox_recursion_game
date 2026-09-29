@@ -447,9 +447,13 @@ struct LOOTBOXRECURSION_API FLRHostDef
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	float LifetimeSeconds = 0.f;
 
-	/** Mass each perturbation draws from the host. */
+	/** Mass each perturbation that deepens a ripple draws from the host (and seeding one, unless SeedFeeds is set). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	float PerturbCost = 0.f;
+
+	/** Seeding a new ripple draws this many feeds' worth of mass (SeedFeeds * FeedAmount). 0 = it costs PerturbCost like deepening. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float SeedFeeds = 0.f;
 
 	/** Mass one Feed restores (never above 1.0). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
@@ -460,6 +464,9 @@ struct LOOTBOXRECURSION_API FLRHostDef
 	float WarningMass = 0.25f;
 
 	bool IsDefined() const { return LifetimeSeconds > 0.f || PerturbCost > 0.f || FeedAmount > 0.f; }
+
+	/** Mass a perturbation draws: seeding a new ripple, or deepening one. */
+	float GetPerturbCost(bool bSeedsNew) const { return (bSeedsNew && SeedFeeds > 0.f) ? SeedFeeds * FeedAmount : PerturbCost; }
 };
 
 /**

@@ -1150,13 +1150,15 @@ FName FLRSimulation::ValidateSeed(const FLRActionRequest& Request, const FLRActi
 	const FLRItemDef* StructureDef = Data.FindItem(Def.Places);
 	if (!StructureDef || !StructureDef->IsOverdensity()) { return ReasonUnknownAction; }
 	if (!Request.bHasCell) { return ReasonNoCell; }
-	if (const FLRPlacedEntity* Existing = Placed.Find(Request.Cell))
+	const FLRPlacedEntity* Existing = Placed.Find(Request.Cell);
+	if (Existing)
 	{
 		if (Existing->Item != Def.Places) { return ReasonOccupied; }
 		if (Existing->Amplitude >= StructureDef->MaxAmplitude) { return ReasonRippleAtMax; }
 	}
 	// Every ripple's energy comes out of the host, and a perturbation never finishes it off.
-	if (Data.Host.PerturbCost > 0.f && HostMass <= Data.Host.PerturbCost) { return ReasonHorizonWeak; }
+	const float Cost = Data.Host.GetPerturbCost(/*bSeedsNew*/ Existing == nullptr);
+	if (Cost > 0.f && HostMass <= Cost) { return ReasonHorizonWeak; }
 	return NAME_None;
 }
 
@@ -1171,7 +1173,9 @@ FLRActionResult FLRSimulation::ExecuteSeed(const FLRActionRequest& Request, cons
 
 	const FString StructureName = Data.GetDisplayName(Def.Places);
 	FLRActionResult Result;
-	if (FLRPlacedEntity* Existing = Placed.Find(Request.Cell))
+	FLRPlacedEntity* Existing = Placed.Find(Request.Cell);
+	const float Cost = Data.Host.GetPerturbCost(/*bSeedsNew*/ Existing == nullptr);
+	if (Existing)
 	{
 		++Existing->Amplitude;
 		Result.Message = FString::Printf(TEXT("%s at %s deepened to amplitude %d"), *StructureName, *DescribeCell(Request.Cell), Existing->Amplitude);
@@ -1187,7 +1191,7 @@ FLRActionResult FLRSimulation::ExecuteSeed(const FLRActionRequest& Request, cons
 		Placed.Add(Entity.Cell, Entity);
 		Result.Message = FString::Printf(TEXT("%s seeded at %s (amplitude 1)"), *StructureName, *DescribeCell(Request.Cell));
 	}
-	HostMass = FMath::Max(0.0, HostMass - static_cast<double>(Data.Host.PerturbCost));
+	HostMass = FMath::Max(0.0, HostMass - static_cast<double>(Cost));
 
 	Result.Action = Request.Action;
 	Result.bSuccess = true;

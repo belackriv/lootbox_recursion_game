@@ -83,8 +83,11 @@ announces each one.
   good, and the ripples carry on without it.
 - **The host black hole evaporates** by Hawking radiation. Its mass cubed falls linearly,
   so a full-mass host lasts `lifetimeSeconds` (an hour) and the loss speeds up as it
-  shrinks. Each perturbation draws 2% of its mass, and a perturbation is refused if it
-  would take the last of it. **Feed the Horizon** (revealed at 90%) restores 15%. At zero
+  shrinks. Seeding a new ripple draws one feed's worth of its mass (15%, `seedFeeds`),
+  deepening one draws 2%, and a perturbation is refused if it would take the last of it.
+  **Feed the Horizon** (revealed at 90%) restores 15%. Feeding by hand is meant as the
+  kick-start (getting a frozen universe going again, or buying ripples early), not upkeep: the
+  pocket universe should come to feed itself (open question, see below). At zero
   the pocket universe freezes: ripples, irradiators and the clock stop until you feed it.
   That's the soft fail; nothing is lost.
 - **The plasma** is a glowing veil in the sky whose opacity comes from the epoch, fading over

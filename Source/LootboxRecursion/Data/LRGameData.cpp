@@ -385,6 +385,10 @@ TArray<FString> FLRGameData::Validate() const
 	{
 		Errors.Add(TEXT("host: need lifetimeSeconds >= 0, and perturbCost, feedAmount and warningMass between 0 and 1"));
 	}
+	if (Host.SeedFeeds < 0.f || Host.SeedFeeds * Host.FeedAmount > 1.f)
+	{
+		Errors.Add(TEXT("host: seedFeeds must be >= 0, and seedFeeds * feedAmount at most 1"));
+	}
 
 	TSet<FName> RadiationIds;
 	for (const FLRRadiationDef& Def : Radiation)

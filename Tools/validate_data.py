@@ -17,7 +17,7 @@ KINDS_NEEDING_ITEM = {"item_weight_mult", "item_count_mult", "add_entry"}
 CONDITIONS = {"gt", "gte", "lt", "lte", "eq"}
 CHECKS = {"matter", "placed", "stat", "unlocked", "epoch", "host"}
 REQUIRED_ACTIONS = {"perturb", "feed", "craft", "use", "dismantle"}
-HOST_DEFAULTS = {"lifetimeSeconds": 0, "perturbCost": 0, "feedAmount": 0, "warningMass": 0.25}
+HOST_DEFAULTS = {"lifetimeSeconds": 0, "perturbCost": 0, "seedFeeds": 0, "feedAmount": 0, "warningMass": 0.25}
 
 
 def main() -> int:
@@ -209,6 +209,8 @@ def main() -> int:
     if (host["lifetimeSeconds"] < 0 or not 0 <= host["perturbCost"] <= 1 or not 0 <= host["feedAmount"] <= 1
             or not 0 <= host["warningMass"] <= 1):
         errors.append("host: need lifetimeSeconds >= 0, and perturbCost, feedAmount and warningMass between 0 and 1")
+    if host["seedFeeds"] < 0 or host["seedFeeds"] * host["feedAmount"] > 1:
+        errors.append("host: seedFeeds must be >= 0, and seedFeeds * feedAmount at most 1")
 
     if errors:
         print(f"{len(errors)} problem(s) in {DATA_DIR}:")

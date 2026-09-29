@@ -1108,6 +1108,28 @@ bool FLRHostTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostSeedCostTest, "LootboxRecursion.Cosmos.SeedingARippleCostsAFeed", LR_TEST_FLAGS)
+bool FLRHostSeedCostTest::RunTest(const FString& Parameters)
+{
+	FLRGameData Data = LRTest::MakeStableCosmosData(); // perturb 0.1, feed 0.3, no evaporation
+	Data.Host.SeedFeeds = 1.f;
+	TestEqual(TEXT("valid"), Data.Validate().Num(), 0);
+
+	FLRSimulation Sim(Data, 1);
+	TestTrue(TEXT("seed"), LRTest::SeedAt(Sim, FIntVector(0, 0, 0)));
+	TestTrue(TEXT("seeding drew one feed"), FMath::IsNearlyEqual(Sim.GetHostMass(), 0.7, 1e-6));
+	TestTrue(TEXT("deepen"), LRTest::SeedAt(Sim, FIntVector(0, 0, 0)));
+	TestTrue(TEXT("deepening drew the perturb cost"), FMath::IsNearlyEqual(Sim.GetHostMass(), 0.6, 1e-6));
+	TestTrue(TEXT("seed a second ripple"), LRTest::SeedAt(Sim, FIntVector(1, 0, 0)));
+	TestFalse(TEXT("a third would take the last of the host"), LRTest::SeedAt(Sim, FIntVector(2, 0, 0)));
+	TestTrue(TEXT("deepening still fits"), LRTest::SeedAt(Sim, FIntVector(1, 0, 0)));
+
+	FLRGameData TooDear = Data;
+	TooDear.Host.SeedFeeds = 4.f; // 1.2 of the host
+	TestTrue(TEXT("a seed cost above the whole host reported"), TooDear.Validate().Num() > 0);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRCosmosPlasmaTest, "LootboxRecursion.Cosmos.PlasmaFadesBetweenEpochs", LR_TEST_FLAGS)
 bool FLRCosmosPlasmaTest::RunTest(const FString& Parameters)
 {
