@@ -244,6 +244,19 @@ double ULRGameSubsystem::GetInjectorTarget() const
 	return Simulation ? Simulation->GetInjectorTarget() : 0.0;
 }
 
+void ULRGameSubsystem::SetInjectorAuto(ELRInjectorAuto Mode)
+{
+	if (Simulation)
+	{
+		Simulation->SetInjectorAuto(Mode);
+	}
+}
+
+ELRInjectorAuto ULRGameSubsystem::GetInjectorAuto() const
+{
+	return Simulation ? Simulation->GetInjectorAuto() : ELRInjectorAuto::Off;
+}
+
 FLRActionResult ULRGameSubsystem::Ignite()
 {
 	return Simulation ? Simulation->Ignite() : FLRActionResult();

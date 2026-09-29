@@ -249,7 +249,9 @@ int32 SLRFeedDial::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 		StatusColor = Style.Red;
 	}
 	LRSlateDraw::Label(OutDrawElements, LayerId + 6, AllottedGeometry, Status, Style.HeadingFont, Centre + FVector2f(0.f, Radius * 0.45f), StatusColor);
-	LRSlateDraw::Label(OutDrawElements, LayerId + 6, AllottedGeometry, FString::Printf(TEXT("dial %s"), *FLRSimulation::FormatRate(Target)),
+	const ELRInjectorAuto Auto = Sim ? Sim->GetInjectorAuto() : ELRInjectorAuto::Off;
+	const TCHAR* AutoMode = Auto == ELRInjectorAuto::Hold ? TEXT("auto hold ") : (Auto == ELRInjectorAuto::Limit ? TEXT("auto limit ") : TEXT("dial "));
+	LRSlateDraw::Label(OutDrawElements, LayerId + 6, AllottedGeometry, FString::Printf(TEXT("%s%s"), AutoMode, *FLRSimulation::FormatRate(Target)),
 		Style.SmallFont, Centre + FVector2f(0.f, Radius * 0.45f + 16.f), Style.TextDim);
 	return LayerId + 6;
 }

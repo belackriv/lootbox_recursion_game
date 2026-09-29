@@ -1785,7 +1785,8 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 		return SNew(SButton)
 			.ButtonStyle(&S.ConsoleButtonStyle)
 			.IsFocusable(false)
-			.ContentPadding(FMargin(8.f, 2.f))
+			.ContentPadding(FMargin(4.f, 2.f))
+			.HAlign(HAlign_Center)
 			.ToolTipText(Tip)
 			.OnClicked_Lambda([this, Rate]()
 			{
@@ -1800,8 +1801,44 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 				SNew(STextBlock).Font(S.SmallFont).ColorAndOpacity(S.ConsoleText).Text(Label)
 			];
 	};
+	// A toggle for one of the dial's auto modes: lit while it's on; clicking it again stops it.
+	auto AutoToggle = [this](const FText& Label, const FText& Tip, ELRInjectorAuto Mode) -> TSharedRef<SWidget>
+	{
+		const FLRHudStyle& S = FLRHudStyle::Get();
+		auto IsOn = [this, Mode]()
+		{
+			const ULRGameSubsystem* Sub = GetSubsystem();
+			return Sub && Sub->GetInjectorAuto() == Mode;
+		};
+		return SNew(SButton)
+			.ButtonStyle(&S.ConsoleButtonStyle)
+			.IsFocusable(false)
+			.ContentPadding(FMargin(4.f, 2.f))
+			.HAlign(HAlign_Center)
+			.ToolTipText(Tip)
+			.ButtonColorAndOpacity_Lambda([IsOn]() -> FSlateColor { return IsOn() ? FLinearColor(1.f, 0.72f, 0.35f) : FLinearColor::White; })
+			.OnClicked_Lambda([this, Mode, IsOn]()
+			{
+				if (ULRGameSubsystem* Sub = GetSubsystem())
+				{
+					Sub->SetInjectorAuto(IsOn() ? ELRInjectorAuto::Off : Mode);
+				}
+				return FReply::Handled();
+			})
+			[
+				SNew(STextBlock)
+				.Font(S.SmallFont)
+				.Text(Label)
+				.ColorAndOpacity_Lambda([IsOn]() -> FSlateColor
+				{
+					const FLRHudStyle& Inner = FLRHudStyle::Get();
+					return IsOn() ? Inner.ConsoleAccent : Inner.ConsoleText;
+				})
+			];
+	};
 
-	// The instruments (the dial, the chamber) sit in dark screens set into the light console.
+	// The instruments (the dial, the chamber) sit in dark screens set into the light console,
+	// all the same size.
 	auto Screen = [&Style](const TSharedRef<SWidget>& Instrument) -> TSharedRef<SWidget>
 	{
 		return SNew(SBorder)
@@ -1814,7 +1851,12 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 				.BorderBackgroundColor(Style.ConsoleScreen)
 				.Padding(FMargin(4.f))
 				[
-					Instrument
+					SNew(SBox)
+					.WidthOverride(250.f)
+					.HeightOverride(240.f)
+					[
+						Instrument
+					]
 				]
 			];
 	};
@@ -1830,23 +1872,53 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		.HAlign(HAlign_Center)
-		.Padding(FMargin(0.f, 4.f))
+		.Padding(FMargin(0.f, 4.f, 0.f, 2.f))
 		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(2.f, 0.f))
+			SNew(SBox)
+			.WidthOverride(260.f)
 			[
-				Preset(LOCTEXT("DialOff", "Off"), LOCTEXT("DialOffTip", "Turn the injectors off"),
-					[](const FLRSimulation&) { return 0.0; })
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(2.f, 0.f))
+				[
+					Preset(LOCTEXT("DialOff", "Off"), LOCTEXT("DialOffTip", "Turn the injectors off"),
+						[](const FLRSimulation&) { return 0.0; })
+				]
+				+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(2.f, 0.f))
+				[
+					Preset(LOCTEXT("DialHold", "Hold"), LOCTEXT("DialHoldTip", "Just outpace evaporation: the host holds its mass (a little over the HOLD mark). The mark moves as the mass changes; Auto Hold follows it."),
+						[](const FLRSimulation& Sim) { return Sim.GetEvaporationRate() * 1.05; })
+				]
+				+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(2.f, 0.f))
+				[
+					Preset(LOCTEXT("DialLimit", "Limit"), LOCTEXT("DialLimitTip", "Feed at the rated limit: the fastest the host can grow right now. The limit rises as it grows; Auto Limit follows it."),
+						[](const FLRSimulation& Sim) { return Sim.GetRatedLimit(); })
+				]
+				+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(2.f, 0.f))
+				[
+					Preset(LOCTEXT("DialMax", "Max"), LOCTEXT("DialMaxTip", "Open the injectors all the way. Anything over the rated limit is blown back out."),
+						[](const FLRSimulation& Sim) { return Sim.GetData().Host.InjectorMaxRate; })
+				]
 			]
-			+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(2.f, 0.f))
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.HAlign(HAlign_Center)
+		.Padding(FMargin(0.f, 0.f, 0.f, 4.f))
+		[
+			SNew(SBox)
+			.WidthOverride(260.f)
 			[
-				Preset(LOCTEXT("DialHold", "Hold"), LOCTEXT("DialHoldTip", "Just outpace evaporation: the host holds its mass (a little over the HOLD mark)"),
-					[](const FLRSimulation& Sim) { return Sim.GetEvaporationRate() * 1.05; })
-			]
-			+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(2.f, 0.f))
-			[
-				Preset(LOCTEXT("DialLimit", "Limit"), LOCTEXT("DialLimitTip", "Feed at the rated limit: the fastest the host can grow right now"),
-					[](const FLRSimulation& Sim) { return Sim.GetRatedLimit(); })
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(2.f, 0.f))
+				[
+					AutoToggle(LOCTEXT("DialAutoHold", "Auto Hold"), LOCTEXT("DialAutoHoldTip", "Keep the dial on the HOLD mark as the host's mass changes, so it holds its mass. Moving the dial or a preset stops it."),
+						ELRInjectorAuto::Hold)
+				]
+				+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(2.f, 0.f))
+				[
+					AutoToggle(LOCTEXT("DialAutoLimit", "Auto Limit"), LOCTEXT("DialAutoLimitTip", "Keep the dial on the LIMIT mark as the host grows, the fastest growth there is. It doesn't stop at the chamber wall: watch the safeties. Moving the dial or a preset stops it."),
+						ELRInjectorAuto::Limit)
+				]
 			]
 		]
 		+ SVerticalBox::Slot()
@@ -1945,7 +2017,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 					}
 					const bool bBelow = !Sim->IsFrozen() && Sim->GetHostMass() < Sim->GetTippingMass();
 					return AsText(FString::Printf(TEXT("Point of no return %s%s"), *FLRSimulation::FormatMass(Sim->GetTippingMass()),
-						bBelow ? TEXT(": BELOW IT. Fire the storage ring.") : TEXT("")));
+						bBelow ? TEXT(": BELOW IT, it can't be saved") : TEXT("")));
 				})
 				.ColorAndOpacity_Lambda([this]() -> FSlateColor
 				{
@@ -2039,7 +2111,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 					const FLRSimulation* Sim = GetSimulation();
 					return Sim && Sim->CanIgnite();
 				})
-				.ToolTipText(LOCTEXT("IgniteTip", "Fire the storage ring's whole charge at the singularity, past the rated limit. With no host it collapses into a new horizon (Ignite); with one, it's an emergency charge, the way out from below the point of no return. Feeding is locked out while the ring recharges."))
+				.ToolTipText(LOCTEXT("IgniteTip", "Once the host has evaporated: fire the storage ring's whole charge at the singularity. A charge that big collapses straight into a new horizon."))
 				.OnClicked_Lambda([this]()
 				{
 					if (ULRGameSubsystem* Sub = GetSubsystem())
@@ -2049,14 +2121,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 					return FReply::Handled();
 				})
 				[
-					SNew(STextBlock)
-					.Font(Style.HeadingFont)
-					.ColorAndOpacity(Style.ConsoleAccent)
-					.Text_Lambda([this]()
-					{
-						const FLRSimulation* Sim = GetSimulation();
-						return (Sim && Sim->GetHostMass() > 0.0) ? LOCTEXT("EmergencyCharge", "EMERGENCY CHARGE") : LOCTEXT("Ignite", "IGNITE");
-					})
+					SNew(STextBlock).Font(Style.HeadingFont).ColorAndOpacity(Style.ConsoleAccent).Text(LOCTEXT("Ignite", "IGNITE"))
 				]
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 6.f, 0.f, 0.f))

@@ -1155,6 +1155,46 @@ bool FLRInjectorInertiaTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostAutoDialTest, "LootboxRecursion.Host.TheDialCanFollowHoldOrLimit", LR_TEST_FLAGS)
+bool FLRHostAutoDialTest::RunTest(const FString& Parameters)
+{
+	const FLRGameData Data = LRTest::MakeCosmosData(); // 1,000 kg, evaporating at 0.33 kg/s, rated at 10 kg/s
+
+	// Auto hold: the dial follows the evaporation rate, so the host keeps its mass (it loses a
+	// little while the injectors ramp up). Unfed, it would be down to 965 kg after 100 s.
+	FLRSimulation Held(Data, 1);
+	Held.SetInjectorAuto(ELRInjectorAuto::Hold);
+	TestTrue(TEXT("the dial jumps to HOLD"), FMath::IsNearlyEqual(Held.GetInjectorTarget(), Held.GetEvaporationRate(), 1e-9));
+	Held.Advance(100.0);
+	TestTrue(TEXT("held after the ramp"), Held.GetHostMass() > 995.0 && Held.GetHostMass() < 1000.0);
+	const double HeldMass = Held.GetHostMass();
+	Held.Advance(500.0);
+	TestTrue(TEXT("and stays held"), FMath::IsNearlyEqual(Held.GetHostMass(), HeldMass, 0.5));
+	TestTrue(TEXT("the dial is still on HOLD"), FMath::IsNearlyEqual(Held.GetInjectorTarget(), Held.GetEvaporationRate(), 1e-9));
+
+	// Auto limit: the dial follows the rated limit up as the host grows.
+	FLRSimulation Grown(Data, 1);
+	Grown.SetInjectorAuto(ELRInjectorAuto::Limit);
+	TestTrue(TEXT("the dial jumps to LIMIT"), FMath::IsNearlyEqual(Grown.GetInjectorTarget(), 10.0, 1e-9));
+	Grown.Advance(30.0);
+	TestTrue(TEXT("the host grew"), Grown.GetHostMass() > 1200.0);
+	TestTrue(TEXT("and the dial followed the limit up"), FMath::IsNearlyEqual(Grown.GetInjectorTarget(), Grown.GetRatedLimit(), 1e-9));
+	Grown.Advance(300.0); // the limit passes the injectors' 50 kg/s at 5,000 kg
+	TestTrue(TEXT("but never past the injectors' maximum"), Grown.GetRatedLimit() > 50.0 && Grown.GetInjectorTarget() == 50.0);
+
+	// It's saved.
+	FLRSimulation Loaded(Data, 2);
+	TestTrue(TEXT("load"), Loaded.Load(Grown.Save()));
+	TestTrue(TEXT("the auto mode is saved"), Loaded.GetInjectorAuto() == ELRInjectorAuto::Limit);
+
+	// Setting the dial by hand turns it off.
+	Grown.SetInjectorTarget(5.0);
+	TestTrue(TEXT("a hand on the dial turns auto off"), Grown.GetInjectorAuto() == ELRInjectorAuto::Off);
+	Grown.Advance(10.0);
+	TestTrue(TEXT("and the dial stays put"), Grown.GetInjectorTarget() == 5.0);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostFeedingTest, "LootboxRecursion.Host.FeedingIsCappedByTheRatedLimit", LR_TEST_FLAGS)
 bool FLRHostFeedingTest::RunTest(const FString& Parameters)
 {
@@ -1249,43 +1289,28 @@ bool FLRHostSafetyTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostIgniteTest, "LootboxRecursion.Host.TheStorageRingFiresIntoTheHost", LR_TEST_FLAGS)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostIgniteTest, "LootboxRecursion.Host.IgniteRestartsAnEvaporatedHost", LR_TEST_FLAGS)
 bool FLRHostIgniteTest::RunTest(const FString& Parameters)
 {
-	FLRSimulation Sim(LRTest::MakeCosmosData(), 1); // 1,000 kg, a 400 kg ring, no cap
+	FLRSimulation Sim(LRTest::MakeCosmosData(), 1);
 	LRTest::FMessageLog Log(Sim);
+	TestFalse(TEXT("not while the host is alive"), Sim.CanIgnite());
+	const FLRActionResult Early = Sim.Ignite();
+	TestTrue(TEXT("refused while the host is alive"), !Early.bSuccess && Early.Reason == FName(TEXT("host_alive")));
 
-	// Into a living host: an emergency charge, past the rated limit.
-	TestTrue(TEXT("a full ring can fire"), Sim.CanIgnite());
-	const FLRActionResult Charged = Sim.Ignite();
-	TestTrue(TEXT("emergency charge"), Charged.bSuccess && Log.Contains(TEXT("Emergency charge")));
-	TestTrue(TEXT("the whole charge went straight in"), Sim.GetHostMass() == 1400.0);
-	TestTrue(TEXT("the ring recharges, locking feeding out"), Sim.IsRingRecharging() && Sim.GetRingCharge() == 0.0);
-	const FLRActionResult Again = Sim.Ignite();
-	TestTrue(TEXT("not until it's full again"), !Again.bSuccess && Again.Reason == FName(TEXT("ring_charging")));
-
-	// Into an evaporated host: Ignite makes a new one.
-	Sim.Advance(2800.0); // 1,400 kg lasts 2,744 s unfed
+	Sim.Advance(1001.0);
 	TestTrue(TEXT("evaporated"), Sim.IsFrozen());
-	TestTrue(TEXT("the ring is full again"), Sim.CanIgnite());
+	TestTrue(TEXT("the ring is full"), Sim.CanIgnite());
 	const FLRActionResult Ignited = Sim.Ignite();
 	TestTrue(TEXT("ignited"), Ignited.bSuccess && Log.Contains(TEXT("Ignited")));
 	TestFalse(TEXT("no longer frozen"), Sim.IsFrozen());
 	TestTrue(TEXT("the new host is the ring's charge"), Sim.GetHostMass() == 400.0);
-	TestTrue(TEXT("the ring recharges before feeding resumes"), Sim.IsRingRecharging());
+	TestTrue(TEXT("the ring recharges before feeding resumes"), Sim.IsRingRecharging() && Sim.GetRingCharge() == 0.0);
 
 	// Unfed, the small new host evaporates fast (400 kg lasts 64 s), and can be ignited again.
 	Sim.Advance(70.0);
 	TestTrue(TEXT("gone again"), Sim.IsFrozen());
 	TestTrue(TEXT("the ring refilled meanwhile"), Sim.CanIgnite());
-
-	// Never past the safety cap.
-	FLRGameData Capped = LRTest::MakeStableCosmosData();
-	LRTest::SetSafetyCap(Capped, 1300.0);
-	FLRSimulation Tight(Capped, 1);
-	TestFalse(TEXT("a charge that would trip the safeties can't fire"), Tight.CanIgnite());
-	const FLRActionResult Refused = Tight.Ignite();
-	TestTrue(TEXT("refused"), !Refused.bSuccess && Refused.Reason == FName(TEXT("would_trip")) && Tight.GetHostMass() == 1000.0);
 	return true;
 }
 
@@ -1299,22 +1324,21 @@ bool FLRHostTippingTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("where the limit just equals evaporation"),
 		FMath::IsNearlyEqual(Data.Host.GetRatedLimit(Tipping), Data.Host.GetEvaporationRate(Tipping), 1e-6));
 
-	// Seeding can't spend the host below it (322 kg): six seeds leave 400 kg, a seventh would cross.
+	// Over-perturbing is allowed: seven seeds spend the host from 1,000 kg to 300, below it (322 kg).
 	FLRSimulation Sim(Data, 1);
 	LRTest::FMessageLog Log(Sim);
-	for (int32 X = 0; X < 6; ++X)
+	for (int32 X = 0; X < 7; ++X)
 	{
 		TestTrue(*FString::Printf(TEXT("seed %d"), X + 1), LRTest::SeedAt(Sim, FIntVector(X, 0, 0)));
 	}
-	const FLRActionResult Refused = Sim.RequestAction(LRTest::AtCell(LRTest::Seed, FIntVector(6, 0, 0)));
-	TestTrue(TEXT("a seed that would cross it is refused"), !Refused.bSuccess && Refused.Reason == FName(TEXT("below_tipping")));
-	TestFalse(TEXT("so is deepening"), LRTest::SeedAt(Sim, FIntVector(0, 0, 0)));
+	TestTrue(TEXT("below the point of no return"), Sim.GetHostMass() < Tipping);
 
-	// Evaporating on its own, it crosses anyway: the log says so, and the ring is the way out.
-	Sim.Advance(35.0);
-	TestTrue(TEXT("below the point of no return"), Sim.GetHostMass() < Tipping && Log.Contains(TEXT("point of no return")));
-	TestTrue(TEXT("the emergency charge fires"), Sim.Ignite().bSuccess);
-	TestTrue(TEXT("and lifts it back above"), Sim.GetHostMass() > Tipping);
+	// Then not even the rated limit saves it.
+	Sim.SetInjectorTarget(50.0);
+	Sim.Advance(1.0);
+	TestTrue(TEXT("the log says so"), Log.Contains(TEXT("point of no return")));
+	Sim.Advance(60.0);
+	TestTrue(TEXT("it evaporates anyway"), Sim.IsFrozen());
 	return true;
 }
 

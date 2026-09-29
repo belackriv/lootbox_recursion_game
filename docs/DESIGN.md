@@ -239,23 +239,31 @@ universe freezes. Nothing is lost, as now.
 ### The point of no return
 
 Below the tipping point (about 1,000 t), evaporation outruns even the rated limit, so no dial
-setting can save the host. Playtesting found it far too easy to slide under that line (by
-seeding) and then just wait for the end, with a full storage ring sitting unused. So:
-- **It's shown.**
-  - The chamber view draws the point of no return as a faint red ring (the 1 g radius it would
-    have). A bubble inside it is doomed.
-  - The outside readouts give it in tonnes.
-  - The status bar says so when the host is below it.
-  - The log warns when the host crosses it.
-- **Seeds can't cross it.** Perturb refuses a seed (or deepening) that would push the host
-  below it, and says why.
-- **The emergency charge.** The storage ring also fires into a *living* host. Its whole charge
-  goes straight in, past the rated limit, which lifts a host out from below the line. Then
-  the ring recharges and feeding is locked out, as after Ignite. The button reads EMERGENCY
-  CHARGE while there's a host, and IGNITE when there isn't. It's refused if the charge would
-  push the host past the safety cap.
-- **Why it's not abused.** A healthy host gains more from the dial at the limit than from the
-  ring during the 200 s lockout that follows a charge.
+setting can save the host. It's shown, so the player can see it coming:
+- The chamber view draws the point of no return as a faint red ring (the 1 g radius it would
+  have). A bubble inside it is doomed.
+- The outside readouts give it in tonnes.
+- The status bar says so when the host is below it.
+- The log warns when the host crosses it.
+
+**You can shoot yourself in the foot.** Nothing stops seeding from spending the host below
+the line: over-perturbing early is a mistake the player is allowed to make, and learns from.
+The way back is to let the host go and Ignite a new one. (A playtest tried an "emergency
+charge", firing the storage ring into a living host, plus a guard on seeding. Both were
+dropped: the charge didn't fit the fiction, and the guard took the lesson away.)
+
+### The dial's buttons
+
+Under the dial:
+- **Off | Hold | Limit | Max** set it once. Hold is a little over the HOLD mark (the
+  evaporation rate), Limit is the LIMIT mark (the rated limit), and Max opens the injectors
+  all the way.
+- **Auto Hold | Auto Limit** keep it on that mark as the host's mass changes. Auto Hold keeps
+  the host's mass steady (it loses a little while the injectors ramp up), and Auto Limit grows
+  it as fast as it can. Both stop at the injectors' maximum. Touching the dial or a preset
+  turns auto off, and so does clicking the lit toggle.
+- **Auto Limit doesn't stop at the wall.** It follows the limit right up to the safety cap and
+  trips it. Stopping short would be an upgrade (a tech-tree governor), if we want one.
 
 ### Ripples cost host mass
 

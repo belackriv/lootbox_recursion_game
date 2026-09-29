@@ -94,6 +94,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Outside")
 	double GetInjectorTarget() const;
 
+	/** Let the feed dial follow the HOLD or LIMIT mark by itself, or stop it (Off). */
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Outside")
+	void SetInjectorAuto(ELRInjectorAuto Mode);
+
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Outside")
+	ELRInjectorAuto GetInjectorAuto() const;
+
 	/** Fire the storage ring at the singularity to make a new host (only once the host is gone). */
 	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Outside")
 	FLRActionResult Ignite();

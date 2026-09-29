@@ -4,6 +4,18 @@
 #include "Data/LRGameData.h"
 #include "LRSimTypes.generated.h"
 
+/** The feed dial's automatic modes: it follows a mark on the dial as the host's mass changes. */
+UENUM(BlueprintType)
+enum class ELRInjectorAuto : uint8
+{
+	/** The dial stays where it's put. */
+	Off,
+	/** The dial follows the HOLD mark (the evaporation rate), so the host keeps its mass. */
+	Hold,
+	/** The dial follows the LIMIT mark (the rated limit), so the host grows as fast as it can. */
+	Limit
+};
+
 /**
  * Runtime (mutable) game state. Rails equivalent: the database rows.
  *
@@ -370,6 +382,10 @@ struct LOOTBOXRECURSION_API FLRSaveData
 
 	UPROPERTY()
 	bool bRingRecharging = false;
+
+	/** Whether the feed dial follows the HOLD or LIMIT mark by itself. */
+	UPROPERTY()
+	ELRInjectorAuto InjectorAuto = ELRInjectorAuto::Off;
 };
 
 /**

@@ -107,9 +107,18 @@ public:
 	double GetHostMass() const { return HostMass; }
 	/** The host has evaporated: nothing in the pocket universe advances until Ignite. */
 	bool IsFrozen() const { return Data.Host.IsDefined() && HostMass <= 0.0; }
-	/** Set the feed dial: the injection rate to aim for, kg/s (clamped to 0..InjectorMaxRate). */
+	/**
+	 * Set the feed dial: the injection rate to aim for, kg/s (clamped to 0..InjectorMaxRate).
+	 * Setting it by hand turns the auto mode off.
+	 */
 	void SetInjectorTarget(double KgPerSecond);
 	double GetInjectorTarget() const { return InjectorTarget; }
+	/**
+	 * Let the dial follow the HOLD or LIMIT mark by itself (up to the injectors' maximum), or
+	 * stop it (Off leaves the dial where it is). The flow still follows the dial with inertia.
+	 */
+	void SetInjectorAuto(ELRInjectorAuto Mode);
+	ELRInjectorAuto GetInjectorAuto() const { return InjectorAuto; }
 	/** What the injectors are sending right now, kg/s (it follows the dial with inertia). */
 	double GetInjectorFlow() const { return Injector.Flow; }
 	/** What actually reaches the host per second: the flow, up to the rated limit. */
@@ -130,14 +139,9 @@ public:
 	double GetRingCharge() const { return RingCharge; }
 	/** The safeties tripped (or Ignite fired) and the storage ring is refilling: no feeding until it's full. */
 	bool IsRingRecharging() const { return bRingRecharging; }
-	/** The storage ring is full, and its charge wouldn't push the host past the safety cap. */
+	/** The host is gone and the storage ring is full. */
 	bool CanIgnite() const;
-	/**
-	 * Fire the storage ring's whole charge at the singularity, past the rated limit. With no
-	 * host, it makes a new one (the kick-start); with a host, it's an emergency charge (the way
-	 * out from below the point of no return). Either way the ring then recharges, and feeding
-	 * is locked out meanwhile.
-	 */
+	/** The kick-start: fire the storage ring's whole charge at the singularity to make a new host. */
 	FLRActionResult Ignite();
 	/** Below this mass the host can't be fed out of evaporating (see FLRHostDef::GetTippingMass). */
 	double GetTippingMass() const { return Data.Host.GetTippingMass(); }
@@ -225,6 +229,8 @@ private:
 	FString ApplyExposure(FLRLootBoxInstance& Box, const FLRRadiationDef& Radiation, const FLRItemDef& IrradiatorDef);
 	/** The host: evaporation, feeding, the safeties and the storage ring. */
 	void AdvanceHost(double DeltaSeconds);
+	/** In an auto mode, point the dial at its mark for the host's current mass. */
+	void UpdateAutoTarget();
 	/** The cosmic clock. */
 	void AdvanceCosmos(double DeltaSeconds);
 	/** Overdensities: yield matter into their own cell and, in later epochs, deepen on their own. */
@@ -281,6 +287,7 @@ private:
 	double CosmicTime = 0.0;
 	double HostMass = 0.0;
 	double InjectorTarget = 0.0;
+	ELRInjectorAuto InjectorAuto = ELRInjectorAuto::Off;
 	FLRInjectorState Injector;
 	double RingCharge = 0.0;
 	bool bRingRecharging = false;

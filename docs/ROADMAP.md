@@ -117,9 +117,10 @@ See [COSMOLOGY.md](COSMOLOGY.md) for the physics behind each item.
         or Tab), and holds the dial, the chamber, the storage ring and Ignite. The status bar
         always shows mass and net rate, and the button pulses when the outside needs
         attention.
-  - [x] The point of no return: shown in the chamber view, readouts, status bar and log;
-        seeds can't cross it; and the storage ring fires into a living host as an emergency
-        charge (found in playtesting: a full ring sat useless while the host died).
+  - [x] The point of no return, shown in the chamber view, readouts, status bar and log.
+        Seeding may still cross it (over-perturbing is the player's mistake to make).
+  - [x] Dial buttons: Off / Hold / Limit / Max presets, and Auto Hold / Auto Limit, which
+        keep the dial on its mark as the mass changes.
   - [ ] Play and tune it in the engine: the numbers are real physics where it's playable,
         which may not be fun yet.
   - [ ] Chamber and injector upgrades in the tech tree (a larger chamber, a higher rating).
