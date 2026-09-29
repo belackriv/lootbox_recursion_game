@@ -6,7 +6,7 @@
 		"lifetimeSeconds": 3600,
 		"seedCost": 500000,
 		"perturbCost": 70000,
-		"eddingtonRate": 0.002,
+		"eddingtonRate": 0.004,
 		"injectorMaxRate": 20000,
 		"injectorResponseSeconds": 15,
 		"chamberRadius": 0.01,

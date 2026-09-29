@@ -524,7 +524,7 @@ struct LOOTBOXRECURSION_API FLRHostDef
 	/** The most the injectors can feed per second at a given mass; anything above it is blown back out. */
 	double GetRatedLimit(double Mass) const { return static_cast<double>(EddingtonRate) * FMath::Max(Mass, 0.0); }
 
-	/** The rated limit as a multiple of the real Eddington limit (about 3e12 in the shipped data). */
+	/** The rated limit as a multiple of the real Eddington limit (about 6e12 in the shipped data). */
 	double GetEddingtonMultiple() const;
 
 	/** The mass at which the safeties trip (its 1 g radius reaches the chamber wall), or 0 for no cap. */

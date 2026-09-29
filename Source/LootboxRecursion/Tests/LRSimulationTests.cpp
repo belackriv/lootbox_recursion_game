@@ -591,8 +591,8 @@ bool FLRGameDataShippedTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("a 3,500 t host lasts about an hour, as Hawking radiation says"),
 		FMath::IsNearlyEqual(Host.StartMass * Host.StartMass * Host.StartMass * LRPhysics::HawkingLifetimePerKg3, 3600.0, 100.0));
 	TestTrue(TEXT("the first chamber caps the host at about 14,700 t"), FMath::IsNearlyEqual(Host.GetSafetyCap(), 1.47e7, 1e5));
-	TestTrue(TEXT("the injectors are rated at about 3e12 x Eddington"),
-		Host.GetEddingtonMultiple() > 2e12 && Host.GetEddingtonMultiple() < 4e12);
+	TestTrue(TEXT("the injectors are rated at about 6e12 x Eddington"),
+		Host.GetEddingtonMultiple() > 5e12 && Host.GetEddingtonMultiple() < 7e12);
 	TestTrue(TEXT("has recipes"), Data.Recipes.Num() > 0);
 	return true;
 }

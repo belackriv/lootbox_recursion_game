@@ -321,7 +321,7 @@ hardens it, and a third star placed too close ejects the lightest of the three.
   above it is blown back out as jets. A real mini black hole couldn't be fed at all, because
   its Hawking glow is about 10¹² times its Eddington luminosity. The facility gets round it
   with neutronium injectors (neutral matter, which the glow barely pushes) and a graviton
-  lens, rated at 3×10¹² × Eddington. What caps the host's size is its gravity well: the
+  lens, rated at 6×10¹² × Eddington. What caps the host's size is its gravity well: the
   1 g sphere must stay inside the containment chamber (DESIGN.md, "Feeding the host").
 - **Metallicity.** Metal-poor gas only makes monster stars, which die fast and violently.
   Pollute the gas first if you want long-lived stars.

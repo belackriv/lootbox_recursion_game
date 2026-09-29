@@ -121,7 +121,7 @@ well swells toward the chamber wall, so you (literally) dial it back.
   3×10⁶ times.
 - **Graviton lens.** A (made-up) field focuses the stream through the glow onto a target
   100,000 times smaller than a proton. It gains the remaining factor of about 10⁶.
-- **The rating.** Together the injectors are rated at **3×10¹² × the Eddington limit**, and
+- **The rating.** Together the injectors are rated at **6×10¹² × the Eddington limit**, and
   the panel says so. That's the point beyond which even they can't push, and flow above it is
   blown back out as jets. Better injectors (tech tree) could raise the multiple.
 - **Why the flow can't change instantly.** The graviton lens runs on superconducting magnets,
@@ -139,7 +139,7 @@ well swells toward the chamber wall, so you (literally) dial it back.
 - **What it sets.** The dial sets a **target** injection rate, in mass per second. It's
   logarithmic, because useful rates span several orders of magnitude (tens of kg/s at a large
   host, tens of t/s at full throttle).
-- **The rated limit mark.** The dial shows where the injectors' rated limit is (3×10¹² ×
+- **The rated limit mark.** The dial shows where the injectors' rated limit is (6×10¹² ×
   Eddington). The mark moves as the host grows and shrinks, because the limit is
   proportional to its mass. Anything injected above the mark is blown back out as jets and
   never reaches the host: wasted.
@@ -189,7 +189,7 @@ the sphere around it inside which its pull is stronger than 1 g. That radius is
 
 | Host mass | 1 g radius |
 |---|---|
-| 1,260 t | 2.9 mm |
+| 1,000 t | 2.6 mm |
 | 2,000 t | 3.7 mm |
 | 3,500 t | 4.9 mm |
 | 14,700 t | 10 mm |
@@ -260,16 +260,17 @@ deepening one costs a smaller mass.
 Accreting at 10% efficiency, that allows 7×10⁻¹⁶ of the host's mass per second: an
 e-folding time (the Salpeter time) of 45 million years. For the 3,500 t host that's 2.5×10⁻⁹
 kg/s, while it evaporates 324 kg/s.
-- **The injectors' rating** (3×10¹² ×, see "The facility") keeps the physics' shape, a
+- **The injectors' rating** (6×10¹² ×, see "The facility") keeps the physics' shape, a
   limit proportional to mass.
-- **In game units** that's `eddingtonRate` = 0.002 per second (an e-folding of 500 s).
+- **In game units** that's `eddingtonRate` = 0.004 per second (an e-folding of 250 s).
+  It was 0.002 (3×10¹²) at first, which made growing a small host a slog, so it was doubled.
 
 | Setting | Value | Why |
 |---|---|---|
 | Starting host mass | 3,500 t | 1 hour unfed |
 | Evaporation | 3.96×10¹⁵ / M² kg/s | real |
-| Rated limit (`eddingtonRate`) | 0.002 /s × M (3×10¹² × Eddington) | 7 t/s at the start, 29 t/s at the first chamber |
-| Tipping point | about 1,260 t | where the rated limit just equals evaporation: below it, nothing can save the host |
+| Rated limit (`eddingtonRate`) | 0.004 /s × M (6×10¹² × Eddington) | 14 t/s at the start; above 5,000 t the injectors' 20 t/s maximum is the real cap |
+| Tipping point | about 1,000 t | where the rated limit just equals evaporation: below it, nothing can save the host |
 | Safety cap | the 1 g sphere reaches the chamber wall | first chamber 1 cm: 14,700 t (74 hours unfed) |
 | Injector maximum | 20 t/s | the top of the dial, until injector upgrades |
 | `injectorResponseSeconds` (to 90%) | 15 s | ω ≈ 0.26 /s |
@@ -280,10 +281,10 @@ kg/s, while it evaporates 324 kg/s.
 
 **How the opening plays out:**
 1. Seed three ripples, leaving 2,000 t, with evaporation at 1 t/s and the rated limit at
-   4 t/s. The 1 g bubble shrinks to 3.7 mm.
+   8 t/s. The 1 g bubble shrinks to 3.7 mm.
 2. Open the dial toward the mark. At the limit, and then at the injectors' 20 t/s maximum,
-   2,000 t grows to the 14,700 t cap in about 18 minutes, with the bubble swelling toward the
-   wall.
+   2,000 t grows to 3,000 t in about 2 minutes and to the 14,700 t cap in about 12, with the
+   bubble swelling toward the wall.
 3. Start dialing back around 14,000 t to avoid tripping, and settle a little above the
    break-even mark (18 kg/s at the cap).
 
