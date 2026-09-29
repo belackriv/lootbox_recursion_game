@@ -237,9 +237,35 @@ kg/s, while it evaporates 324 kg/s.
 3. Start dialing back around 5,600 t to avoid tripping, and settle a little above the
    evaporation mark (0.11 t/s at the cap).
 
-**Readout.** The HUD shows the mass in tonnes, the dial (with both marks and both needles), the
-net rate, and the container's charge. The `host` requirement check compares tonnes. The
-redone sky can show the flow, e.g. the disk brightening as more is injected.
+### Two views: inside and outside
+
+The game has two UIs, one for each side of the horizon.
+
+- **Inside** (the current HUD) is the view into the pocket universe: the grid, the build and
+  action panels, the log, and the universe's matter.
+- **Outside** is the facility's control panel for the host. It holds only the injector
+  controls:
+  - the dial, with the Eddington and break-even marks and the setting and flow needles;
+  - the container (the mass "bucket"): its charge, refill progress and any lockout;
+  - Ignite;
+  - the host's mass and net rate next to the dial.
+
+**How you open it.** The outside panel drops down from the top of the screen when you press a
+button on the top status bar, or a hotkey (Tab, say; any free key will do). The same button or
+key raises it again.
+- The inside view stays live behind it, and the simulation keeps running while it's open.
+- Keep it compact, so you can watch a ripple while nudging the dial.
+
+**The status bar is the link between the two.** It always shows the host's mass (in tonnes)
+and net rate, whichever view is up. Its outside button lights up or pulses when the outside
+needs attention:
+- the host is below break-even (shrinking);
+- the safeties have tripped, or the host is closing on the cap;
+- the container is recharging;
+- the host is gone and Ignite is ready.
+
+The `host` requirement check compares tonnes. The redone sky can show the flow, e.g. the disk
+brightening as more is injected.
 
 ### How the universe comes to feed itself
 

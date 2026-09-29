@@ -109,7 +109,11 @@ See [COSMOLOGY.md](COSMOLOGY.md) for the physics behind each item.
   - [ ] The safety cap: it trips, dumps the container and locks out until refilled.
   - [ ] Ignite, the kick-start, to restart after the host evaporates.
   - [ ] Seed and deepen costs in tonnes.
-  - [ ] Tests for each, and the HUD dial.
+  - [ ] Tests for each.
+  - [ ] The outside panel: it drops down from the top of the screen when a status bar button
+        (or a hotkey) is pressed, and holds the dial, the container and Ignite. The status
+        bar always shows mass and net rate, and its button lights up when the outside needs
+        attention.
 - [ ] Expansion, stage 1 (DESIGN.md, "Expansion"): the grid shrinks and a bigger grid fades
       in over it, an endless zoom out. The rate is per epoch in `universe.json`. Prototype
       aperture-7 nesting against a plain ×2 cross-fade. Visual only.
