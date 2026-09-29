@@ -494,6 +494,25 @@ double FLRHostDef::GetEddingtonMultiple() const
 	return static_cast<double>(EddingtonRate) / LRPhysics::EddingtonRatePerSecond;
 }
 
+double FLRHostDef::GetTippingMass() const
+{
+	const double K = GetEvaporationConstant();
+	if (K <= 0.0)
+	{
+		return 0.0;
+	}
+	if (EddingtonRate <= 0.f || InjectorMaxRate <= 0.0)
+	{
+		return TNumericLimits<double>::Max(); // nothing can be fed: no host can be saved
+	}
+	// Evaporation K / M^2 equals the best intake: the rated limit, EddingtonRate * M (at
+	// M = (K / rate)^(1/3)), or the injectors' maximum (at M = sqrt(K / max)), whichever binds
+	// higher up.
+	const double FromLimit = FMath::Pow(K / static_cast<double>(EddingtonRate), 1.0 / 3.0);
+	const double FromMax = FMath::Sqrt(K / InjectorMaxRate);
+	return FMath::Max(FromLimit, FromMax);
+}
+
 double FLRHostDef::GetSafetyCap() const
 {
 	return ChamberRadius > 0.f ? LRPhysics::MassForGravity(ChamberRadius, SafetyGravity) : 0.0;

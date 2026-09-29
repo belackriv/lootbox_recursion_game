@@ -74,6 +74,19 @@ int32 SLRChamberView::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedG
 		return LayerId + 1;
 	}
 
+	// The point of no return, as the 1 g radius it would have: a bubble inside this ring can't be
+	// fed out of evaporating.
+	const double Tipping = Sim->GetTippingMass();
+	if (Tipping > 0.0 && Tipping < 1e30)
+	{
+		const float TippingRadius = static_cast<float>(WallRadius * Host.GetGravityRadius(Tipping) / FMath::Max(WallMetres, 1e-12));
+		const bool bBelow = Mass < Tipping;
+		const FLinearColor NoReturn = bBelow ? Style.Red : FLinearColor(Style.Red.R, Style.Red.G, Style.Red.B, 0.45f);
+		LRSlateDraw::Circle(OutDrawElements, LayerId, AllottedGeometry, Centre, TippingRadius, NoReturn, 1.f);
+		LRSlateDraw::Label(OutDrawElements, LayerId, AllottedGeometry, TEXT("no return"), Style.SmallFont,
+			Centre - FVector2f(0.f, TippingRadius + 8.f), NoReturn);
+	}
+
 	// The 1 g sphere: a glow brightening toward its shell, with a crisp edge.
 	const FLinearColor BubbleColor = GlowFor(Mass);
 	constexpr int32 Rings = 12;

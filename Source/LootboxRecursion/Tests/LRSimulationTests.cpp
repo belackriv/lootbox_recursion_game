@@ -1249,28 +1249,72 @@ bool FLRHostSafetyTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostIgniteTest, "LootboxRecursion.Host.IgniteRestartsAnEvaporatedHost", LR_TEST_FLAGS)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostIgniteTest, "LootboxRecursion.Host.TheStorageRingFiresIntoTheHost", LR_TEST_FLAGS)
 bool FLRHostIgniteTest::RunTest(const FString& Parameters)
 {
-	FLRSimulation Sim(LRTest::MakeCosmosData(), 1);
+	FLRSimulation Sim(LRTest::MakeCosmosData(), 1); // 1,000 kg, a 400 kg ring, no cap
 	LRTest::FMessageLog Log(Sim);
-	TestFalse(TEXT("not while the host is alive"), Sim.CanIgnite());
-	const FLRActionResult Early = Sim.Ignite();
-	TestTrue(TEXT("refused while the host is alive"), !Early.bSuccess && Early.Reason == FName(TEXT("host_alive")));
 
-	Sim.Advance(1001.0);
+	// Into a living host: an emergency charge, past the rated limit.
+	TestTrue(TEXT("a full ring can fire"), Sim.CanIgnite());
+	const FLRActionResult Charged = Sim.Ignite();
+	TestTrue(TEXT("emergency charge"), Charged.bSuccess && Log.Contains(TEXT("Emergency charge")));
+	TestTrue(TEXT("the whole charge went straight in"), Sim.GetHostMass() == 1400.0);
+	TestTrue(TEXT("the ring recharges, locking feeding out"), Sim.IsRingRecharging() && Sim.GetRingCharge() == 0.0);
+	const FLRActionResult Again = Sim.Ignite();
+	TestTrue(TEXT("not until it's full again"), !Again.bSuccess && Again.Reason == FName(TEXT("ring_charging")));
+
+	// Into an evaporated host: Ignite makes a new one.
+	Sim.Advance(2800.0); // 1,400 kg lasts 2,744 s unfed
 	TestTrue(TEXT("evaporated"), Sim.IsFrozen());
-	TestTrue(TEXT("the ring is full"), Sim.CanIgnite());
+	TestTrue(TEXT("the ring is full again"), Sim.CanIgnite());
 	const FLRActionResult Ignited = Sim.Ignite();
 	TestTrue(TEXT("ignited"), Ignited.bSuccess && Log.Contains(TEXT("Ignited")));
 	TestFalse(TEXT("no longer frozen"), Sim.IsFrozen());
 	TestTrue(TEXT("the new host is the ring's charge"), Sim.GetHostMass() == 400.0);
-	TestTrue(TEXT("the ring recharges before feeding resumes"), Sim.IsRingRecharging() && Sim.GetRingCharge() == 0.0);
+	TestTrue(TEXT("the ring recharges before feeding resumes"), Sim.IsRingRecharging());
 
 	// Unfed, the small new host evaporates fast (400 kg lasts 64 s), and can be ignited again.
 	Sim.Advance(70.0);
 	TestTrue(TEXT("gone again"), Sim.IsFrozen());
 	TestTrue(TEXT("the ring refilled meanwhile"), Sim.CanIgnite());
+
+	// Never past the safety cap.
+	FLRGameData Capped = LRTest::MakeStableCosmosData();
+	LRTest::SetSafetyCap(Capped, 1300.0);
+	FLRSimulation Tight(Capped, 1);
+	TestFalse(TEXT("a charge that would trip the safeties can't fire"), Tight.CanIgnite());
+	const FLRActionResult Refused = Tight.Ignite();
+	TestTrue(TEXT("refused"), !Refused.bSuccess && Refused.Reason == FName(TEXT("would_trip")) && Tight.GetHostMass() == 1000.0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostTippingTest, "LootboxRecursion.Host.PointOfNoReturn", LR_TEST_FLAGS)
+bool FLRHostTippingTest::RunTest(const FString& Parameters)
+{
+	const FLRGameData Data = LRTest::MakeCosmosData(); // rated at 1% of the mass per second, up to 50 kg/s
+	const double Tipping = Data.Host.GetTippingMass();
+	const double K = Data.Host.GetEvaporationConstant();
+	TestTrue(TEXT("the rated limit sets it here"), FMath::IsNearlyEqual(Tipping, FMath::Pow(K / 0.01, 1.0 / 3.0), 1e-6));
+	TestTrue(TEXT("where the limit just equals evaporation"),
+		FMath::IsNearlyEqual(Data.Host.GetRatedLimit(Tipping), Data.Host.GetEvaporationRate(Tipping), 1e-6));
+
+	// Seeding can't spend the host below it (322 kg): six seeds leave 400 kg, a seventh would cross.
+	FLRSimulation Sim(Data, 1);
+	LRTest::FMessageLog Log(Sim);
+	for (int32 X = 0; X < 6; ++X)
+	{
+		TestTrue(*FString::Printf(TEXT("seed %d"), X + 1), LRTest::SeedAt(Sim, FIntVector(X, 0, 0)));
+	}
+	const FLRActionResult Refused = Sim.RequestAction(LRTest::AtCell(LRTest::Seed, FIntVector(6, 0, 0)));
+	TestTrue(TEXT("a seed that would cross it is refused"), !Refused.bSuccess && Refused.Reason == FName(TEXT("below_tipping")));
+	TestFalse(TEXT("so is deepening"), LRTest::SeedAt(Sim, FIntVector(0, 0, 0)));
+
+	// Evaporating on its own, it crosses anyway: the log says so, and the ring is the way out.
+	Sim.Advance(35.0);
+	TestTrue(TEXT("below the point of no return"), Sim.GetHostMass() < Tipping && Log.Contains(TEXT("point of no return")));
+	TestTrue(TEXT("the emergency charge fires"), Sim.Ignite().bSuccess);
+	TestTrue(TEXT("and lifts it back above"), Sim.GetHostMass() > Tipping);
 	return true;
 }
 

@@ -25,8 +25,9 @@ namespace
 	const FName ReasonRippleAtMax(TEXT("ripple_at_max"));
 	const FName ReasonHorizonWeak(TEXT("horizon_too_weak"));
 	const FName ReasonNoHost(TEXT("no_host"));
-	const FName ReasonHostAlive(TEXT("host_alive"));
 	const FName ReasonRingCharging(TEXT("ring_charging"));
+	const FName ReasonBelowTipping(TEXT("below_tipping"));
+	const FName ReasonWouldTrip(TEXT("would_trip"));
 
 	const FName IrradiateEvent(TEXT("irradiate"));
 	const FName UnlockEvent(TEXT("unlock"));
@@ -53,8 +54,9 @@ FString FLRSimulation::DescribeReason(FName Reason)
 	if (Reason == ReasonRippleAtMax) { return TEXT("that ripple can't get any deeper"); }
 	if (Reason == ReasonHorizonWeak) { return TEXT("the host black hole can't spare that much mass, feed it first"); }
 	if (Reason == ReasonNoHost) { return TEXT("there is no host black hole"); }
-	if (Reason == ReasonHostAlive) { return TEXT("the host is still there, feed it with the dial"); }
 	if (Reason == ReasonRingCharging) { return TEXT("the storage ring is still recharging"); }
+	if (Reason == ReasonBelowTipping) { return TEXT("that would push the host below its point of no return"); }
+	if (Reason == ReasonWouldTrip) { return TEXT("that much mass at once would trip the chamber's safeties"); }
 	return Reason.ToString();
 }
 
@@ -109,6 +111,7 @@ void FLRSimulation::Reset(int32 Seed)
 	RingCharge = Data.Host.RingMass;
 	bRingRecharging = false;
 	bHostWarned = false;
+	bWarnedTipping = false;
 	CosmicTime = 0.0;
 	EnterEpoch(0);
 	RefreshUnlocks(); // starting unlocks, not announced
@@ -199,6 +202,7 @@ bool FLRSimulation::Load(const FLRSaveData& SaveData)
 	RingCharge = FMath::Clamp(SaveData.RingCharge, 0.0, Data.Host.RingMass);
 	bRingRecharging = SaveData.bRingRecharging;
 	bHostWarned = false;
+	bWarnedTipping = false;
 	CosmicTime = SaveData.CosmicTime;
 	EnterEpoch(FMath::Max(0, Data.FindEpochIndex(SaveData.Epoch)));
 	EpochStartedAt = SaveData.EpochStartedAt; // keep an in-progress plasma fade going
@@ -339,6 +343,20 @@ void FLRSimulation::AdvanceHost(double DeltaSeconds)
 		}
 	}
 
+	// Warn when the host drops below its point of no return (it can't be fed out of it).
+	const double Tipping = Host.GetTippingMass();
+	const bool bBelowTipping = HostMass > 0.0 && Tipping > 0.0 && HostMass < Tipping;
+	if (bBelowTipping && !bWarnedTipping)
+	{
+		bWarnedTipping = true;
+		Messages.Add(FString::Printf(TEXT("The host (%s) fell below its point of no return (%s): evaporation outruns even the rated limit. Fire the storage ring into it (EMERGENCY CHARGE, outside panel), or let it go and Ignite a new one."),
+			*FormatMass(HostMass), *FormatMass(Tipping)));
+	}
+	else if (!bBelowTipping)
+	{
+		bWarnedTipping = false;
+	}
+
 	// Warn once when a shrinking host gets close to evaporating.
 	const double Lifetime = Host.GetUnfedLifetime(HostMass);
 	if (HostMass > 0.0 && Lifetime <= Host.WarningSeconds && GetNetRate() < 0.0 && !bHostWarned)
@@ -431,24 +449,29 @@ double FLRSimulation::GetTimeToEvaporation() const
 
 bool FLRSimulation::CanIgnite() const
 {
-	return Data.Host.IsDefined() && HostMass <= 0.0 && Data.Host.RingMass > 0.0
-		&& !bRingRecharging && RingCharge >= Data.Host.RingMass;
+	if (!Data.Host.IsDefined() || Data.Host.RingMass <= 0.0 || bRingRecharging || RingCharge < Data.Host.RingMass)
+	{
+		return false;
+	}
+	const double Cap = Data.Host.GetSafetyCap();
+	return Cap <= 0.0 || HostMass + RingCharge < Cap;
 }
 
 FLRActionResult FLRSimulation::Ignite()
 {
 	FName Reason = NAME_None;
+	const double Cap = Data.Host.GetSafetyCap();
 	if (!Data.Host.IsDefined() || Data.Host.RingMass <= 0.0)
 	{
 		Reason = ReasonNoHost;
 	}
-	else if (HostMass > 0.0)
-	{
-		Reason = ReasonHostAlive;
-	}
-	else if (!CanIgnite())
+	else if (bRingRecharging || RingCharge < Data.Host.RingMass)
 	{
 		Reason = ReasonRingCharging;
+	}
+	else if (Cap > 0.0 && HostMass + RingCharge >= Cap)
+	{
+		Reason = ReasonWouldTrip;
 	}
 	if (!Reason.IsNone())
 	{
@@ -457,8 +480,11 @@ FLRActionResult FLRSimulation::Ignite()
 		return Failure;
 	}
 
-	// A charge this big collapses straight into a new horizon: no Eddington limit applies.
-	HostMass = RingCharge;
+	// A charge this big goes straight in (into a new horizon, or the existing one): no rated
+	// limit applies. Feeding is locked out while the ring recharges.
+	const bool bNewHost = HostMass <= 0.0;
+	const double Charge = RingCharge;
+	HostMass += Charge;
 	RingCharge = 0.0;
 	bRingRecharging = true;
 	Injector = FLRInjectorState();
@@ -467,8 +493,15 @@ FLRActionResult FLRSimulation::Ignite()
 	FLRActionResult Result;
 	Result.Action = LRNames::Ignite;
 	Result.bSuccess = true;
-	Result.Message = FString::Printf(TEXT("Ignited: the storage ring's %s collapsed into a new horizon. The pocket universe stirs again. Open the feed dial as soon as the ring recharges."),
-		*FormatMass(HostMass));
+	Result.Message = bNewHost
+		? FString::Printf(TEXT("Ignited: the storage ring's %s collapsed into a new horizon. The pocket universe stirs again. Open the feed dial as soon as the ring recharges."),
+			*FormatMass(Charge))
+		: FString::Printf(TEXT("Emergency charge: the storage ring's %s went straight into the host, which is now %s. Feeding is locked out while the ring recharges."),
+			*FormatMass(Charge), *FormatMass(HostMass));
+	if (bNewHost)
+	{
+		OnWorldChanged.Broadcast();
+	}
 	Complete(Result);
 	return Result;
 }
@@ -1373,6 +1406,12 @@ FName FLRSimulation::ValidateSeed(const FLRActionRequest& Request, const FLRActi
 	// Every ripple's energy comes out of the host, and a perturbation never finishes it off.
 	const double Cost = Data.Host.GetPerturbCost(/*bSeedsNew*/ Existing == nullptr);
 	if (Data.Host.IsDefined() && HostMass <= Cost) { return ReasonHorizonWeak; }
+	// Never spend the host into a state nothing can feed it out of.
+	const double Tipping = Data.Host.GetTippingMass();
+	if (Data.Host.IsDefined() && Tipping > 0.0 && Tipping < TNumericLimits<double>::Max() && HostMass - Cost < Tipping)
+	{
+		return ReasonBelowTipping;
+	}
 	return NAME_None;
 }
 

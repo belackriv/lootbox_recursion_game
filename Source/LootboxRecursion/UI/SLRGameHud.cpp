@@ -338,9 +338,13 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 						return LOCTEXT("HostFrozen", "Host evaporated: universe frozen. Ignite a new one (F)");
 					}
 					const double Net = Sim->GetNetRate();
-					const FString Trend = Net < 0.0
+					FString Trend = Net < 0.0
 						? FString::Printf(TEXT("evaporates in %s"), *FormatDuration(Sim->GetTimeToEvaporation()))
 						: FString(TEXT("growing"));
+					if (Sim->GetHostMass() < Sim->GetTippingMass())
+					{
+						Trend += TEXT("  BELOW THE POINT OF NO RETURN");
+					}
 					return AsText(FString::Printf(TEXT("Host %s  %s  %s"), *FLRSimulation::FormatMass(Sim->GetHostMass()),
 						*FormatSignedRate(Net), *Trend));
 				})
@@ -1927,6 +1931,30 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 						: FString(TEXT("No safety cap"));
 				}, Style.BodyFont)
 			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 2.f))
+			[
+				SNew(STextBlock)
+				.Font(Style.BodyFont)
+				.AutoWrapText(true)
+				.Text_Lambda([this]()
+				{
+					const FLRSimulation* Sim = GetSimulation();
+					if (!Sim || !Sim->GetData().Host.IsDefined() || Sim->GetTippingMass() <= 0.0 || Sim->GetTippingMass() > 1e30)
+					{
+						return FText::GetEmpty();
+					}
+					const bool bBelow = !Sim->IsFrozen() && Sim->GetHostMass() < Sim->GetTippingMass();
+					return AsText(FString::Printf(TEXT("Point of no return %s%s"), *FLRSimulation::FormatMass(Sim->GetTippingMass()),
+						bBelow ? TEXT(": BELOW IT. Fire the storage ring.") : TEXT("")));
+				})
+				.ColorAndOpacity_Lambda([this]() -> FSlateColor
+				{
+					const FLRHudStyle& S = FLRHudStyle::Get();
+					const FLRSimulation* Sim = GetSimulation();
+					const bool bBelow = Sim && !Sim->IsFrozen() && Sim->GetHostMass() < Sim->GetTippingMass();
+					return bBelow ? S.Red : S.ConsoleText;
+				})
+			]
 		];
 
 	// Right of that: the host in its chamber, to scale.
@@ -2011,7 +2039,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 					const FLRSimulation* Sim = GetSimulation();
 					return Sim && Sim->CanIgnite();
 				})
-				.ToolTipText(LOCTEXT("IgniteTip", "Once the host has evaporated: fire the storage ring's whole charge at the singularity. A charge that big collapses straight into a new horizon."))
+				.ToolTipText(LOCTEXT("IgniteTip", "Fire the storage ring's whole charge at the singularity, past the rated limit. With no host it collapses into a new horizon (Ignite); with one, it's an emergency charge, the way out from below the point of no return. Feeding is locked out while the ring recharges."))
 				.OnClicked_Lambda([this]()
 				{
 					if (ULRGameSubsystem* Sub = GetSubsystem())
@@ -2021,7 +2049,14 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 					return FReply::Handled();
 				})
 				[
-					SNew(STextBlock).Font(Style.HeadingFont).ColorAndOpacity(Style.ConsoleAccent).Text(LOCTEXT("Ignite", "IGNITE"))
+					SNew(STextBlock)
+					.Font(Style.HeadingFont)
+					.ColorAndOpacity(Style.ConsoleAccent)
+					.Text_Lambda([this]()
+					{
+						const FLRSimulation* Sim = GetSimulation();
+						return (Sim && Sim->GetHostMass() > 0.0) ? LOCTEXT("EmergencyCharge", "EMERGENCY CHARGE") : LOCTEXT("Ignite", "IGNITE");
+					})
 				]
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 6.f, 0.f, 0.f))

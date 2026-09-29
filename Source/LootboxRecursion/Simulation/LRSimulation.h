@@ -130,10 +130,17 @@ public:
 	double GetRingCharge() const { return RingCharge; }
 	/** The safeties tripped (or Ignite fired) and the storage ring is refilling: no feeding until it's full. */
 	bool IsRingRecharging() const { return bRingRecharging; }
-	/** The host is gone and the storage ring is full. */
+	/** The storage ring is full, and its charge wouldn't push the host past the safety cap. */
 	bool CanIgnite() const;
-	/** The kick-start: fire the storage ring's whole charge at the singularity to make a new host. */
+	/**
+	 * Fire the storage ring's whole charge at the singularity, past the rated limit. With no
+	 * host, it makes a new one (the kick-start); with a host, it's an emergency charge (the way
+	 * out from below the point of no return). Either way the ring then recharges, and feeding
+	 * is locked out meanwhile.
+	 */
 	FLRActionResult Ignite();
+	/** Below this mass the host can't be fed out of evaporating (see FLRHostDef::GetTippingMass). */
+	double GetTippingMass() const { return Data.Host.GetTippingMass(); }
 
 	/**
 	 * Injector inertia: the flow after DeltaSeconds, chasing Target like a critically damped
@@ -279,4 +286,6 @@ private:
 	bool bRingRecharging = false;
 	/** The low-mass warning has been logged (until the host recovers). Not saved. */
 	bool bHostWarned = false;
+	/** The point-of-no-return warning has been logged (until the host climbs back above it). Not saved. */
+	bool bWarnedTipping = false;
 };

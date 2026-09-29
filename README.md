@@ -88,7 +88,7 @@ In the editor, press **Play** (Alt+P).
 |---|---|
 | Click a grid cell, then **Perturb** | Seed a ripple there, or deepen the one there. Ripples gather matter into their cell every 10s. |
 | **(?)** on the status bar | The controls |
-| **F** / **Tab**, or **OUTSIDE** on the status bar | Drop down the outside panel: the feed dial (drag or scroll; Off / Hold / Limit presets), the host in its chamber, the storage ring and Ignite. Keep the host between HOLD (evaporation) and LIMIT, and dial back before its gravity well reaches the chamber wall, or the safeties trip. At zero the universe freezes until you Ignite. |
+| **F** / **Tab**, or **OUTSIDE** on the status bar | Drop down the outside panel: the feed dial (drag or scroll; Off / Hold / Limit presets), the host in its chamber, the storage ring (Ignite a dead host, or fire an emergency charge into a living one). Keep the host between HOLD (evaporation) and LIMIT, and dial back before its gravity well reaches the chamber wall, or the safeties trip. At zero the universe freezes until you Ignite. |
 | Click a **Craft** recipe | Quantum Cache (hydrogen and helium), irradiators, radiation sources (as they unlock) |
 | Select a cell, then click a **Build** recipe | Build it there, paid from the matter within 2 cells. Caches and machines take the cell; a source goes into the irradiator there. |
 | Select a cache (or an irradiator holding one), then **Open** | Collapse it; the loot lands in that cell |

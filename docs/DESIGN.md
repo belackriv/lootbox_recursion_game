@@ -236,6 +236,27 @@ universe freezes. Nothing is lost, as now.
 - **Size the charge above the tipping point.** Then a freshly ignited host survives, as long
   as you open the dial right away.
 
+### The point of no return
+
+Below the tipping point (about 1,000 t), evaporation outruns even the rated limit, so no dial
+setting can save the host. Playtesting found it far too easy to slide under that line (by
+seeding) and then just wait for the end, with a full storage ring sitting unused. So:
+- **It's shown.**
+  - The chamber view draws the point of no return as a faint red ring (the 1 g radius it would
+    have). A bubble inside it is doomed.
+  - The outside readouts give it in tonnes.
+  - The status bar says so when the host is below it.
+  - The log warns when the host crosses it.
+- **Seeds can't cross it.** Perturb refuses a seed (or deepening) that would push the host
+  below it, and says why.
+- **The emergency charge.** The storage ring also fires into a *living* host. Its whole charge
+  goes straight in, past the rated limit, which lifts a host out from below the line. Then
+  the ring recharges and feeding is locked out, as after Ignite. The button reads EMERGENCY
+  CHARGE while there's a host, and IGNITE when there isn't. It's refused if the charge would
+  push the host past the safety cap.
+- **Why it's not abused.** A healthy host gains more from the dial at the limit than from the
+  ring during the 200 s lockout that follows a charge.
+
 ### Ripples cost host mass
 
 Seeding a new ripple costs a fixed mass (`seedCost`, 500 t), and

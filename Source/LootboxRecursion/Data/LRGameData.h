@@ -527,6 +527,13 @@ struct LOOTBOXRECURSION_API FLRHostDef
 	/** The rated limit as a multiple of the real Eddington limit (about 6e12 in the shipped data). */
 	double GetEddingtonMultiple() const;
 
+	/**
+	 * The point of no return: below this mass, evaporation outruns even the most the injectors
+	 * can feed (the rated limit, or their maximum), so nothing but the storage ring can save it.
+	 * 0 if the host never evaporates.
+	 */
+	double GetTippingMass() const;
+
 	/** The mass at which the safeties trip (its 1 g radius reaches the chamber wall), or 0 for no cap. */
 	double GetSafetyCap() const;
 
