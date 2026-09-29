@@ -45,6 +45,15 @@
     "reveal": "always"
   },
   {
+    "label": "UE: Build materials",
+    "command": "cmd",
+    "args": ["/c", "Tools\\materials.bat"],
+    "cwd": "${ZED_WORKTREE_ROOT}",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
+  {
     "label": "Data: Validate JSON",
     "command": "python",
     "args": ["Tools/validate_data.py"],

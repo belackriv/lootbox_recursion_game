@@ -49,6 +49,22 @@ Sided.
 `"material": "/Game/Materials/M_Ripple"`. If that asset exists, the item uses it instead of
 `M_Entity` or `M_SeeThrough`, and gets the same parameters.
 
+## Generating them
+
+`Tools/unreal/make_materials.py` builds some of these materials from code. Two ways to run it:
+- Close the editor and run `Tools\materials.bat`, or `Tools\materials.bat M_SeeThrough` for one.
+- Inside the editor, use Tools > Execute Python Script and pick the file.
+
+So far it has `M_SeeThrough` and `M_Matter`.
+
+- **Rebuilds replace the graph.** Running it again rebuilds the graph in place, so the
+  asset's references survive but hand edits to its graph are lost.
+- **Tune with parameters.** Each recipe exposes its tuning numbers as parameters (`Glow`,
+  `RimOpacity`, `Softness`...). Change those in the material, or in a Material Instance,
+  rather than editing the graph.
+- **Needs the Python plugin.** It uses the Python Editor Script Plugin, which
+  `LootboxRecursion.uproject` enables.
+
 ## Recipes
 
 These are starting points. Each one assumes a new Material asset opened in the material
@@ -56,24 +72,29 @@ editor; the settings named come from its Details panel.
 
 **M_GridBeam** (already in the repo): Unlit. `Color` goes into Emissive Color.
 
-**M_SeeThrough**, the glass look that keeps ripples readable over bright matter:
+**M_SeeThrough** (scripted), the glass look that keeps ripples readable over bright matter:
 1. Set Blend Mode to Translucent and Shading Model to Unlit. Leave Two Sided off.
-2. `Color` (vector) × 2 goes into Emissive Color.
-3. Add a Fresnel node (Exponent 3). Lerp from `Opacity` (scalar, default 0.15) to 1 by the
-   Fresnel, and feed the result into Opacity.
-4. Optional: add `Amount` × 0.3 to the Fresnel's Base Reflect Fraction, so deeper ripples get a
-   brighter rim.
+2. `Color` × `Glow` (2) goes into Emissive Color.
+3. Add a Fresnel node, with its exponent from `RimExponent` (3). Lerp from `Opacity` (the
+   item's, e.g. 0.15) to `RimOpacity` (0.9) by the Fresnel, and feed the result into Opacity.
+4. Feed `Amount` × `AmountRim` (0.3) into the Fresnel's Base Reflect Fraction, so deeper
+   ripples get a wider rim.
 
 **M_Entity:**
 1. Use Default Lit. `Color` goes into Base Color, with Roughness 0.4.
 2. For a glow, add `Color` × `Amount` × 3 into Emissive Color.
 
-**M_Matter:**
+**M_Matter** (scripted), a soft puff rather than a hard pancake:
 1. Set Blend Mode to Translucent and Shading Model to Unlit.
-2. `Color` × 1.5 goes into Emissive Color.
-3. For Opacity, use a RadialGradientExponential (on TexCoord) × 0.8, so the disc is a soft puff
-   rather than a hard pancake.
-4. Optional: pan a noise texture across it for a slow swirl.
+2. `Color` × `Glow` (1.5) goes into Emissive Color.
+3. Opacity fades out from the middle, measured in world space (the disc is a flattened
+   sphere, so its UVs don't give a radial fade):
+   - `d` = the horizontal Distance between Absolute World Position and Object Position,
+     divided by Object Radius. It's 0 in the middle and 1 at the edge.
+   - Opacity = saturate(1 − d^`Softness`) × lerp(`MinOpacity`, `MaxOpacity`, `Amount`).
+4. The code sets `Opacity` to 1 on every hook, which is why this material uses its own
+   `MinOpacity` and `MaxOpacity` parameters instead.
+5. Optional: pan a noise texture across it for a slow swirl.
 
 **M_Star:**
 1. Unlit, with "Used with Instanced Static Meshes" ticked. `Color` goes into Emissive Color.

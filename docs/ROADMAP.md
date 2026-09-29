@@ -29,7 +29,8 @@ and play.
 - [x] Material hooks for everything drawn (docs/MATERIALS.md): entities, see-through
       entities, matter, stars, black hole, plasma, backdrop, plus a per-item `material`.
 - [ ] Make the hook materials: `M_SeeThrough` first (a Fresnel rim keeps ripples readable
-      over matter).
+      over matter). `Tools/unreal/make_materials.py` (run with `Tools\materials.bat`)
+      builds `M_SeeThrough` and `M_Matter`; add recipes for the rest as they settle.
 - [ ] Time controls (DESIGN.md, "Time controls"): a speed level from -1 (paused) to 3 (8x),
       stepped by buttons and keys, shown as `||`, `|>`, `|> >`, `|> >>`, `|> >>>` next to the
       cosmic time. Built on the existing `SetTimeScale`.

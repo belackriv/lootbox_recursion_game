@@ -133,6 +133,7 @@ The Zed tasks (`.zed/tasks.json`) call the scripts in `Tools/`, which work from 
 | UE: Open editor | `Tools\editor.bat` | Launch Unreal Editor with the project |
 | UE: Play standalone | `Tools\play.bat` | Run the game windowed, without the editor |
 | UE: Run automation tests | `Tools\test.bat` | Headless test run |
+| UE: Build materials | `Tools\materials.bat` | Generate the hook materials (docs/MATERIALS.md); close the editor first |
 | Data: Validate JSON | `Tools/validate_data.py` | Check `Content/Data` |
 
 The scripts find Unreal through the Epic Launcher's registry entry, or fall back to
