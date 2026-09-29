@@ -123,6 +123,10 @@ private:
 	UPROPERTY()
 	TObjectPtr<UStaticMesh> SphereMesh;
 
+	/** Caches are d4s (see LRShapes); built at BeginPlay. */
+	UPROPERTY()
+	TObjectPtr<UStaticMesh> TetraMesh;
+
 	/** Lit, with a "Color" parameter: entities and the placement ghost. */
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> BaseMaterial;

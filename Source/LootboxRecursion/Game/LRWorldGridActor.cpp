@@ -14,6 +14,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/PackageName.h"
 #include "Rendering/LRMaterialHooks.h"
+#include "Rendering/LRShapes.h"
 #include "Rendering/LRUnlit.h"
 #include "Simulation/LRHexGrid.h"
 #include "UObject/ConstructorHelpers.h"
@@ -23,6 +24,10 @@ namespace
 	// The grid is thin beams of light in the void. Tints above 1 are HDR and glow through bloom.
 	const FLinearColor LineColor(0.85f, 0.92f, 1.f);
 	const FLinearColor SelectedColor(FColor::FromHex(TEXT("F2A93B"))); // accretion-disk amber
+
+	// A cache (d4) as a fraction of a cell: Z is X / sqrt(2) for a regular tetrahedron, a
+	// little taller so it reads as a point from the default camera tilt.
+	const FVector CacheSize(0.55f, 0.55f, 0.45f);
 
 	FLinearColor Glow(const FLinearColor& Color, float Intensity)
 	{
@@ -107,6 +112,7 @@ void ALRWorldGridActor::BeginPlay()
 	Super::BeginPlay();
 
 	WhiteTexture = LRUnlit::MakeSolidTexture(FColor::White);
+	TetraMesh = LRShapes::MakeTetrahedron(this);
 	// Project materials, where they have been made (see docs/MATERIALS.md).
 	BeamMaterial = LRMaterialHooks::LoadOptional(BeamMaterialPath);
 	EntityMaterial = LRMaterialHooks::LoadOptional(EntityMaterialPath);
@@ -597,7 +603,7 @@ void ALRWorldGridActor::RebuildEntities()
 		// Shapes, as fractions of a cell (the engine cube and sphere are 100cm across, pivot at the
 		// centre), each sitting on the cell floor:
 		// - overdensities (ripples) are spheres that swell with their amplitude,
-		// - caches are square prisms, narrow and tall,
+		// - caches are d4s (tetrahedra standing on a face),
 		// - everything else (machines) is a cube that fits inside the hexagon (its diagonal is
 		//   under the hexagon's flat-to-flat width).
 		const bool bOverdensity = Def && Def->IsOverdensity() && SphereMesh;
@@ -612,7 +618,7 @@ void ALRWorldGridActor::RebuildEntities()
 		}
 		else if (bCache)
 		{
-			Size = FVector(0.4f, 0.4f, 0.8f);
+			Size = CacheSize;
 		}
 		const FLRLootBoxInstance* ChamberBox = (Def && Def->IsIrradiator() && !Entity.Chamber.IsEmpty()) ? Simulation->FindLootBox(Entity.Chamber.InstanceId) : nullptr;
 		if (ChamberBox)
@@ -620,7 +626,8 @@ void ALRWorldGridActor::RebuildEntities()
 			Amount = ChamberBox->bRevealed ? 1.f : FMath::Clamp(static_cast<float>(ChamberBox->Modifiers.Num()) / FMath::Max(1, Def->MaxExposureStacks), 0.f, 1.f);
 		}
 		const FLinearColor Color = Def ? Def->GetLinearColor() : FLinearColor::Gray;
-		UStaticMeshComponent* Mesh = CreateEntityMesh(bOverdensity ? SphereMesh.Get() : CubeMesh.Get(), Def, Color, Def ? Def->Opacity : 1.f, Amount, /*bTraceable*/ true);
+		UStaticMesh* Shape = bOverdensity ? SphereMesh.Get() : ((bCache && TetraMesh) ? TetraMesh.Get() : CubeMesh.Get());
+		UStaticMeshComponent* Mesh = CreateEntityMesh(Shape, Def, Color, Def ? Def->Opacity : 1.f, Amount, /*bTraceable*/ true);
 		Mesh->SetRelativeLocation(Floor + FVector(0.f, 0.f, 50.f * Size.Z * Scale));
 		Mesh->SetRelativeScale3D(Size * Scale);
 
@@ -635,9 +642,9 @@ void ALRWorldGridActor::RebuildEntities()
 		}
 		if (Def && Def->IsIrradiator())
 		{
-			const auto AddInside = [&](const FLRItemDef* PartDef, const FLinearColor& PartColor, const FVector& Offset, const FVector& PartSize)
+			const auto AddInside = [&](UStaticMesh* PartShape, const FLRItemDef* PartDef, const FLinearColor& PartColor, const FVector& Offset, const FVector& PartSize)
 			{
-				UStaticMeshComponent* Part = CreateEntityMesh(CubeMesh, PartDef, PartColor, PartDef ? PartDef->Opacity : 1.f, /*Amount*/ 0.f, /*bTraceable*/ false);
+				UStaticMeshComponent* Part = CreateEntityMesh(PartShape, PartDef, PartColor, PartDef ? PartDef->Opacity : 1.f, /*Amount*/ 0.f, /*bTraceable*/ false);
 				Part->SetRelativeLocation(Floor + (Offset + FVector(0.f, 0.f, 50.f * PartSize.Z)) * Scale);
 				Part->SetRelativeScale3D(PartSize * Scale);
 				EntityExtras.Add(Part);
@@ -645,13 +652,13 @@ void ALRWorldGridActor::RebuildEntities()
 			if (!Entity.Chamber.IsEmpty())
 			{
 				const FLRItemDef* CacheDef = Simulation->GetData().FindItem(Entity.Chamber.Item);
-				AddInside(CacheDef, CacheDef ? CacheDef->GetLinearColor() : FLinearColor::Gray, FVector(6.f, 6.f, 0.f), FVector(0.26f, 0.26f, 0.5f));
+				AddInside(TetraMesh ? TetraMesh.Get() : CubeMesh.Get(), CacheDef, CacheDef ? CacheDef->GetLinearColor() : FLinearColor::Gray, FVector(6.f, 6.f, 0.f), CacheSize * 0.6f);
 			}
 			const FLRItemDef* SourceDef = Entity.Source.IsEmpty() ? nullptr : Simulation->GetData().FindItem(Entity.Source.Item);
 			const FLRRadiationDef* Radiation = SourceDef ? Simulation->GetData().FindRadiation(SourceDef->Radiation) : nullptr;
 			if (SourceDef)
 			{
-				AddInside(SourceDef, Radiation ? Radiation->GetLinearColor() : SourceDef->GetLinearColor(), FVector(-19.f, -19.f, 0.f), FVector(0.18f));
+				AddInside(CubeMesh, SourceDef, Radiation ? Radiation->GetLinearColor() : SourceDef->GetLinearColor(), FVector(-19.f, -19.f, 0.f), FVector(0.18f));
 			}
 			if (ChamberBox)
 			{

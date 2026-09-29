@@ -26,6 +26,8 @@ public class LootboxRecursion : ModuleRules
 			"SlateCore",
 			"Json",
 			"JsonUtilities",
+			"MeshDescription",
+			"StaticMeshDescription",
 		});
 	}
 }
