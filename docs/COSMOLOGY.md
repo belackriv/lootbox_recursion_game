@@ -310,12 +310,16 @@ hardens it, and a third star placed too close ejects the lightest of the three.
 
 - **Hawking evaporation.** The host black hole loses mass continuously, faster as it shrinks
   (lifetime scales as M³). The pocket universe's total mass-energy is the host's mass, so
-  every perturbation and injection draws on it, and the operator has to feed the host from
-  outside to keep the universe alive. Late game, the rate matters: it's the clock the endings
+  every perturbation and injection draws on it. Early on the operator feeds the host from
+  outside; later the universe feeds it itself (a Horizon Siphon, then dark energy from
+  expansion; see DESIGN.md, "Feeding the host"). Late game, the rate matters: it's the clock the endings
   race. Only micro black holes evaporate on game timescales, so the stellar black holes the
   player makes inside are effectively permanent.
 - **Expansion.** Unbound cells drift apart, so logistics decay unless bound (phase 2).
 - **Eddington limit.** Stars refuse mass above about 150 solar masses and blow gas back out.
+  The host obeys the same limit: fed matter waits in its accretion disk and drains in at a
+  rate proportional to the host's mass, so a dead host spools back up slowly and flooding it
+  just blows gas away as jets.
 - **Metallicity.** Metal-poor gas only makes monster stars, which die fast and violently.
   Pollute the gas first if you want long-lived stars.
 - **Supernova blast.** A supernova enriches the neighbourhood but also disperses gas and can

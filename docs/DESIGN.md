@@ -87,11 +87,95 @@ announces each one.
   deepening one draws 2%, and a perturbation is refused if it would take the last of it.
   **Feed the Horizon** (revealed at 90%) restores 15%. Feeding by hand is meant as the
   kick-start (getting a frozen universe going again, or buying ripples early), not upkeep: the
-  pocket universe should come to feed itself (open question, see below). At zero
+  pocket universe should come to feed itself (see "Feeding the host"). At zero
   the pocket universe freezes: ripples, irradiators and the clock stop until you feed it.
   That's the soft fail; nothing is lost.
 - **The plasma** is a glowing veil in the sky whose opacity comes from the epoch, fading over
   a few seconds between epochs. It clears at recombination.
+
+## Feeding the host (planned)
+
+Feeding by hand should be the kick-start, not the upkeep, like hand-feeding coal into
+generators to get a dead power grid back up in Satisfactory. It has two jobs:
+
+- **Restarting a frozen universe** when the host has evaporated to nothing.
+- **Buying ripples early.** Seeding a ripple costs one feed of host mass (implemented:
+  `seedFeeds`), so feeding is how the first few ripples get paid for.
+
+After that, the pocket universe should come to feed itself.
+
+### The accretion disk and the Eddington limit
+
+Nothing feeds the host directly. Fed matter goes into the host's **accretion disk**, and the
+disk drains into the host no faster than the **Eddington rate**. In real physics, the most a
+black hole can swallow before its own radiation blows the rest away grows in proportion to
+its mass. So growth at the limit is exponential: the real e-folding time is the Salpeter time,
+about 45 million years.
+
+- **The intake rule.** The disk drains into the host at `eddingtonRate × max(mass,
+  eddingtonFloor)` per second, in fractions of the starting mass. The floor keeps a dead host
+  from being stuck at zero forever.
+- **Restarts spool up.** With a rate of 0.02 and a floor of 0.1, a dead host takes about 50
+  s to reach 10%, then speeds up. One feed brings it back in a bit over a minute. The universe
+  stirs again once the host passes `restartMass` (e.g. 5%), so the spool-up is felt.
+- **Spamming Feed doesn't work.** The disk holds at most `diskCapacity` (e.g. two feeds).
+  Anything fed beyond that is blown off as jets and lost, and the log says so. How fast you
+  feed matters, not how often you click. That also paces how quickly feeding can buy the
+  early ripples.
+- **Evaporation and intake meet at a tipping point.** Hawking evaporation is fastest for a
+  small host, and Eddington intake is fastest for a big one. Below some mass, the drain beats
+  anything the disk can deliver. Above it, a kept-full disk makes the host grow. That point is
+  the early game's goal.
+- **The host can grow past its starting mass.** Mass above 1 is allowed, so the "host is
+  full" refusal goes. Lifetime scales as mass cubed: twice the mass lasts 8 times as long.
+- **Feed stays** (it's never retired, unlike Perturb), because a universe can always freeze
+  again.
+- **Seeds and deepening draw on the host's mass,** not on the disk.
+
+A data sketch for `universe.json`'s `host`:
+
+```json
+"eddingtonRate": 0.02, "eddingtonFloor": 0.1, "diskCapacity": 0.3, "restartMass": 0.05
+```
+
+**Readout.** The HUD shows the host's mass, what's in the disk, and intake against
+evaporation per second (the net rate, so the tipping point is visible). The redone sky should
+show the disk too: a fuller disk looks brighter.
+
+### How the universe feeds itself
+
+| Satisfactory | Here | When |
+|---|---|---|
+| Hand-feeding coal | **Feed the Horizon**: restarts, and the first ripples | whole game, mostly early |
+| Coal on a conveyor | **Horizon Siphon** (working name; or Throat Pump) | mid game |
+| Late-game free power | **Dark energy** | late game, with expansion |
+
+**Horizon Siphon.** A structure built in a cell from recombination on. It pipes matter from
+the cells within its reach through the "throat" back into the host's disk. In lore, that's
+the Einstein–Rosen bridge between the pocket universe and the host (Popławski).
+- **It's Perturb in reverse, and a trade-off.** Matter siphoned is matter not built with.
+- **Mass value.** Each material is worth mass in proportion to its balance value (hydrogen 1,
+  helium 2, carbon 4, iron 8, as in `Tools/balance.py`). Some constant, e.g. 1000 value, makes
+  one feed.
+- **Settings.** A throughput per siphon, and a filter (hydrogen only by default, so the rare
+  materials aren't burned by accident).
+- **It still goes through the disk,** so it's Eddington-limited. A bigger host can use more
+  siphons.
+
+**Dark energy.** Space expanding creates vacuum energy for free. Its density stays constant
+while the volume grows, and in general relativity energy isn't conserved globally in an
+expanding universe. Alan Guth called inflation "the ultimate free lunch" for this reason.
+- **How it works.** With expansion (see "Expansion" below), each grid level passed, or the
+  growth of the scale factor, adds mass to the host.
+- **When it matters.** It's negligible before the dark-energy era (it took over at about 9.8
+  billion years) and dominant after it. The late universe then sustains itself, as the real
+  one does.
+- **It skips the disk.** It isn't infalling matter, so it isn't Eddington-limited.
+- **Before that,** the vacuum energy of inflation is spent making the matter (reheating), not
+  the host.
+
+**Later ideas.** Black holes that form inside the pocket universe (from dead stars) could
+anchor the host: slowing its evaporation, or adding their mass when they merge.
 
 ## Time controls (planned)
 
