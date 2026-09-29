@@ -101,14 +101,20 @@ See [COSMOLOGY.md](COSMOLOGY.md) for the physics behind each item.
       perturbation cost, ripple yields and epoch thresholds by feel.
 - [ ] A visible hint for the next epoch (what it needs), like the tech tree viewer's hints.
 - [x] Seeding a ripple costs one feed of host mass (`seedFeeds`).
-- [ ] The host's accretion disk (DESIGN.md, "Feeding the host"): feeds go into a disk that
-      drains in at the Eddington rate (proportional to mass, with a floor), anything beyond
-      the disk's capacity blows off as jets, the host can grow past its starting mass, and
-      a frozen universe stirs again past `restartMass`. HUD readout of disk and net rate.
+- [ ] The feed dial (DESIGN.md, "Feeding the host"), replacing the Feed button:
+  - [ ] Host mass in tonnes, with real Hawking evaporation.
+  - [ ] A log dial for the target injection rate, with the Eddington mark (0.002 /s × mass)
+        and the break-even mark.
+  - [ ] Injector inertia as a critically damped `StepInjector` that's easy to swap.
+  - [ ] The safety cap: it trips, dumps the container and locks out until refilled.
+  - [ ] Ignite, the kick-start, to restart after the host evaporates.
+  - [ ] Seed and deepen costs in tonnes.
+  - [ ] Tests for each, and the HUD dial.
 - [ ] Expansion, stage 1 (DESIGN.md, "Expansion"): the grid shrinks and a bigger grid fades
       in over it, an endless zoom out. The rate is per epoch in `universe.json`. Prototype
       aperture-7 nesting against a plain ×2 cross-fade. Visual only.
-- [ ] Dark energy: expansion feeds the host directly (it skips the disk), negligible before the
+- [ ] Dark energy: expansion feeds the host directly (it bypasses the injectors' Eddington
+      limit and safety cap), negligible before the
       dark-energy era and dominant after it, so the late universe sustains itself.
 - [ ] Expansion, stage 2: coarse-graining when the level changes (matter sums, ripples
       merge, machines keep a sub-cell spot or are refunded), with parent/child cells in
@@ -128,9 +134,9 @@ Matter moves into the pocket universe first (see *Matter lives in the pocket uni
 - [x] Caches, irradiators and sources become cell entities, built and dismantled in place.
 - [x] Remove the player inventory, Sort and Annihilate. Add a universe totals readout and a
       hovered-cell contents panel.
-- [ ] Horizon Siphon: a structure that pipes matter from its reach into the host's disk
-      (mass by balance value, a throughput and a material filter). The universe starts
-      feeding itself.
+- [ ] Horizon Siphon: a structure that pipes matter from its reach into the host, adding to
+      the injectors' flow under the same Eddington limit and safeties (mass by balance
+      value, a throughput and a material filter). The universe starts feeding itself.
 - [ ] Sources irradiate caches within a radius, so irradiation becomes spatial (idea).
 - [ ] Gas drifts downhill and diffuses. Injecting hydrogen fills the target cell.
 - [ ] Conveyors deliver matter into a build site's reach automatically (the radius stays the

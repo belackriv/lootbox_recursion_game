@@ -317,9 +317,10 @@ hardens it, and a third star placed too close ejects the lightest of the three.
   player makes inside are effectively permanent.
 - **Expansion.** Unbound cells drift apart, so logistics decay unless bound (phase 2).
 - **Eddington limit.** Stars refuse mass above about 150 solar masses and blow gas back out.
-  The host obeys the same limit: fed matter waits in its accretion disk and drains in at a
-  rate proportional to the host's mass, so a dead host spools back up slowly and flooding it
-  just blows gas away as jets.
+  The host obeys the same limit, scaled up: the feed dial marks it, and anything injected
+  above it is blown back out as jets. A real mini black hole couldn't be fed at all, because
+  its Hawking glow is about 10¹² times its Eddington luminosity. The facility's beamed
+  injection is the game's way round that (DESIGN.md, "Feeding the host").
 - **Metallicity.** Metal-poor gas only makes monster stars, which die fast and violently.
   Pollute the gas first if you want long-lived stars.
 - **Supernova blast.** A supernova enriches the neighbourhood but also disperses gas and can

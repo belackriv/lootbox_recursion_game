@@ -85,9 +85,8 @@ announces each one.
   so a full-mass host lasts `lifetimeSeconds` (an hour) and the loss speeds up as it
   shrinks. Seeding a new ripple draws one feed's worth of its mass (15%, `seedFeeds`),
   deepening one draws 2%, and a perturbation is refused if it would take the last of it.
-  **Feed the Horizon** (revealed at 90%) restores 15%. Feeding by hand is meant as the
-  kick-start (getting a frozen universe going again, or buying ripples early), not upkeep: the
-  pocket universe should come to feed itself (see "Feeding the host"). At zero
+  **Feed the Horizon** (revealed at 90%) restores 15%. (Planned to be replaced: a feed dial
+  with a real mass, the Eddington limit and a safety cap; see "Feeding the host".) At zero
   the pocket universe freezes: ripples, irradiators and the clock stop until you feed it.
   That's the soft fail; nothing is lost.
 - **The plasma** is a glowing veil in the sky whose opacity comes from the epoch, fading over
@@ -95,87 +94,186 @@ announces each one.
 
 ## Feeding the host (planned)
 
-Feeding by hand should be the kick-start, not the upkeep, like hand-feeding coal into
-generators to get a dead power grid back up in Satisfactory. It has two jobs:
+This replaces the Feed button and the host-as-a-percentage (the version implemented today, in
+"The pocket universe" above). Host mass becomes a real mass, and feeding becomes a **dial**
+on the facility's mass injectors. The challenge is keeping three things in balance:
 
-- **Restarting a frozen universe** when the host has evaporated to nothing.
-- **Buying ripples early.** Seeding a ripple costs one feed of host mass (implemented:
-  `seedFeeds`), so feeding is how the first few ripples get paid for.
+- Hawking evaporation, which takes mass away, fastest when the host is small.
+- Feeding, which adds mass, but no faster than the Eddington limit.
+- The facility's safety cap on how big the host may grow.
 
-After that, the pocket universe should come to feed itself.
+**The arc.** Early on the host is small and hot, and ripples cost it mass, so you run the dial
+aggressively, near the Eddington mark, to grow it. As it grows, evaporation slows and the cap
+gets close, so you (literally) dial it back.
 
-### The accretion disk and the Eddington limit
+### The dial
 
-Nothing feeds the host directly. Fed matter goes into the host's **accretion disk**, and the
-disk drains into the host no faster than the **Eddington rate**. In real physics, the most a
-black hole can swallow before its own radiation blows the rest away grows in proportion to
-its mass. So growth at the limit is exponential: the real e-folding time is the Salpeter time,
-about 45 million years.
+- **What it sets.** The dial sets a **target** injection rate, in mass per second. It's
+  logarithmic, because useful rates span three orders of magnitude (tens of kg/s at a large
+  host, tens of t/s at full throttle).
+- **The Eddington mark.** The dial shows where the Eddington limit is. The mark moves as the
+  host grows and shrinks, because the limit is proportional to its mass. Anything injected
+  above the mark is blown back out as jets and never reaches the host: wasted.
+- **The break-even mark.** A second mark worth having shows the evaporation rate, which is
+  the flow that just holds the mass steady. Between the two marks the host grows. Below the
+  break-even mark it shrinks.
+- **Two needles.** The dial shows the setting and, as a second needle, the actual flow, which
+  lags behind it (see "Injector inertia" below).
 
-- **The intake rule.** The disk drains into the host at `eddingtonRate × max(mass,
-  eddingtonFloor)` per second, in fractions of the starting mass. The floor keeps a dead host
-  from being stuck at zero forever.
-- **Restarts spool up.** With a rate of 0.02 and a floor of 0.1, a dead host takes about 50
-  s to reach 10%, then speeds up. One feed brings it back in a bit over a minute. The universe
-  stirs again once the host passes `restartMass` (e.g. 5%), so the spool-up is felt.
-- **Spamming Feed doesn't work.** The disk holds at most `diskCapacity` (e.g. two feeds).
-  Anything fed beyond that is blown off as jets and lost, and the log says so. How fast you
-  feed matters, not how often you click. That also paces how quickly feeding can buy the
-  early ripples.
-- **Evaporation and intake meet at a tipping point.** Hawking evaporation is fastest for a
-  small host, and Eddington intake is fastest for a big one. Below some mass, the drain beats
-  anything the disk can deliver. Above it, a kept-full disk makes the host grow. That point is
-  the early game's goal.
-- **The host can grow past its starting mass.** Mass above 1 is allowed, so the "host is
-  full" refusal goes. Lifetime scales as mass cubed: twice the mass lasts 8 times as long.
-- **Feed stays** (it's never retired, unlike Perturb), because a universe can always freeze
-  again.
-- **Seeds and deepening draw on the host's mass,** not on the disk.
+### Injector inertia
 
-A data sketch for `universe.json`'s `host`:
+The dial moves instantly, but the injected mass has inertia, so the actual flow follows the
+setting smoothly: it starts slowly (a parabolic start), then settles, without overshooting.
 
-```json
-"eddingtonRate": 0.02, "eddingtonFloor": 0.1, "diskCapacity": 0.3, "restartMass": 0.05
+**No "time since the last dial change" is needed.** The flow needs one extra piece of state, its
+current rate of change, and then it can be worked out from the dial setting, the current
+flow and that rate of change alone. With only the setting and the current flow you'd get a
+plain exponential approach, which jumps straight away rather than starting slowly. With
+the rate of change as well, you get the smooth start.
+
+The model is a critically damped spring. With `flow` and `change` (its rate of change) as
+state, `target` the dial setting, and ω set from `injectorResponseSeconds`:
+
+```
+change' = ω² (target - flow) - 2ω change
+flow'   = change
 ```
 
-**Readout.** The HUD shows the host's mass, what's in the disk, and intake against
-evaporation per second (the net rate, so the tipping point is visible). The redone sky should
-show the disk too: a fuller disk looks brighter.
+- **It steps exactly.** The closed form advances any time step exactly, so it doesn't depend
+  on the frame rate. With e = flow - target at the start of a step of length t:
+  `e(t) = (e + (change + ω e) t) e^(-ωt)` and
+  `change(t) = (change - ω (change + ω e) t) e^(-ωt)`.
+- **Its shape.** From rest, the flow moves by about ½ ω² e t² at first (parabolic), and it
+  gets 90% of the way at about 3.9 / ω.
+- **Clamping.** The flow is clamped at 0, and the rate of change is zeroed when the clamp
+  bites.
+- **One easy-to-tweak function.** It lives in `FLRSimulation` (e.g. `StepInjector(State,
+  Target, DeltaSeconds, Params)`), so it's easy to swap the curve. Other options are a
+  constant-acceleration ramp with a top speed, or doing the same in log space so every
+  decade takes equally long.
 
-### How the universe feeds itself
+### The safety cap
+
+The injectors have safety systems that stop the host growing too big (the facility's
+**containment rating**).
+- **The trip.** When the host reaches the cap, the safeties trip. Injection stops
+  **instantly**, with no inertia. The mass meant for the host (the injectors' **container**)
+  is dumped.
+- **Locked out.** Nothing can be fed until the container has refilled
+  (`containerMass / refillRate`). After that, the flow ramps up again from zero, with
+  inertia.
+- **Why it's a skill.** Because of the inertia, turning the dial down near the cap takes
+  effect late. At full throttle, 20 s of lag is about 400 t more mass, so you have to dial
+  back before the cap, not at it.
+- **Progression.** The cap is a facility rating, and raising it is a natural tech-tree
+  unlock.
+
+### Losing the host, and the kick-start
+
+When the host evaporates completely (in a final flash as its last tonnes go), the pocket
+universe freezes. Nothing is lost, as now.
+- **Why the dial can't restart it.** It's physics: the Eddington limit is proportional to
+  mass, so an empty host can't be fed at all. And a tiny new host evaporates faster than
+  anything can reach it.
+- **Ignite.** The kick-start is a button that fires the full container at the singularity
+  in one go. A charge that big collapses straight into a new horizon, with no Eddington
+  limit. This is hand-feeding coal to restart a dead power grid (as in Satisfactory).
+- **Size the charge above the tipping point.** Then a freshly ignited host survives, as long
+  as you open the dial right away.
+
+### Ripples cost host mass
+
+Seeding a new ripple costs a fixed mass (implemented today as one feed, `seedFeeds`), and
+deepening one costs a smaller mass.
+- **Early,** that's what makes feeding urgent.
+- **Near the cap,** seeding becomes a useful way to spend mass instead of tripping the
+  safeties.
+
+### Starting numbers (real physics where it's playable)
+
+**Hawking evaporation (real).** Lifetime is t = 8.41×10⁻¹⁷ s × (M/kg)³, and mass is lost at
+3.96×10¹⁵ / M² kg/s. A host that lasts an hour unfed weighs about 3,500 t. For comparison:
+
+| Host mass | Lifetime unfed | Evaporation | Temperature | Horizon radius |
+|---|---|---|---|---|
+| 1,000 t | 84 s | 4.0 t/s | 1.2×10¹⁷ K | 1.5×10⁻²¹ m |
+| 2,000 t | 11 min | 1.0 t/s | 6×10¹⁶ K | 3×10⁻²¹ m |
+| **3,500 t** (start) | **1 hour** | 0.32 t/s | 3.5×10¹⁶ K | 5×10⁻²¹ m |
+| **6,000 t** (first cap) | 5 hours | 0.11 t/s | 2×10¹⁶ K | 9×10⁻²¹ m |
+| 10,000 t | 23 hours | 0.04 t/s | 1.2×10¹⁶ K | 1.5×10⁻²⁰ m |
+
+The horizon is about 100,000 times smaller than a proton, and it glows at about 3×10¹⁹ W.
+
+**The Eddington limit (real, then scaled).** The real limit is 6.3 W per kg of black hole.
+Accreting at 10% efficiency, that allows 7×10⁻¹⁶ of the host's mass per second: an
+e-folding time (the Salpeter time) of 45 million years. For the 3,500 t host that's 2.5×10⁻⁹
+kg/s, while it evaporates 324 kg/s.
+- **The honest physics:** a mini black hole can't be fed. Its own Hawking glow is about 10¹²
+  times its Eddington luminosity, and it blows everything away.
+- **The game keeps the shape and scales the constant.** The limit stays proportional to mass,
+  but the facility's beamed, compressed injection beats spherical Eddington accretion (real
+  super-Eddington flows exist, in beams and thick disks) by about 3×10¹²:
+  `eddingtonRate` = 0.002 per second (an e-folding of 500 s).
+
+| Setting | Value | Why |
+|---|---|---|
+| Starting host mass | 3,500 t | 1 hour unfed |
+| Evaporation | 3.96×10¹⁵ / M² kg/s | real |
+| `eddingtonRate` | 0.002 /s × M | 7 t/s at the start, 12 t/s at the first cap |
+| Tipping point | about 1,260 t | where the Eddington limit just equals evaporation: below it, nothing can save the host |
+| Safety cap (first rating) | 6,000 t | 5 hours unfed; later ratings 10,000 t and up |
+| Injector maximum | 20 t/s | the top of the dial |
+| `injectorResponseSeconds` (to 90%) | 15 s | ω ≈ 0.26 /s |
+| Container (Ignite charge) | 2,000 t | above the tipping point |
+| Refill rate | 10 t/s | 200 s lockout after a trip, or to recharge Ignite |
+| Seed a ripple | 500 t | three seeds take a fresh host from 3,500 t to 2,000 t, 11 minutes from death |
+| Deepen a ripple | 70 t | |
+
+**How the opening plays out:**
+1. Seed three ripples, leaving 2,000 t, with evaporation at 1 t/s and the Eddington mark at
+   4 t/s.
+2. Open the dial toward the mark. At the limit, 2,000 t grows to the 6,000 t cap in about 10
+   minutes.
+3. Start dialing back around 5,600 t to avoid tripping, and settle a little above the
+   evaporation mark (0.11 t/s at the cap).
+
+**Readout.** The HUD shows the mass in tonnes, the dial (with both marks and both needles), the
+net rate, and the container's charge. The `host` requirement check compares tonnes. The
+redone sky can show the flow, e.g. the disk brightening as more is injected.
+
+### How the universe comes to feed itself
 
 | Satisfactory | Here | When |
 |---|---|---|
-| Hand-feeding coal | **Feed the Horizon**: restarts, and the first ripples | whole game, mostly early |
+| Hand-feeding coal to restart | **Ignite**, then the dial | whole game, mostly early |
 | Coal on a conveyor | **Horizon Siphon** (working name; or Throat Pump) | mid game |
 | Late-game free power | **Dark energy** | late game, with expansion |
 
 **Horizon Siphon.** A structure built in a cell from recombination on. It pipes matter from
-the cells within its reach through the "throat" back into the host's disk. In lore, that's
-the Einstein–Rosen bridge between the pocket universe and the host (Popławski).
+the cells within its reach through the "throat" into the host. In lore, that's the
+Einstein–Rosen bridge between the pocket universe and the host (Popławski).
+- **It adds to the injectors' flow.** Together they share the Eddington limit, and the
+  safeties trip it too.
 - **It's Perturb in reverse, and a trade-off.** Matter siphoned is matter not built with.
-- **Mass value.** Each material is worth mass in proportion to its balance value (hydrogen 1,
-  helium 2, carbon 4, iron 8, as in `Tools/balance.py`). Some constant, e.g. 1000 value, makes
-  one feed.
-- **Settings.** A throughput per siphon, and a filter (hydrogen only by default, so the rare
-  materials aren't burned by accident).
-- **It still goes through the disk,** so it's Eddington-limited. A bigger host can use more
-  siphons.
+- **Mass value.** Materials count by their balance value (hydrogen 1, helium 2, carbon 4,
+  iron 8, as in `Tools/balance.py`). Some constant turns value into tonnes.
+- **Settings.** A throughput, and a material filter (hydrogen only by default).
 
 **Dark energy.** Space expanding creates vacuum energy for free. Its density stays constant
 while the volume grows, and in general relativity energy isn't conserved globally in an
 expanding universe. Alan Guth called inflation "the ultimate free lunch" for this reason.
-- **How it works.** With expansion (see "Expansion" below), each grid level passed, or the
-  growth of the scale factor, adds mass to the host.
+- **How it works.** With expansion (see "Expansion" below), the growth of the universe adds
+  mass to the host directly.
 - **When it matters.** It's negligible before the dark-energy era (it took over at about 9.8
-  billion years) and dominant after it. The late universe then sustains itself, as the real
-  one does.
-- **It skips the disk.** It isn't infalling matter, so it isn't Eddington-limited.
+  billion years) and dominant after.
+- **It bypasses the injectors,** so neither the Eddington limit nor the safeties apply. Late
+  on, the host outgrows the facility's cap and the universe sustains itself.
 - **Before that,** the vacuum energy of inflation is spent making the matter (reheating), not
   the host.
 
-**Later ideas.** Black holes that form inside the pocket universe (from dead stars) could
-anchor the host: slowing its evaporation, or adding their mass when they merge.
+**Later ideas.**
+- Black holes that form inside the pocket universe (from dead stars) could anchor the host.
+- A buffer in the container, so the injectors can briefly run faster than it refills.
 
 ## Time controls (planned)
 
