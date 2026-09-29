@@ -4,6 +4,7 @@
 #include "JsonObjectConverter.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Simulation/LRPhysics.h"
 
 FLinearColor FLRItemDef::GetLinearColor() const
 {
@@ -380,14 +381,33 @@ TArray<FString> FLRGameData::Validate() const
 		Errors.Add(TEXT("reachRadius must be >= 0"));
 	}
 
-	if (Host.LifetimeSeconds < 0.f || Host.PerturbCost < 0.f || Host.PerturbCost > 1.f
-		|| Host.FeedAmount < 0.f || Host.FeedAmount > 1.f || Host.WarningMass < 0.f || Host.WarningMass > 1.f)
+	if (Host.StartMass < 0.0)
 	{
-		Errors.Add(TEXT("host: need lifetimeSeconds >= 0, and perturbCost, feedAmount and warningMass between 0 and 1"));
+		Errors.Add(TEXT("host: startMass must be >= 0"));
 	}
-	if (Host.SeedFeeds < 0.f || Host.SeedFeeds * Host.FeedAmount > 1.f)
+	if (Host.IsDefined())
 	{
-		Errors.Add(TEXT("host: seedFeeds must be >= 0, and seedFeeds * feedAmount at most 1"));
+		if (Host.LifetimeSeconds < 0.f || Host.EddingtonRate < 0.f || Host.InjectorMaxRate < 0.0 || Host.ChamberRadius < 0.f
+			|| Host.RingMass < 0.0 || Host.RingRefillRate < 0.0 || Host.WarningSeconds < 0.f)
+		{
+			Errors.Add(TEXT("host: lifetimeSeconds, eddingtonRate, injectorMaxRate, chamberRadius, ringMass, ringRefillRate and warningSeconds must be >= 0"));
+		}
+		if (Host.SeedCost < 0.0 || Host.PerturbCost < 0.0 || Host.SeedCost >= Host.StartMass || Host.PerturbCost >= Host.StartMass)
+		{
+			Errors.Add(TEXT("host: seedCost and perturbCost must be >= 0 and less than startMass"));
+		}
+		if (Host.InjectorResponseSeconds <= 0.f || Host.SafetyGravity <= 0.f)
+		{
+			Errors.Add(TEXT("host: injectorResponseSeconds and safetyGravity must be > 0"));
+		}
+		if (Host.RingMass > 0.0 && Host.RingRefillRate <= 0.0)
+		{
+			Errors.Add(TEXT("host: a storage ring (ringMass > 0) needs ringRefillRate > 0"));
+		}
+		if (Host.GetSafetyCap() > 0.0 && Host.GetSafetyCap() <= Host.StartMass)
+		{
+			Errors.Add(FString::Printf(TEXT("host: the chamber caps the host at %.0f kg, not above its startMass"), Host.GetSafetyCap()));
+		}
 	}
 
 	TSet<FName> RadiationIds;
@@ -464,3 +484,23 @@ FString FLRGameData::GetDefaultDataDirectory()
 {
 	return FPaths::ProjectContentDir() / TEXT("Data");
 }
+
+// ---------------------------------------------------------------------------------------
+// Host black hole
+// ---------------------------------------------------------------------------------------
+
+double FLRHostDef::GetEddingtonMultiple() const
+{
+	return static_cast<double>(EddingtonRate) / LRPhysics::EddingtonRatePerSecond;
+}
+
+double FLRHostDef::GetSafetyCap() const
+{
+	return ChamberRadius > 0.f ? LRPhysics::MassForGravity(ChamberRadius, SafetyGravity) : 0.0;
+}
+
+double FLRHostDef::GetGravityRadius(double Mass) const
+{
+	return LRPhysics::RadiusOfGravity(Mass, SafetyGravity);
+}
+

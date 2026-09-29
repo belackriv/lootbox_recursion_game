@@ -1,5 +1,5 @@
 {
-	"_comment": "cooldown and castTime are in simulation seconds. Every action but feed works on the selected grid cell. Requirement: check = matter | placed | stat | unlocked | epoch | host, filtered by item or category, condition = gt | gte | lt | lte | eq. revealRequirements unlock an action for good once met (tech tree), retireRequirements retire it for good, and requirements are checked every time. 'places' makes a seeding action: it creates that overdensity in the selected cell or deepens the one there. Any other action with a lootTable rolls it into the selected cell.",
+	"_comment": "cooldown and castTime are in simulation seconds. Every action works on the selected grid cell (feeding the host is the outside panel's dial, not an action). Requirement: check = matter | placed | stat | unlocked | epoch | host (host mass in tonnes), filtered by item or category, condition = gt | gte | lt | lte | eq. revealRequirements unlock an action for good once met (tech tree), retireRequirements retire it for good, and requirements are checked every time. 'places' makes a seeding action: it creates that overdensity in the selected cell or deepens the one there. Any other action with a lootTable rolls it into the selected cell.",
 	"actions": [
 		{
 			"name": "perturb",
@@ -14,20 +14,6 @@
 					"id": "recombination",
 					"condition": "eq",
 					"value": 1
-				}
-			]
-		},
-		{
-			"name": "feed",
-			"label": "Feed the Horizon",
-			"tooltip": "Pour matter from the facility across the event horizon. The host black hole regains mass, and the heavier it is, the slower it evaporates.",
-			"cooldown": 30,
-			"castTime": 5,
-			"revealRequirements": [
-				{
-					"check": "host",
-					"condition": "lte",
-					"value": 90
 				}
 			]
 		},

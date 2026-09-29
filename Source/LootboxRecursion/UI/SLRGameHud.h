@@ -24,6 +24,10 @@ struct FLRPlacedEntity;
  * grid visible in the middle, the Grid panel (layer, selection, cell actions, entity list) and
  * Info on the right, and the Log across the bottom. There is no inventory: everything the
  * player makes lives in grid cells, so most actions work on the selected cell.
+ *
+ * That's the inside view. The outside panel (the facility's injectors: the feed dial, the host
+ * in its chamber, the storage ring and Ignite) drops down from the top when the status bar's
+ * OUTSIDE button or F / Tab is pressed (docs/DESIGN.md, "Two views").
  */
 class LOOTBOXRECURSION_API SLRGameHud : public SCompoundWidget
 {
@@ -33,6 +37,8 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+
+	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
 
 	void AddLogMessage(const FString& Message, bool bIsError);
 
@@ -56,6 +62,10 @@ private:
 	TSharedRef<SWidget> BuildWorldPanel();
 	TSharedRef<SWidget> BuildInfoPanel();
 	TSharedRef<SWidget> BuildLogPanel();
+	/** The outside view: the facility's injector controls. */
+	TSharedRef<SWidget> BuildOutsidePanel();
+	/** Something outside needs the player: the host is shrinking, gone, near the cap, or the ring is recharging. */
+	bool DoesOutsideNeedAttention() const;
 	TSharedRef<SWidget> MakePanel(const FText& Title, const TSharedRef<SWidget>& Content,
 		const TSharedRef<SWidget>& HeaderExtra, bool bFillHeight = false);
 	TSharedRef<SWidget> MakeActionButton(FName ActionName, TFunction<void()> OnClick, TFunction<bool()> ExtraEnabled = nullptr);
@@ -114,6 +124,10 @@ private:
 	TSharedPtr<SVerticalBox> LogBox;
 	TSharedPtr<SScrollBox> LogScroll;
 	TSharedPtr<SVerticalBox> DeployedBox;
+
+	/** The outside panel, and how far it has dropped down (0 = hidden, 1 = fully down). */
+	TSharedPtr<SWidget> OutsidePanel;
+	float OutsideDrop = 0.f;
 
 	/** Log history kept for scrolling back; the panel shows LogVisibleLines of it at a time. */
 	static constexpr int32 MaxLogLines = 200;

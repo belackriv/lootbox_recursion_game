@@ -226,9 +226,27 @@ FString ULRGameSubsystem::GetCosmicTimeText() const
 	return Simulation ? FLRSimulation::FormatCosmicTime(Simulation->GetCosmicTime()) : FString();
 }
 
-float ULRGameSubsystem::GetHostMass() const
+double ULRGameSubsystem::GetHostMass() const
 {
-	return Simulation ? static_cast<float>(Simulation->GetHostMass()) : 1.f;
+	return Simulation ? Simulation->GetHostMass() : 0.0;
+}
+
+void ULRGameSubsystem::SetInjectorTarget(double KgPerSecond)
+{
+	if (Simulation)
+	{
+		Simulation->SetInjectorTarget(KgPerSecond);
+	}
+}
+
+double ULRGameSubsystem::GetInjectorTarget() const
+{
+	return Simulation ? Simulation->GetInjectorTarget() : 0.0;
+}
+
+FLRActionResult ULRGameSubsystem::Ignite()
+{
+	return Simulation ? Simulation->Ignite() : FLRActionResult();
 }
 
 float ULRGameSubsystem::GetPlasmaOpacity() const

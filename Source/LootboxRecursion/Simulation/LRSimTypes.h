@@ -349,7 +349,37 @@ struct LOOTBOXRECURSION_API FLRSaveData
 	UPROPERTY()
 	double CosmicTime = 0.0;
 
-	/** The host black hole's mass as a fraction of its starting mass. */
+	/** The host black hole's mass, kg. */
 	UPROPERTY()
-	double HostMass = 1.0;
+	double HostMass = 0.0;
+
+	/** The feed dial's setting, kg/s. */
+	UPROPERTY()
+	double InjectorTarget = 0.0;
+
+	/** The injectors' actual flow (kg/s) and its rate of change (kg/s^2). */
+	UPROPERTY()
+	double InjectorFlow = 0.0;
+
+	UPROPERTY()
+	double InjectorChange = 0.0;
+
+	/** The storage ring's charge, kg, and whether feeding is locked out until it's full. */
+	UPROPERTY()
+	double RingCharge = 0.0;
+
+	UPROPERTY()
+	bool bRingRecharging = false;
+};
+
+/**
+ * The mass injectors' flow: how much they feed the host per second, and how fast that is
+ * changing. The flow follows the feed dial with inertia (see FLRSimulation::StepInjector).
+ */
+struct FLRInjectorState
+{
+	/** kg/s */
+	double Flow = 0.0;
+	/** kg/s^2 */
+	double Change = 0.0;
 };

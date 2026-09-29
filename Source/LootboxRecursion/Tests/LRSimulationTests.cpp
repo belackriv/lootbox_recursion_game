@@ -11,6 +11,7 @@
 #include "Cosmos/LRBlackHoleRenderer.h"
 #include "Misc/Paths.h"
 #include "Simulation/LRHexGrid.h"
+#include "Simulation/LRPhysics.h"
 #include "Simulation/LRSimulation.h"
 
 #define LR_TEST_FLAGS (EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
@@ -271,12 +272,20 @@ namespace LRTest
 		InClear.Value = 1;
 		SeedAction.RetireRequirements.Add(InClear);
 		Data.Actions.Add(SeedAction);
-		Data.Actions.Add(MakeAction(LRNames::Feed, 0.f, 0.f));
 
-		Data.Host.LifetimeSeconds = 1000.f;
-		Data.Host.PerturbCost = 0.1f;
-		Data.Host.FeedAmount = 0.3f;
-		Data.Host.WarningMass = 0.25f;
+		// A 1,000 kg host that lasts 1,000 s unfed, fed at up to 1% of its mass per second.
+		FLRHostDef& Host = Data.Host;
+		Host.StartMass = 1000.0;
+		Host.LifetimeSeconds = 1000.f;
+		Host.SeedCost = 100.0;
+		Host.PerturbCost = 100.0;
+		Host.EddingtonRate = 0.01f;
+		Host.InjectorMaxRate = 50.0;
+		Host.InjectorResponseSeconds = 10.f;
+		Host.ChamberRadius = 0.f; // no cap unless a test sets one (see SetSafetyCap)
+		Host.RingMass = 400.0;
+		Host.RingRefillRate = 100.0; // 4 s to recharge
+		Host.WarningSeconds = 50.f;
 		return Data;
 	}
 
@@ -286,6 +295,12 @@ namespace LRTest
 		FLRGameData Data = MakeCosmosData();
 		Data.Host.LifetimeSeconds = 0.f;
 		return Data;
+	}
+
+	/** Size the containment chamber so the safeties trip at this host mass (kg). */
+	void SetSafetyCap(FLRGameData& Data, double CapMass)
+	{
+		Data.Host.ChamberRadius = static_cast<float>(FMath::Sqrt(LRPhysics::G * CapMass / Data.Host.SafetyGravity));
 	}
 
 	bool SeedAt(FLRSimulation& Sim, const FIntVector& Cell)
@@ -566,10 +581,18 @@ bool FLRGameDataShippedTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("Content/Data loads cleanly"), bLoaded);
 
-	for (const FName Action : { LRNames::Perturb, LRNames::Feed, LRNames::Craft, LRNames::Use, LRNames::Dismantle })
+	for (const FName Action : { LRNames::Perturb, LRNames::Craft, LRNames::Use, LRNames::Dismantle })
 	{
 		TestNotNull(*FString::Printf(TEXT("action '%s' defined"), *Action.ToString()), Data.FindAction(Action));
 	}
+
+	// The host's numbers are real physics where it's playable (docs/DESIGN.md, "Feeding the host").
+	const FLRHostDef& Host = Data.Host;
+	TestTrue(TEXT("a 3,500 t host lasts about an hour, as Hawking radiation says"),
+		FMath::IsNearlyEqual(Host.StartMass * Host.StartMass * Host.StartMass * LRPhysics::HawkingLifetimePerKg3, 3600.0, 100.0));
+	TestTrue(TEXT("the first chamber caps the host at about 14,700 t"), FMath::IsNearlyEqual(Host.GetSafetyCap(), 1.47e7, 1e5));
+	TestTrue(TEXT("the injectors are rated at about 3e12 x Eddington"),
+		Host.GetEddingtonMultiple() > 2e12 && Host.GetEddingtonMultiple() < 4e12);
 	TestTrue(TEXT("has recipes"), Data.Recipes.Num() > 0);
 	return true;
 }
@@ -887,13 +910,11 @@ bool FLRTechTreePlaythroughTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the hydrogen is in the ripples' cells"), Sim.GetMatter(FIntVector(0, 0, 0), TEXT("hydrogen")) > 0);
 	TestTrue(TEXT("build revealed"), Sim.GetActionStatus(LRNames::Craft).bRevealed);
 
-	// The host evaporates, and perturbing drew on it too: Feed appears once it's below 90%.
-	for (int32 Wait = 0; Wait < 100 && !Sim.GetActionStatus(LRNames::Feed).bRevealed; ++Wait)
-	{
-		Sim.Advance(30.0);
-	}
-	TestTrue(TEXT("feed revealed"), Sim.GetActionStatus(LRNames::Feed).bRevealed);
-	TestTrue(TEXT("feed the horizon"), Act(FLRActionRequest::Make(LRNames::Feed)));
+	// Three seeds took the host down to about 2,000 t, 11 minutes from evaporating: open the
+	// feed dial to the rated limit, as the opening in docs/DESIGN.md plays.
+	TestTrue(TEXT("seeding drew on the host"), Sim.GetHostMass() < Data.Host.StartMass - 2.0 * Data.Host.SeedCost);
+	Sim.SetInjectorTarget(Sim.GetRatedLimit());
+	TestTrue(TEXT("the dial is open"), Sim.GetInjectorTarget() > 0.0);
 
 	// The row above the ripples: a stock of matter with build sites around it, all within reach
 	// of the stock (and mostly of the ripples too).
@@ -1006,7 +1027,7 @@ bool FLRStructureSeedTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and again"), LRTest::SeedAt(Sim, Cell));
 	TestEqual(TEXT("amplitude 3"), AmplitudeAt(Cell), 3);
 	TestFalse(TEXT("no deeper than maxAmplitude"), LRTest::SeedAt(Sim, Cell));
-	TestTrue(TEXT("each perturbation drew on the host"), FMath::IsNearlyEqual(Sim.GetHostMass(), 0.7, 1e-6));
+	TestTrue(TEXT("each perturbation drew on the host"), FMath::IsNearlyEqual(Sim.GetHostMass(), 700.0, 1e-6));
 
 	LRTest::BuildIrradiator(Sim, FIntVector(1, 0, 0));
 	TestNotNull(TEXT("an irradiator next door"), Sim.FindPlaced(FIntVector(1, 0, 0)));
@@ -1054,22 +1075,13 @@ bool FLRStructureYieldTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostTest, "LootboxRecursion.Cosmos.HostEvaporatesFreezesAndFeeds", LR_TEST_FLAGS)
-bool FLRHostTest::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostEvaporationTest, "LootboxRecursion.Host.EvaporatesLikeHawkingRadiation", LR_TEST_FLAGS)
+bool FLRHostEvaporationTest::RunTest(const FString& Parameters)
 {
-	FLRGameData Data = LRTest::MakeCosmosData(); // lifetime 1000s, perturb 0.1, feed 0.3
-	FLRRequirement Low;
-	Low.Check = LRNames::CheckHost;
-	Low.Condition = TEXT("lte");
-	Low.Value = 90;
-	FLRActionDef* FeedDef = Data.Actions.FindByPredicate([](const FLRActionDef& Action) { return Action.Name == LRNames::Feed; });
-	if (!TestNotNull(TEXT("fixture has feed"), FeedDef))
-	{
-		return false;
-	}
-	FeedDef->RevealRequirements.Add(Low);
+	const FLRGameData Data = LRTest::MakeCosmosData(); // 1,000 kg that lasts 1,000 s unfed
 
-	// Mass cubed falls linearly: 27.1% of the lifetime leaves 0.729 = 0.9^3, whatever the step size.
+	// dM/dt = -K / M^2, so M^3 falls linearly: 27.1% of the lifetime leaves 0.9 of the mass,
+	// whatever the step size.
 	FLRSimulation Stepped(Data, 1);
 	for (int32 Step = 0; Step < 271; ++Step)
 	{
@@ -1077,56 +1089,193 @@ bool FLRHostTest::RunTest(const FString& Parameters)
 	}
 	FLRSimulation Sim(Data, 1);
 	LRTest::FMessageLog Log(Sim);
-	TestFalse(TEXT("feed hidden at full mass"), Sim.GetActionStatus(LRNames::Feed).bRevealed);
 	Sim.Advance(271.0);
-	TestTrue(TEXT("0.9 of the mass left"), FMath::IsNearlyEqual(Sim.GetHostMass(), 0.9, 1e-9));
-	TestTrue(TEXT("independent of the step size"), FMath::IsNearlyEqual(Stepped.GetHostMass(), Sim.GetHostMass(), 1e-9));
-	TestTrue(TEXT("the host check reveals feed at 90%"), Sim.GetActionStatus(LRNames::Feed).bRevealed);
+	TestTrue(TEXT("900 kg left"), FMath::IsNearlyEqual(Sim.GetHostMass(), 900.0, 1e-6));
+	TestTrue(TEXT("independent of the step size"), FMath::IsNearlyEqual(Stepped.GetHostMass(), Sim.GetHostMass(), 1e-6));
+	const double K = Data.Host.GetEvaporationConstant();
+	TestTrue(TEXT("the loss goes as 1 / M^2"), FMath::IsNearlyEqual(Sim.GetEvaporationRate(), K / (900.0 * 900.0), 1e-9));
+	TestTrue(TEXT("unfed lifetime left"), FMath::IsNearlyEqual(Data.Host.GetUnfedLifetime(Sim.GetHostMass()), 729.0, 1e-3));
 
-	TestTrue(TEXT("seed"), LRTest::SeedAt(Sim, FIntVector(0, 0, 0)));
-	TestTrue(TEXT("seed again (hot epoch: the ripple yields)"), LRTest::SeedAt(Sim, FIntVector(0, 0, 0)));
-	Sim.Advance(400.0); // 0.7^3 = 0.343 is less than 400/1000
+	Sim.Advance(700.0);
+	TestTrue(TEXT("warned before the end"), Log.Contains(TEXT("thinning")));
+	Sim.Advance(40.0);
 	TestTrue(TEXT("evaporated"), Sim.IsFrozen());
-	TestTrue(TEXT("announced"), Log.Contains(TEXT("evaporated")));
-	TestEqual(TEXT("nothing yields while frozen"), Sim.GetMatter(FIntVector(0, 0, 0), LRTest::Hydrogen), 0);
-	Sim.Advance(50.0);
-	TestEqual(TEXT("still nothing"), Sim.GetMatter(FIntVector(0, 0, 0), LRTest::Hydrogen), 0);
+	TestTrue(TEXT("a final flash"), Log.Contains(TEXT("final flash")));
 	TestFalse(TEXT("perturbing needs a host"), LRTest::SeedAt(Sim, FIntVector(1, 0, 0)));
-
-	TestTrue(TEXT("feed"), Sim.RequestAction(FLRActionRequest::Make(LRNames::Feed)).bSuccess);
-	TestFalse(TEXT("no longer frozen"), Sim.IsFrozen());
-	TestTrue(TEXT("the universe stirs"), Log.Contains(TEXT("stirs again")));
-	Sim.Advance(10.0);
-	TestEqual(TEXT("yields resume"), Sim.GetMatter(FIntVector(0, 0, 0), LRTest::Hydrogen), 10);
-
-	for (int32 Index = 0; Index < 3; ++Index)
-	{
-		Sim.RequestAction(FLRActionRequest::Make(LRNames::Feed));
-	}
-	TestTrue(TEXT("never above full mass"), Sim.GetHostMass() == 1.0);
-	TestFalse(TEXT("feeding a full host is refused"), Sim.RequestAction(FLRActionRequest::Make(LRNames::Feed)).bSuccess);
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostSeedCostTest, "LootboxRecursion.Cosmos.SeedingARippleCostsAFeed", LR_TEST_FLAGS)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRInjectorInertiaTest, "LootboxRecursion.Host.InjectorsFollowTheDialWithInertia", LR_TEST_FLAGS)
+bool FLRInjectorInertiaTest::RunTest(const FString& Parameters)
+{
+	const FLRInjectorState Rest;
+	const double Omega = 3.8897 / 10.0;
+
+	// A parabolic start: about w^2 * target * t^2 / 2 at first.
+	const FLRInjectorState Early = FLRSimulation::StepInjector(Rest, 100.0, 0.1, 10.0);
+	const double Parabola = 0.5 * Omega * Omega * 100.0 * 0.01;
+	TestTrue(TEXT("starts slowly (parabolic)"), Early.Flow > 0.0 && FMath::Abs(Early.Flow - Parabola) < 0.05 * Parabola);
+	TestTrue(TEXT("90% of the way at the response time"), FMath::IsNearlyEqual(FLRSimulation::StepInjector(Rest, 100.0, 10.0, 10.0).Flow, 90.0, 0.01));
+
+	// Exact for any step size.
+	FLRInjectorState Fine = Rest;
+	for (int32 Step = 0; Step < 70; ++Step)
+	{
+		Fine = FLRSimulation::StepInjector(Fine, 100.0, 0.1, 10.0);
+	}
+	const FLRInjectorState Coarse = FLRSimulation::StepInjector(Rest, 100.0, 7.0, 10.0);
+	TestTrue(TEXT("one big step equals many small ones"), FMath::IsNearlyEqual(Fine.Flow, Coarse.Flow, 1e-9) && FMath::IsNearlyEqual(Fine.Change, Coarse.Change, 1e-9));
+
+	// It settles without overshooting, and never runs backwards.
+	FLRInjectorState State = Rest;
+	bool bOvershot = false;
+	bool bFell = false;
+	for (int32 Step = 0; Step < 200; ++Step)
+	{
+		const FLRInjectorState Next = FLRSimulation::StepInjector(State, 100.0, 0.5, 10.0);
+		bOvershot |= Next.Flow > 100.0 + 1e-9;
+		bFell |= Next.Flow < State.Flow - 1e-12;
+		State = Next;
+	}
+	TestFalse(TEXT("no overshoot"), bOvershot);
+	TestFalse(TEXT("rises steadily"), bFell);
+	TestTrue(TEXT("settles on the dial"), FMath::IsNearlyEqual(State.Flow, 100.0, 1e-3));
+
+	// Turning the dial off from a moving flow never goes below zero.
+	FLRInjectorState Falling;
+	Falling.Flow = 100.0;
+	Falling.Change = -80.0;
+	bool bNegative = false;
+	for (int32 Step = 0; Step < 100; ++Step)
+	{
+		Falling = FLRSimulation::StepInjector(Falling, 0.0, 0.5, 10.0);
+		bNegative |= Falling.Flow < 0.0;
+	}
+	TestFalse(TEXT("never negative"), bNegative);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostFeedingTest, "LootboxRecursion.Host.FeedingIsCappedByTheRatedLimit", LR_TEST_FLAGS)
+bool FLRHostFeedingTest::RunTest(const FString& Parameters)
+{
+	FLRSimulation Sim(LRTest::MakeStableCosmosData(), 1); // no evaporation; rated at 1% of the mass per second
+	Sim.SetInjectorTarget(1e9);
+	TestTrue(TEXT("the dial stops at the injectors' maximum"), Sim.GetInjectorTarget() == 50.0);
+	Sim.SetInjectorTarget(-5.0);
+	TestTrue(TEXT("and at zero"), Sim.GetInjectorTarget() == 0.0);
+
+	// Below the rated limit, everything injected arrives.
+	Sim.SetInjectorTarget(5.0);
+	Sim.Advance(60.0);
+	TestTrue(TEXT("the flow settled on the dial"), FMath::IsNearlyEqual(Sim.GetInjectorFlow(), 5.0, 1e-3));
+	TestTrue(TEXT("all of it reaches the host"), FMath::IsNearlyEqual(Sim.GetIntakeRate(), Sim.GetInjectorFlow(), 1e-9));
+	TestTrue(TEXT("the host grew"), Sim.GetHostMass() > 1000.0);
+
+	// Above it, only the rated limit arrives, so the host grows exponentially at 1% per second.
+	Sim.SetInjectorTarget(50.0);
+	Sim.Advance(60.0);
+	TestTrue(TEXT("the flow is above the limit"), Sim.GetInjectorFlow() > Sim.GetRatedLimit());
+	TestTrue(TEXT("intake is the rated limit"), FMath::IsNearlyEqual(Sim.GetIntakeRate(), Sim.GetRatedLimit(), 1e-9));
+	const double Before = Sim.GetHostMass();
+	Sim.Advance(10.0);
+	TestTrue(TEXT("exponential growth at the limit"), FMath::IsNearlyEqual(Sim.GetHostMass() / Before, FMath::Exp(0.1), 0.005));
+	TestTrue(TEXT("the net rate is intake minus evaporation"), FMath::IsNearlyEqual(Sim.GetNetRate(), Sim.GetIntakeRate(), 1e-9));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostSafetyTest, "LootboxRecursion.Host.SafetiesTripAtTheChamberWall", LR_TEST_FLAGS)
+bool FLRHostSafetyTest::RunTest(const FString& Parameters)
+{
+	FLRGameData Data = LRTest::MakeStableCosmosData();
+	LRTest::SetSafetyCap(Data, 1100.0);
+	TestTrue(TEXT("the cap is where the 1 g radius reaches the wall"), FMath::IsNearlyEqual(Data.Host.GetSafetyCap(), 1100.0, 0.01));
+	TestTrue(TEXT("the gravity radius at the cap is the chamber radius"),
+		FMath::IsNearlyEqual(Data.Host.GetGravityRadius(1100.0), static_cast<double>(Data.Host.ChamberRadius), 1e-9));
+	TestEqual(TEXT("valid"), Data.Validate().Num(), 0);
+
+	FLRSimulation Sim(Data, 1);
+	LRTest::FMessageLog Log(Sim);
+	Sim.SetInjectorTarget(50.0);
+	for (int32 Step = 0; Step < 240 && !Sim.IsRingRecharging(); ++Step)
+	{
+		Sim.Advance(0.5);
+	}
+	TestTrue(TEXT("tripped"), Sim.IsRingRecharging() && Log.Contains(TEXT("SAFETIES TRIPPED")));
+	TestTrue(TEXT("at the cap"), Sim.GetHostMass() >= 1100.0 && Sim.GetHostMass() < 1105.0);
+	TestTrue(TEXT("the beam stopped at once"), Sim.GetInjectorFlow() == 0.0 && Sim.GetIntakeRate() == 0.0);
+	TestTrue(TEXT("the ring was dumped (and has only begun to refill)"), Sim.GetRingCharge() < 100.0);
+	TestTrue(TEXT("the dial keeps its setting"), Sim.GetInjectorTarget() == 50.0);
+
+	const double Tripped = Sim.GetHostMass();
+	Sim.Advance(2.0);
+	TestTrue(TEXT("nothing is fed while the ring recharges"), Sim.GetHostMass() == Tripped && Sim.IsRingRecharging());
+
+	// Dialed back, the injectors come back ready (the ring takes ringMass / ringRefillRate = 4 s).
+	Sim.SetInjectorTarget(0.0);
+	Sim.Advance(2.5);
+	TestFalse(TEXT("recharged"), Sim.IsRingRecharging());
+	TestTrue(TEXT("announced"), Log.Contains(TEXT("recharged")));
+	Sim.Advance(10.0);
+	TestFalse(TEXT("and stays ready"), Sim.IsRingRecharging());
+
+	// Feeding again at the cap trips it again.
+	Sim.SetInjectorTarget(50.0);
+	Sim.Advance(1.0);
+	TestTrue(TEXT("feeding at the cap trips it again"), Sim.IsRingRecharging());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostIgniteTest, "LootboxRecursion.Host.IgniteRestartsAnEvaporatedHost", LR_TEST_FLAGS)
+bool FLRHostIgniteTest::RunTest(const FString& Parameters)
+{
+	FLRSimulation Sim(LRTest::MakeCosmosData(), 1);
+	LRTest::FMessageLog Log(Sim);
+	TestFalse(TEXT("not while the host is alive"), Sim.CanIgnite());
+	const FLRActionResult Early = Sim.Ignite();
+	TestTrue(TEXT("refused while the host is alive"), !Early.bSuccess && Early.Reason == FName(TEXT("host_alive")));
+
+	Sim.Advance(1001.0);
+	TestTrue(TEXT("evaporated"), Sim.IsFrozen());
+	TestTrue(TEXT("the ring is full"), Sim.CanIgnite());
+	const FLRActionResult Ignited = Sim.Ignite();
+	TestTrue(TEXT("ignited"), Ignited.bSuccess && Log.Contains(TEXT("Ignited")));
+	TestFalse(TEXT("no longer frozen"), Sim.IsFrozen());
+	TestTrue(TEXT("the new host is the ring's charge"), Sim.GetHostMass() == 400.0);
+	TestTrue(TEXT("the ring recharges before feeding resumes"), Sim.IsRingRecharging() && Sim.GetRingCharge() == 0.0);
+
+	// Unfed, the small new host evaporates fast (400 kg lasts 64 s), and can be ignited again.
+	Sim.Advance(70.0);
+	TestTrue(TEXT("gone again"), Sim.IsFrozen());
+	TestTrue(TEXT("the ring refilled meanwhile"), Sim.CanIgnite());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostSeedCostTest, "LootboxRecursion.Host.RipplesCostHostMass", LR_TEST_FLAGS)
 bool FLRHostSeedCostTest::RunTest(const FString& Parameters)
 {
-	FLRGameData Data = LRTest::MakeStableCosmosData(); // perturb 0.1, feed 0.3, no evaporation
-	Data.Host.SeedFeeds = 1.f;
+	FLRGameData Data = LRTest::MakeStableCosmosData(); // 1,000 kg, no evaporation
+	Data.Host.SeedCost = 300.0;
+	Data.Host.PerturbCost = 100.0;
 	TestEqual(TEXT("valid"), Data.Validate().Num(), 0);
 
 	FLRSimulation Sim(Data, 1);
 	TestTrue(TEXT("seed"), LRTest::SeedAt(Sim, FIntVector(0, 0, 0)));
-	TestTrue(TEXT("seeding drew one feed"), FMath::IsNearlyEqual(Sim.GetHostMass(), 0.7, 1e-6));
+	TestTrue(TEXT("seeding drew its cost"), FMath::IsNearlyEqual(Sim.GetHostMass(), 700.0, 1e-9));
 	TestTrue(TEXT("deepen"), LRTest::SeedAt(Sim, FIntVector(0, 0, 0)));
-	TestTrue(TEXT("deepening drew the perturb cost"), FMath::IsNearlyEqual(Sim.GetHostMass(), 0.6, 1e-6));
+	TestTrue(TEXT("deepening drew less"), FMath::IsNearlyEqual(Sim.GetHostMass(), 600.0, 1e-9));
 	TestTrue(TEXT("seed a second ripple"), LRTest::SeedAt(Sim, FIntVector(1, 0, 0)));
 	TestFalse(TEXT("a third would take the last of the host"), LRTest::SeedAt(Sim, FIntVector(2, 0, 0)));
 	TestTrue(TEXT("deepening still fits"), LRTest::SeedAt(Sim, FIntVector(1, 0, 0)));
 
 	FLRGameData TooDear = Data;
-	TooDear.Host.SeedFeeds = 4.f; // 1.2 of the host
-	TestTrue(TEXT("a seed cost above the whole host reported"), TooDear.Validate().Num() > 0);
+	TooDear.Host.SeedCost = 1000.0;
+	TestTrue(TEXT("a seed costing the whole host reported"), TooDear.Validate().Num() > 0);
+	FLRGameData NoRefill = Data;
+	NoRefill.Host.RingRefillRate = 0.0;
+	TestTrue(TEXT("a storage ring that never refills reported"), NoRefill.Validate().Num() > 0);
+	FLRGameData TinyChamber = Data;
+	LRTest::SetSafetyCap(TinyChamber, 500.0);
+	TestTrue(TEXT("a chamber too small for the starting host reported"), TinyChamber.Validate().Num() > 0);
 	return true;
 }
 
@@ -1153,12 +1302,15 @@ bool FLRCosmosSaveTest::RunTest(const FString& Parameters)
 	FLRSimulation Sim(Data, 3);
 	LRTest::SeedAt(Sim, FIntVector(0, 0, 0));
 	LRTest::SeedAt(Sim, FIntVector(0, 0, 0));
+	Sim.SetInjectorTarget(20.0);
 	Sim.Advance(5.0);
 
 	FLRSimulation Loaded(Data, 0);
 	TestTrue(TEXT("load"), Loaded.Load(Sim.Save()));
 	TestEqual(TEXT("epoch"), Loaded.GetEpochIndex(), 1);
 	TestTrue(TEXT("host mass"), Loaded.GetHostMass() == Sim.GetHostMass());
+	TestTrue(TEXT("feed dial"), Loaded.GetInjectorTarget() == Sim.GetInjectorTarget() && Loaded.GetInjectorFlow() == Sim.GetInjectorFlow());
+	TestTrue(TEXT("storage ring"), Loaded.GetRingCharge() == Sim.GetRingCharge() && Loaded.IsRingRecharging() == Sim.IsRingRecharging());
 	TestTrue(TEXT("cosmic time"), Loaded.GetCosmicTime() == Sim.GetCosmicTime());
 	TestEqual(TEXT("plasma fade"), Loaded.GetPlasmaOpacity(), Sim.GetPlasmaOpacity());
 	const FLRPlacedEntity* Ripple = Loaded.FindPlaced(FIntVector(0, 0, 0));

@@ -20,6 +20,7 @@ struct FInputActionValue;
  *   PageUp/PageDown or ] [    build layer up / down
  *   H / Home                  fly to the first deployed entity
  *   R                         reset camera angle and zoom
+ *   F / Tab                   drop the outside panel (the feed dial) down, or raise it
  *
  * Input uses Enhanced Input. Normally Input Actions and Mapping Contexts are assets you
  * create in the editor; here they are built in code so the project runs with zero assets.
@@ -72,6 +73,7 @@ private:
 	void FreeLookEnd();
 	void Look(const FInputActionValue& Value);
 	void SelectHovered();
+	void ToggleOutside();
 
 	bool bFreeLook = false;
 	FVector2D FreeLookCursorPosition = FVector2D::ZeroVector;

@@ -9,7 +9,7 @@ Humanity has learned to harness a black hole as a *universe inside a universe*. 
 facility outside the event horizon, you perturb the newborn pocket universe: the ripples you
 stretch during its Big Bang gather hydrogen and helium on their own. You compress that
 matter into **Quantum Caches**, sealed packages whose contents stay undecided until they're
-observed, build machines on the grid, and keep the slowly evaporating host black hole fed.
+observed, build machines on the grid, and keep the evaporating host black hole fed from outside with the feed dial.
 There's no character: you are the operator, looking in from outside. See
 [docs/COSMOLOGY.md](docs/COSMOLOGY.md) for the physics behind it.
 
@@ -87,7 +87,7 @@ In the editor, press **Play** (Alt+P).
 | Input | Does |
 |---|---|
 | Click a grid cell, then **Perturb** | Seed a ripple there, or deepen the one there. Ripples gather matter into their cell every 10s. |
-| Click **Feed the Horizon** | Restore the host black hole's mass. At zero, the pocket universe freezes until fed. |
+| **F** / **Tab**, or **OUTSIDE** on the status bar | Drop down the outside panel: the feed dial (drag or scroll; Off / Hold / Limit presets), the host in its chamber, the storage ring and Ignite. Keep the host between HOLD (evaporation) and LIMIT, and dial back before its gravity well reaches the chamber wall, or the safeties trip. At zero the universe freezes until you Ignite. |
 | Click a **Craft** recipe | Quantum Cache (hydrogen and helium), irradiators, radiation sources (as they unlock) |
 | Select a cell, then click a **Build** recipe | Build it there, paid from the matter within 2 cells. Caches and machines take the cell; a source goes into the irradiator there. |
 | Select a cache (or an irradiator holding one), then **Open** | Collapse it; the loot lands in that cell |

@@ -82,9 +82,32 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Cosmos")
 	FString GetCosmicTimeText() const;
 
-	/** The host black hole's mass as a fraction of its starting mass (0..1). */
+	/** The host black hole's mass, kg (0 once it has evaporated). */
 	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Cosmos")
-	float GetHostMass() const;
+	double GetHostMass() const;
+
+	// ---- Outside: the facility's injectors (the drop-down panel) -------------------------
+	/** Set the feed dial: the injection rate to aim for, kg/s. */
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Outside")
+	void SetInjectorTarget(double KgPerSecond);
+
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Outside")
+	double GetInjectorTarget() const;
+
+	/** Fire the storage ring at the singularity to make a new host (only once the host is gone). */
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Outside")
+	FLRActionResult Ignite();
+
+	/** Whether the outside panel (the injector controls) is dropped down. UI state, not saved. */
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Outside")
+	bool IsOutsideViewOpen() const { return bOutsideViewOpen; }
+
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Outside")
+	void SetOutsideViewOpen(bool bOpen) { bOutsideViewOpen = bOpen; }
+
+	/** The status bar button and its hotkey. */
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Outside")
+	void ToggleOutsideView() { bOutsideViewOpen = !bOutsideViewOpen; }
 
 	/** How opaque the primordial plasma is right now (0..1). */
 	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Cosmos")
@@ -187,4 +210,5 @@ private:
 	int32 BuildLayer = 0;
 	FIntVector FocusRequestCell = FIntVector::ZeroValue;
 	int32 FocusRequestSerial = 0;
+	bool bOutsideViewOpen = false;
 };

@@ -25,7 +25,8 @@ namespace
 	const FName ReasonRippleAtMax(TEXT("ripple_at_max"));
 	const FName ReasonHorizonWeak(TEXT("horizon_too_weak"));
 	const FName ReasonNoHost(TEXT("no_host"));
-	const FName ReasonHostFull(TEXT("host_full"));
+	const FName ReasonHostAlive(TEXT("host_alive"));
+	const FName ReasonRingCharging(TEXT("ring_charging"));
 
 	const FName IrradiateEvent(TEXT("irradiate"));
 	const FName UnlockEvent(TEXT("unlock"));
@@ -50,9 +51,10 @@ FString FLRSimulation::DescribeReason(FName Reason)
 	if (Reason == ReasonTooStrong) { return TEXT("this irradiator can't contain radiation that strong"); }
 	if (Reason == ReasonCantDismantle) { return TEXT("that is part of the pocket universe now"); }
 	if (Reason == ReasonRippleAtMax) { return TEXT("that ripple can't get any deeper"); }
-	if (Reason == ReasonHorizonWeak) { return TEXT("the horizon is too weak, feed it first"); }
-	if (Reason == ReasonNoHost) { return TEXT("there is no host black hole to feed"); }
-	if (Reason == ReasonHostFull) { return TEXT("the host black hole is already at full mass"); }
+	if (Reason == ReasonHorizonWeak) { return TEXT("the host black hole can't spare that much mass, feed it first"); }
+	if (Reason == ReasonNoHost) { return TEXT("there is no host black hole"); }
+	if (Reason == ReasonHostAlive) { return TEXT("the host is still there, feed it with the dial"); }
+	if (Reason == ReasonRingCharging) { return TEXT("the storage ring is still recharging"); }
 	return Reason.ToString();
 }
 
@@ -101,7 +103,12 @@ void FLRSimulation::Reset(int32 Seed)
 	ActionStates.Reset();
 	Unlocked.Reset();
 	Stats.Reset();
-	HostMass = 1.0;
+	HostMass = Data.Host.StartMass;
+	InjectorTarget = 0.0;
+	Injector = FLRInjectorState();
+	RingCharge = Data.Host.RingMass;
+	bRingRecharging = false;
+	bHostWarned = false;
 	CosmicTime = 0.0;
 	EnterEpoch(0);
 	RefreshUnlocks(); // starting unlocks, not announced
@@ -138,6 +145,11 @@ FLRSaveData FLRSimulation::Save() const
 	Out.EpochStartedAt = EpochStartedAt;
 	Out.CosmicTime = CosmicTime;
 	Out.HostMass = HostMass;
+	Out.InjectorTarget = InjectorTarget;
+	Out.InjectorFlow = Injector.Flow;
+	Out.InjectorChange = Injector.Change;
+	Out.RingCharge = RingCharge;
+	Out.bRingRecharging = bRingRecharging;
 	return Out;
 }
 
@@ -180,7 +192,13 @@ bool FLRSimulation::Load(const FLRSaveData& SaveData)
 	Unlocked.Reset();
 	Unlocked.Append(SaveData.Unlocked);
 	Stats = SaveData.Stats;
-	HostMass = FMath::Clamp(SaveData.HostMass, 0.0, 1.0);
+	HostMass = Data.Host.IsDefined() ? FMath::Max(0.0, SaveData.HostMass) : 0.0;
+	InjectorTarget = FMath::Clamp(SaveData.InjectorTarget, 0.0, Data.Host.InjectorMaxRate);
+	Injector.Flow = FMath::Clamp(SaveData.InjectorFlow, 0.0, Data.Host.InjectorMaxRate);
+	Injector.Change = SaveData.InjectorChange;
+	RingCharge = FMath::Clamp(SaveData.RingCharge, 0.0, Data.Host.RingMass);
+	bRingRecharging = SaveData.bRingRecharging;
+	bHostWarned = false;
 	CosmicTime = SaveData.CosmicTime;
 	EnterEpoch(FMath::Max(0, Data.FindEpochIndex(SaveData.Epoch)));
 	EpochStartedAt = SaveData.EpochStartedAt; // keep an in-progress plasma fade going
@@ -239,6 +257,7 @@ void FLRSimulation::Advance(double DeltaSeconds)
 		Complete(Execute(Request));
 	}
 
+	AdvanceHost(DeltaSeconds);
 	AdvanceCosmos(DeltaSeconds);
 	if (!IsFrozen())
 	{
@@ -247,36 +266,213 @@ void FLRSimulation::Advance(double DeltaSeconds)
 	}
 }
 
-void FLRSimulation::AdvanceCosmos(double DeltaSeconds)
+void FLRSimulation::AdvanceHost(double DeltaSeconds)
 {
 	const FLRHostDef& Host = Data.Host;
-	if (Host.LifetimeSeconds > 0.f && HostMass > 0.0)
+	if (!Host.IsDefined())
 	{
-		// Hawking evaporation: dM/dt is proportional to -1/M^2, so M^3 falls linearly and a
-		// full-mass host lasts LifetimeSeconds. The loss speeds up as the host shrinks.
-		const double Before = HostMass;
-		const double Cubed = Before * Before * Before - DeltaSeconds / Host.LifetimeSeconds;
-		HostMass = Cubed > 0.0 ? FMath::Pow(Cubed, 1.0 / 3.0) : 0.0;
+		return;
+	}
+	const bool bWasAlive = HostMass > 0.0;
+	const int32 TonnesBefore = FMath::FloorToInt32(HostMass / 1000.0);
+	const double K = Host.GetEvaporationConstant();
+	const double Cap = Host.GetSafetyCap();
+	TArray<FString> Messages;
 
-		TArray<FString> Messages;
-		if (Before > Host.WarningMass && HostMass <= Host.WarningMass && HostMass > 0.0)
+	// Feeding and evaporation are coupled (the rated limit and the loss both depend on the
+	// mass), so step in small slices. Each slice is exact for evaporation and the injectors.
+	double Remaining = DeltaSeconds;
+	while (Remaining > 0.0)
+	{
+		const double Step = FMath::Min(Remaining, HostStepSeconds);
+		Remaining -= Step;
+
+		// The storage ring refills; after a trip (or Ignite) nothing is fed until it's full.
+		if (RingCharge < Host.RingMass)
 		{
-			Messages.Add(FString::Printf(TEXT("The horizon is thinning: the host black hole is down to %d%% of its mass. Feed it."),
-				FMath::FloorToInt32(HostMass * 100.0)));
+			RingCharge = FMath::Min(Host.RingMass, RingCharge + Host.RingRefillRate * Step);
+		}
+		if (bRingRecharging && RingCharge >= Host.RingMass)
+		{
+			bRingRecharging = false;
+			Messages.Add(TEXT("Storage ring recharged: the injectors are ready and ramp back up to the dial."));
+		}
+
+		const bool bFeeding = HostMass > 0.0 && !bRingRecharging;
+		Injector = bFeeding ? StepInjector(Injector, InjectorTarget, Step, Host.InjectorResponseSeconds) : FLRInjectorState();
+		if (Injector.Flow > Host.InjectorMaxRate)
+		{
+			Injector.Flow = Host.InjectorMaxRate;
+			Injector.Change = 0.0;
 		}
 		if (HostMass <= 0.0)
 		{
-			Messages.Add(TEXT("The host black hole has evaporated. The pocket universe is frozen until you feed the horizon."));
+			continue;
 		}
-		AnnounceEvents(HostEvent, Messages);
 
-		// "host" requirements count whole percent, so only re-check when that changes.
-		if (FMath::FloorToInt32(Before * 100.0) != FMath::FloorToInt32(HostMass * 100.0))
+		// Hawking evaporation, exact over the slice: dM/dt = -K / M^2, so M^3 falls by 3K per second.
+		if (K > 0.0)
 		{
-			AnnounceUnlocks(RefreshUnlocks());
+			const double Cubed = HostMass * HostMass * HostMass - 3.0 * K * Step;
+			HostMass = Cubed > 0.0 ? FMath::Pow(Cubed, 1.0 / 3.0) : 0.0;
+		}
+		if (HostMass <= 0.0)
+		{
+			HostMass = 0.0;
+			Injector = FLRInjectorState();
+			Messages.Add(TEXT("The host black hole has evaporated in a final flash. The pocket universe is frozen until you Ignite a new one (outside panel)."));
+			continue;
+		}
+
+		// Feeding: the flow reaches the host up to the rated limit; the rest is blown back out.
+		const double Intake = bFeeding ? FMath::Min(Injector.Flow, Host.GetRatedLimit(HostMass)) : 0.0;
+		HostMass += Intake * Step;
+
+		// The safeties: once the 1 g radius reaches the chamber wall, dump the beam at once.
+		if (Cap > 0.0 && Intake > 0.0 && HostMass >= Cap)
+		{
+			Injector = FLRInjectorState();
+			RingCharge = 0.0;
+			bRingRecharging = true;
+			Messages.Add(FString::Printf(TEXT("SAFETIES TRIPPED: the host's gravity well reached the chamber wall at %s. The beam was dumped, and feeding is locked out while the storage ring recharges. Dial back before the cap."),
+				*FormatMass(HostMass)));
 		}
 	}
 
+	// Warn once when a shrinking host gets close to evaporating.
+	const double Lifetime = Host.GetUnfedLifetime(HostMass);
+	if (HostMass > 0.0 && Lifetime <= Host.WarningSeconds && GetNetRate() < 0.0 && !bHostWarned)
+	{
+		bHostWarned = true;
+		Messages.Add(FString::Printf(TEXT("The horizon is thinning: the host (%s) evaporates in about %.0f s unless it's fed. Open the feed dial (outside panel)."),
+			*FormatMass(HostMass), Lifetime));
+	}
+	else if (HostMass <= 0.0 || Lifetime > Host.WarningSeconds * 1.5)
+	{
+		bHostWarned = false;
+	}
+
+	AnnounceEvents(HostEvent, Messages);
+	// "host" requirements count whole tonnes, so only re-check when that changes.
+	if (FMath::FloorToInt32(HostMass / 1000.0) != TonnesBefore)
+	{
+		AnnounceUnlocks(RefreshUnlocks());
+	}
+	if (bWasAlive != (HostMass > 0.0))
+	{
+		OnWorldChanged.Broadcast();
+	}
+}
+
+FLRInjectorState FLRSimulation::StepInjector(const FLRInjectorState& State, double Target, double DeltaSeconds, double ResponseSeconds)
+{
+	if (DeltaSeconds <= 0.0)
+	{
+		return State;
+	}
+	// A critically damped spring on e = Flow - Target: e'' = -w^2 e - 2w e'. Its exact solution
+	// is e(t) = (e0 + (v0 + w e0) t) exp(-wt). From rest it starts parabolically (about
+	// -w^2 e0 t^2 / 2) and never overshoots. (1 + x) exp(-x) = 0.1 at x = 3.8897, so it gets 90%
+	// of the way at 3.8897 / w.
+	const double Omega = 3.8897 / FMath::Max(ResponseSeconds, 1e-3);
+	const double Error = State.Flow - Target;
+	const double Momentum = State.Change + Omega * Error;
+	const double Decay = FMath::Exp(-Omega * DeltaSeconds);
+
+	FLRInjectorState Out;
+	Out.Flow = Target + (Error + Momentum * DeltaSeconds) * Decay;
+	Out.Change = (State.Change - Omega * Momentum * DeltaSeconds) * Decay;
+	if (Out.Flow <= 0.0)
+	{
+		Out.Flow = 0.0;
+		Out.Change = 0.0;
+	}
+	return Out;
+}
+
+void FLRSimulation::SetInjectorTarget(double KgPerSecond)
+{
+	InjectorTarget = FMath::Clamp(KgPerSecond, 0.0, FMath::Max(0.0, Data.Host.InjectorMaxRate));
+}
+
+double FLRSimulation::GetIntakeRate() const
+{
+	if (HostMass <= 0.0 || bRingRecharging)
+	{
+		return 0.0;
+	}
+	return FMath::Min(Injector.Flow, GetRatedLimit());
+}
+
+bool FLRSimulation::CanIgnite() const
+{
+	return Data.Host.IsDefined() && HostMass <= 0.0 && Data.Host.RingMass > 0.0
+		&& !bRingRecharging && RingCharge >= Data.Host.RingMass;
+}
+
+FLRActionResult FLRSimulation::Ignite()
+{
+	FName Reason = NAME_None;
+	if (!Data.Host.IsDefined() || Data.Host.RingMass <= 0.0)
+	{
+		Reason = ReasonNoHost;
+	}
+	else if (HostMass > 0.0)
+	{
+		Reason = ReasonHostAlive;
+	}
+	else if (!CanIgnite())
+	{
+		Reason = ReasonRingCharging;
+	}
+	if (!Reason.IsNone())
+	{
+		const FLRActionResult Failure = MakeFailure(LRNames::Ignite, Reason, FString::Printf(TEXT("Can't ignite: %s"), *DescribeReason(Reason)));
+		OnActionCompleted.Broadcast(Failure);
+		return Failure;
+	}
+
+	// A charge this big collapses straight into a new horizon: no Eddington limit applies.
+	HostMass = RingCharge;
+	RingCharge = 0.0;
+	bRingRecharging = true;
+	Injector = FLRInjectorState();
+	bHostWarned = false;
+
+	FLRActionResult Result;
+	Result.Action = LRNames::Ignite;
+	Result.bSuccess = true;
+	Result.Message = FString::Printf(TEXT("Ignited: the storage ring's %s collapsed into a new horizon. The pocket universe stirs again. Open the feed dial as soon as the ring recharges."),
+		*FormatMass(HostMass));
+	Complete(Result);
+	return Result;
+}
+
+FString FLRSimulation::FormatMass(double Kg)
+{
+	if (Kg < 1000.0)
+	{
+		return FString::Printf(TEXT("%.0f kg"), FMath::Max(Kg, 0.0));
+	}
+	const double Tonnes = Kg / 1000.0;
+	if (Tonnes >= 1e6)
+	{
+		return FString::Printf(TEXT("%.2f million t"), Tonnes / 1e6);
+	}
+	return FText::AsNumber(FMath::RoundToInt64(Tonnes)).ToString() + TEXT(" t");
+}
+
+FString FLRSimulation::FormatRate(double KgPerSecond)
+{
+	if (KgPerSecond < 1000.0)
+	{
+		return FString::Printf(TEXT("%.0f kg/s"), KgPerSecond);
+	}
+	return FString::Printf(TEXT("%.1f t/s"), KgPerSecond / 1000.0);
+}
+
+void FLRSimulation::AdvanceCosmos(double DeltaSeconds)
+{
 	if (IsFrozen())
 	{
 		return;
@@ -724,7 +920,7 @@ bool FLRSimulation::CheckRequirement(const FLRRequirement& Requirement) const
 	}
 	else if (Requirement.Check == LRNames::CheckHost)
 	{
-		Actual = FMath::FloorToInt32(HostMass * 100.0);
+		Actual = FMath::FloorToInt32(HostMass / 1000.0); // tonnes
 	}
 	else if (Requirement.Check == LRNames::CheckPlaced)
 	{
@@ -899,12 +1095,6 @@ FName FLRSimulation::ValidateRequest(const FLRActionRequest& Request) const
 	{
 		return ValidateSeed(Request, *ActionDef);
 	}
-	if (Request.Action == LRNames::Feed)
-	{
-		if (!Data.Host.IsDefined()) { return ReasonNoHost; }
-		return HostMass >= 1.0 ? ReasonHostFull : NAME_None;
-	}
-
 	// Everything else acts on a cell.
 	if (!Request.bHasCell) { return ReasonNoCell; }
 	if (Request.Action == LRNames::Craft)
@@ -936,7 +1126,6 @@ FLRActionResult FLRSimulation::Execute(const FLRActionRequest& Request)
 	if (Request.Action == LRNames::Craft)     { return ExecuteCraft(Request); }
 	if (Request.Action == LRNames::Use)       { return ExecuteUse(Request); }
 	if (Request.Action == LRNames::Dismantle) { return ExecuteDismantle(Request); }
-	if (Request.Action == LRNames::Feed)      { return ExecuteFeed(Request); }
 	if (!Def->Places.IsNone())                { return ExecuteSeed(Request, *Def); }
 	if (!Def->LootTable.IsNone())             { return ExecuteLootAction(Request, *Def); }
 
@@ -1157,8 +1346,8 @@ FName FLRSimulation::ValidateSeed(const FLRActionRequest& Request, const FLRActi
 		if (Existing->Amplitude >= StructureDef->MaxAmplitude) { return ReasonRippleAtMax; }
 	}
 	// Every ripple's energy comes out of the host, and a perturbation never finishes it off.
-	const float Cost = Data.Host.GetPerturbCost(/*bSeedsNew*/ Existing == nullptr);
-	if (Cost > 0.f && HostMass <= Cost) { return ReasonHorizonWeak; }
+	const double Cost = Data.Host.GetPerturbCost(/*bSeedsNew*/ Existing == nullptr);
+	if (Data.Host.IsDefined() && HostMass <= Cost) { return ReasonHorizonWeak; }
 	return NAME_None;
 }
 
@@ -1174,7 +1363,7 @@ FLRActionResult FLRSimulation::ExecuteSeed(const FLRActionRequest& Request, cons
 	const FString StructureName = Data.GetDisplayName(Def.Places);
 	FLRActionResult Result;
 	FLRPlacedEntity* Existing = Placed.Find(Request.Cell);
-	const float Cost = Data.Host.GetPerturbCost(/*bSeedsNew*/ Existing == nullptr);
+	const double Cost = Data.Host.GetPerturbCost(/*bSeedsNew*/ Existing == nullptr);
 	if (Existing)
 	{
 		++Existing->Amplitude;
@@ -1191,28 +1380,13 @@ FLRActionResult FLRSimulation::ExecuteSeed(const FLRActionRequest& Request, cons
 		Placed.Add(Entity.Cell, Entity);
 		Result.Message = FString::Printf(TEXT("%s seeded at %s (amplitude 1)"), *StructureName, *DescribeCell(Request.Cell));
 	}
-	HostMass = FMath::Max(0.0, HostMass - static_cast<double>(Cost));
-
-	Result.Action = Request.Action;
-	Result.bSuccess = true;
-	return Result;
-}
-
-FLRActionResult FLRSimulation::ExecuteFeed(const FLRActionRequest& Request)
-{
-	if (!Data.Host.IsDefined() || HostMass >= 1.0)
+	if (Data.Host.IsDefined())
 	{
-		const FName Reason = Data.Host.IsDefined() ? ReasonHostFull : ReasonNoHost;
-		return MakeFailure(Request.Action, Reason, FString::Printf(TEXT("Can't feed: %s"), *DescribeReason(Reason)));
+		HostMass = FMath::Max(0.0, HostMass - Cost);
 	}
-	const bool bWasFrozen = IsFrozen();
-	HostMass = FMath::Min(1.0, HostMass + static_cast<double>(Data.Host.FeedAmount));
 
-	FLRActionResult Result;
 	Result.Action = Request.Action;
 	Result.bSuccess = true;
-	Result.Message = FString::Printf(TEXT("Fed the horizon: the host black hole is at %d%% of its mass%s"),
-		FMath::FloorToInt32(HostMass * 100.0), bWasFrozen && !IsFrozen() ? TEXT(". The pocket universe stirs again.") : TEXT(""));
 	return Result;
 }
 

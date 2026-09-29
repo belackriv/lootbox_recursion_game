@@ -81,22 +81,23 @@ announces each one.
   which is what makes the early game self-sustaining. Structures can't be dismantled.
 - **Perturb retires** at recombination (`retireRequirements`): it's hidden and refused for
   good, and the ripples carry on without it.
-- **The host black hole evaporates** by Hawking radiation. Its mass cubed falls linearly,
-  so a full-mass host lasts `lifetimeSeconds` (an hour) and the loss speeds up as it
-  shrinks. Seeding a new ripple draws one feed's worth of its mass (15%, `seedFeeds`),
-  deepening one draws 2%, and a perturbation is refused if it would take the last of it.
-  **Feed the Horizon** (revealed at 90%) restores 15%. (Planned to be replaced: a feed dial
-  with a real mass, the Eddington limit and a safety cap; see "Feeding the host".) At zero
-  the pocket universe freezes: ripples, irradiators and the clock stop until you feed it.
-  That's the soft fail; nothing is lost.
+- **The host black hole** has a real mass (3,500 t at the start) and evaporates by Hawking
+  radiation. You feed it from outside with the feed dial (see "Feeding the host"). Seeding a
+  ripple costs 500 t and deepening one 70 t, and a perturbation is refused if it would take
+  the last of it. At zero the pocket universe freezes: ripples, irradiators and the clock
+  stop until you Ignite a new host. That's the soft fail; nothing is lost.
 - **The plasma** is a glowing veil in the sky whose opacity comes from the epoch, fading over
   a few seconds between epochs. It clears at recombination.
 
-## Feeding the host (planned)
+## Feeding the host (implemented)
 
-This replaces the Feed button and the host-as-a-percentage (the version implemented today, in
-"The pocket universe" above). Host mass becomes a real mass, and feeding becomes a **dial**
-on the facility's mass injectors. The challenge is keeping three things in balance:
+The host has a real mass, and feeding is a **dial** on the facility's mass injectors. It
+replaced the Feed button and the host-as-a-percentage.
+- **Code:** the rules are in `FLRSimulation` (`AdvanceHost`, `StepInjector`, `Ignite`).
+- **Settings:** `universe.json`'s `host`.
+- **UI:** the outside panel in `SLRGameHud`, with `SLRFeedDial` and `SLRChamberView`.
+- **Not built yet:** chamber and injector upgrades in the tech tree, and showing the flow in
+  the redone sky. The challenge is keeping three things in balance:
 
 - Hawking evaporation, which takes mass away, fastest when the host is small.
 - Feeding, which adds mass, but no faster than the injectors' rated limit (a multiple of the
@@ -237,7 +238,7 @@ universe freezes. Nothing is lost, as now.
 
 ### Ripples cost host mass
 
-Seeding a new ripple costs a fixed mass (implemented today as one feed, `seedFeeds`), and
+Seeding a new ripple costs a fixed mass (`seedCost`, 500 t), and
 deepening one costs a smaller mass.
 - **Early,** that's what makes feeding urgent.
 - **Near the cap,** seeding becomes a useful way to spend mass instead of tripping the
@@ -564,7 +565,7 @@ Cheat items (`LRGive`) don't count.
 | Unlocks | When |
 |---|---|
 | Perturb | from the start |
-| Feed the Horizon | when the host is down to 90% of its mass |
+| The feed dial and Ignite (outside panel, F) | from the start |
 | Build, Quantum Cache recipe | at nucleosynthesis |
 | Open, Dismantle | after building your first cache |
 | Nebula Irradiator | after opening a cache |

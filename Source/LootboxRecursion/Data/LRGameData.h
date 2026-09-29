@@ -19,7 +19,8 @@ namespace LRNames
 {
 	// Actions (actions.json "name")
 	inline const FName Perturb(TEXT("perturb"));
-	inline const FName Feed(TEXT("feed"));
+	/** Not an action in actions.json: the outside panel's kick-start (FLRSimulation::Ignite). */
+	inline const FName Ignite(TEXT("ignite"));
 	inline const FName Craft(TEXT("craft"));
 	inline const FName Use(TEXT("use"));
 	inline const FName Dismantle(TEXT("dismantle"));
@@ -434,39 +435,106 @@ struct LOOTBOXRECURSION_API FLREpochDef
 };
 
 /**
- * The host black hole that the pocket universe lives in (universe.json "host"). It evaporates
- * by Hawking radiation: its mass cubed falls linearly, so the loss speeds up as it shrinks.
- * Masses are fractions of the starting mass (1.0). At zero the pocket universe freezes until fed.
+ * The host black hole that the pocket universe lives in (universe.json "host"), and the
+ * facility's mass injectors that feed it. Masses are in kg and rates in kg/s. See
+ * docs/DESIGN.md, "Feeding the host".
+ *
+ * - It evaporates by Hawking radiation: dM/dt = -K / M^2, so M^3 falls linearly. K is set so a
+ *   StartMass host lasts LifetimeSeconds unfed (3,500 t and an hour match real physics).
+ * - The injectors feed it at a dial-set rate, with inertia, no faster than the rated limit
+ *   (EddingtonRate * mass).
+ * - The safeties trip when its 1 g radius reaches the chamber wall (ChamberRadius), dumping
+ *   the storage ring, which must recharge before feeding resumes.
+ * - At zero the pocket universe freezes until Ignite fires the storage ring's charge.
  */
 USTRUCT(BlueprintType)
 struct LOOTBOXRECURSION_API FLRHostDef
 {
 	GENERATED_BODY()
 
-	/** Seconds a full-mass host takes to evaporate completely if it's never fed. 0 = it never evaporates. */
+	/** Mass of a new host, kg. 0 = no host: nothing evaporates and the universe never freezes. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	double StartMass = 0.0;
+
+	/** Seconds a StartMass host takes to evaporate if it's never fed. 0 = it never evaporates. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	float LifetimeSeconds = 0.f;
 
-	/** Mass each perturbation that deepens a ripple draws from the host (and seeding one, unless SeedFeeds is set). */
+	/** Mass (kg) seeding a new ripple draws from the host. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	float PerturbCost = 0.f;
+	double SeedCost = 0.0;
 
-	/** Seeding a new ripple draws this many feeds' worth of mass (SeedFeeds * FeedAmount). 0 = it costs PerturbCost like deepening. */
+	/** Mass (kg) deepening a ripple draws from the host. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	float SeedFeeds = 0.f;
+	double PerturbCost = 0.0;
 
-	/** Mass one Feed restores (never above 1.0). */
+	/** The injectors' rated limit per second, as a fraction of the host's mass (a multiple of the real Eddington limit). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	float FeedAmount = 0.f;
+	float EddingtonRate = 0.f;
 
-	/** The log warns once when the mass drops below this. */
+	/** The top of the feed dial, kg/s. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	float WarningMass = 0.25f;
+	double InjectorMaxRate = 0.0;
 
-	bool IsDefined() const { return LifetimeSeconds > 0.f || PerturbCost > 0.f || FeedAmount > 0.f; }
+	/** Seconds the injected flow takes to get 90% of the way to a new dial setting (see FLRSimulation::StepInjector). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float InjectorResponseSeconds = 15.f;
 
-	/** Mass a perturbation draws: seeding a new ripple, or deepening one. */
-	float GetPerturbCost(bool bSeedsNew) const { return (bSeedsNew && SeedFeeds > 0.f) ? SeedFeeds * FeedAmount : PerturbCost; }
+	/** Distance from the host to the containment chamber's wall, m. The safeties trip when the 1 g radius reaches it. 0 = no cap. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float ChamberRadius = 0.f;
+
+	/** The pull the chamber wall tolerates, m/s^2 (1 g by default). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float SafetyGravity = 9.80665f;
+
+	/** The storage ring's full charge, kg: dumped when the safeties trip, fired by Ignite. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	double RingMass = 0.0;
+
+	/** How fast the storage ring refills, kg/s. Feeding is locked out while it recharges. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	double RingRefillRate = 0.0;
+
+	/** The log warns when the host, shrinking, has less than this many seconds left unfed. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float WarningSeconds = 300.f;
+
+	bool IsDefined() const { return StartMass > 0.0; }
+
+	/** K in dM/dt = -K / M^2 (kg^3/s); 0 if the host never evaporates. */
+	double GetEvaporationConstant() const
+	{
+		return (IsDefined() && LifetimeSeconds > 0.f) ? StartMass * StartMass * StartMass / (3.0 * LifetimeSeconds) : 0.0;
+	}
+
+	/** Mass lost per second by Hawking radiation at a given mass. */
+	double GetEvaporationRate(double Mass) const
+	{
+		return Mass > 0.0 ? GetEvaporationConstant() / (Mass * Mass) : 0.0;
+	}
+
+	/** Seconds a host of this mass lasts unfed (a very large number if it never evaporates). */
+	double GetUnfedLifetime(double Mass) const
+	{
+		const double K = GetEvaporationConstant();
+		return K > 0.0 ? Mass * Mass * Mass / (3.0 * K) : TNumericLimits<double>::Max();
+	}
+
+	/** The most the injectors can feed per second at a given mass; anything above it is blown back out. */
+	double GetRatedLimit(double Mass) const { return static_cast<double>(EddingtonRate) * FMath::Max(Mass, 0.0); }
+
+	/** The rated limit as a multiple of the real Eddington limit (about 3e12 in the shipped data). */
+	double GetEddingtonMultiple() const;
+
+	/** The mass at which the safeties trip (its 1 g radius reaches the chamber wall), or 0 for no cap. */
+	double GetSafetyCap() const;
+
+	/** Radius inside which a host of this mass pulls harder than SafetyGravity, m. */
+	double GetGravityRadius(double Mass) const;
+
+	/** Mass (kg) a perturbation draws: seeding a new ripple, or deepening one. */
+	double GetPerturbCost(bool bSeedsNew) const { return bSeedsNew ? SeedCost : PerturbCost; }
 };
 
 /**

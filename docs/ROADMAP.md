@@ -95,29 +95,31 @@ See [COSMOLOGY.md](COSMOLOGY.md) for the physics behind each item.
       retires (`retireRequirements`).
 - [x] Recombination as the phase boundary: a glowing plasma veil in the sky, driven by the
       epoch, clears when it's reached.
-- [x] Hawking evaporation on the host black hole, with Feed the Horizon and a `host` check.
-      Decision: a soft fail. At zero the universe freezes until fed.
+- [x] Hawking evaporation on the host black hole, and a `host` check (now in tonnes).
+      Decision: a soft fail. At zero the universe freezes until a new host is ignited.
 - [ ] Play it in the engine: compile, run the automation tests, and tune the host lifetime,
       perturbation cost, ripple yields and epoch thresholds by feel.
 - [ ] A visible hint for the next epoch (what it needs), like the tech tree viewer's hints.
-- [x] Seeding a ripple costs one feed of host mass (`seedFeeds`).
-- [ ] The feed dial (DESIGN.md, "Feeding the host"), replacing the Feed button:
-  - [ ] Host mass in tonnes, with real Hawking evaporation.
-  - [ ] A log dial for the target injection rate, with the rated-limit mark (3×10¹² ×
+- [x] Seeding a ripple costs host mass (500 t; deepening 70 t).
+- [x] The feed dial (DESIGN.md, "Feeding the host"), replacing the Feed button:
+  - [x] Host mass in tonnes, with real Hawking evaporation.
+  - [x] A log dial for the target injection rate, with the rated-limit mark (3×10¹² ×
         Eddington, 0.002 /s × mass) and the break-even mark.
-  - [ ] Injector inertia as a critically damped `StepInjector` that's easy to swap.
-  - [ ] The safety cap is the gravity well: it trips when the 1 g radius reaches the chamber
+  - [x] Injector inertia as a critically damped `StepInjector` that's easy to swap.
+  - [x] The safety cap is the gravity well: it trips when the 1 g radius reaches the chamber
         wall (1 cm at first, 14,700 t), dumps the storage ring and locks out until it's
-        refilled. Larger chambers come from the tech tree.
-  - [ ] Seeing the host: a to-scale chamber cross-section with the 1 g bubble, a horizon
-        inset, and a glow that shows its temperature.
-  - [ ] Ignite, the kick-start, to restart after the host evaporates.
-  - [ ] Seed and deepen costs in tonnes.
-  - [ ] Tests for each.
-  - [ ] The outside panel: it drops down from the top of the screen when a status bar button
-        (or a hotkey) is pressed, and holds the dial, the container and Ignite. The status
-        bar always shows mass and net rate, and its button lights up when the outside needs
+        refilled.
+  - [x] Seeing the host: a to-scale chamber cross-section with the 1 g bubble, glowing by
+        temperature, with the horizon and Hawking output as numbers.
+  - [x] Ignite, the kick-start, to restart after the host evaporates.
+  - [x] Tests for each.
+  - [x] The outside panel: it drops down from the top of the screen (the OUTSIDE button, F
+        or Tab), and holds the dial, the chamber, the storage ring and Ignite. The status bar
+        always shows mass and net rate, and the button pulses when the outside needs
         attention.
+  - [ ] Play and tune it in the engine: the numbers are real physics where it's playable,
+        which may not be fun yet.
+  - [ ] Chamber and injector upgrades in the tech tree (a larger chamber, a higher rating).
 - [ ] Expansion, stage 1 (DESIGN.md, "Expansion"): the grid shrinks and a bigger grid fades
       in over it, an endless zoom out. The rate is per epoch in `universe.json`. Prototype
       aperture-7 nesting against a plain ×2 cross-fade. Visual only.

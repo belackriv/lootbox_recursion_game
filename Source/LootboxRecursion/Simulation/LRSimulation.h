@@ -23,10 +23,12 @@
 class LOOTBOXRECURSION_API FLRSimulation
 {
 public:
-	/** 2: 3D grid, wood -> carbon. 3: irradiator contents. 4: unlocks + stats. 5: epochs, host, primordial materials. 6: matter in cells, no inventory. 7: irradiator ids renamed (nebula, corona). 8: source ids renamed (emitters). */
-	static constexpr int32 SaveVersion = 8;
-	/** Oldest save that still loads (newer fields just start empty). 8 renamed the source ids, so older saves start fresh. */
-	static constexpr int32 MinCompatibleSaveVersion = 8;
+	/** 2: 3D grid, wood -> carbon. 3: irradiator contents. 4: unlocks + stats. 5: epochs, host, primordial materials. 6: matter in cells, no inventory. 7: irradiator ids renamed (nebula, corona). 8: source ids renamed (emitters). 9: host mass in kg, feed dial and storage ring. */
+	static constexpr int32 SaveVersion = 9;
+	/** Oldest save that still loads (newer fields just start empty). 9 made the host's mass a real mass, so older saves start fresh. */
+	static constexpr int32 MinCompatibleSaveVersion = 9;
+	/** The host and injectors advance in steps of at most this many seconds (feeding and evaporation are coupled). */
+	static constexpr double HostStepSeconds = 0.25;
 	/** Simulation seconds the sky takes to fade to a new epoch's plasma opacity. */
 	static constexpr double PlasmaFadeSeconds = 6.0;
 
@@ -97,13 +99,49 @@ public:
 	double GetCosmicTime() const { return CosmicTime; }
 	/** How opaque the primordial plasma is right now (0..1), fading between epochs. */
 	float GetPlasmaOpacity() const;
-	/** The host black hole's mass as a fraction of its starting mass (1.0). */
-	double GetHostMass() const { return HostMass; }
-	/** The host has evaporated: nothing in the pocket universe advances until it's fed. */
-	bool IsFrozen() const { return HostMass <= 0.0; }
 	/** "10^-36 s", "3 min", "380 thousand years", "13.8 billion years". */
 	static FString FormatCosmicTime(double Seconds);
 
+	// ---- The host black hole and the injectors that feed it (the outside panel) -----------
+	/** The host black hole's mass, kg. */
+	double GetHostMass() const { return HostMass; }
+	/** The host has evaporated: nothing in the pocket universe advances until Ignite. */
+	bool IsFrozen() const { return Data.Host.IsDefined() && HostMass <= 0.0; }
+	/** Set the feed dial: the injection rate to aim for, kg/s (clamped to 0..InjectorMaxRate). */
+	void SetInjectorTarget(double KgPerSecond);
+	double GetInjectorTarget() const { return InjectorTarget; }
+	/** What the injectors are sending right now, kg/s (it follows the dial with inertia). */
+	double GetInjectorFlow() const { return Injector.Flow; }
+	/** What actually reaches the host per second: the flow, up to the rated limit. */
+	double GetIntakeRate() const;
+	/** The injectors' rated limit at the host's current mass, kg/s (the dial's limit mark). */
+	double GetRatedLimit() const { return Data.Host.GetRatedLimit(HostMass); }
+	/** Mass lost to Hawking radiation per second right now (the dial's break-even mark). */
+	double GetEvaporationRate() const { return Data.Host.GetEvaporationRate(HostMass); }
+	/** Intake minus evaporation, kg/s. */
+	double GetNetRate() const { return GetIntakeRate() - GetEvaporationRate(); }
+	/** The mass at which the safeties trip (0 = no cap). */
+	double GetSafetyCap() const { return Data.Host.GetSafetyCap(); }
+	double GetRingCharge() const { return RingCharge; }
+	/** The safeties tripped (or Ignite fired) and the storage ring is refilling: no feeding until it's full. */
+	bool IsRingRecharging() const { return bRingRecharging; }
+	/** The host is gone and the storage ring is full. */
+	bool CanIgnite() const;
+	/** The kick-start: fire the storage ring's whole charge at the singularity to make a new host. */
+	FLRActionResult Ignite();
+
+	/**
+	 * Injector inertia: the flow after DeltaSeconds, chasing Target like a critically damped
+	 * spring (a parabolic start, then it settles without overshooting), reaching 90% of the way
+	 * in about ResponseSeconds. Exact for any step size, so it doesn't depend on the frame rate.
+	 * The flow never goes below zero. Swap this function to change how the injectors feel.
+	 */
+	static FLRInjectorState StepInjector(const FLRInjectorState& State, double Target, double DeltaSeconds, double ResponseSeconds);
+
+	/** "850 kg", "3,500 t", "1.5 million t". */
+	static FString FormatMass(double Kg);
+	/** "18 kg/s", "7.0 t/s". */
+	static FString FormatRate(double KgPerSecond);
 	// ---- Commands ---------------------------------------------------------------------
 	/**
 	 * Rails: User#perform_action. Validates, starts the cooldown, then either executes
@@ -168,13 +206,14 @@ private:
 	/** Seeding actions (Def.Places set, e.g. perturb): create or deepen an overdensity. */
 	FLRActionResult ExecuteSeed(const FLRActionRequest& Request, const FLRActionDef& Def);
 	FName ValidateSeed(const FLRActionRequest& Request, const FLRActionDef& Def) const;
-	FLRActionResult ExecuteFeed(const FLRActionRequest& Request);
 
 	/** Irradiation: advance every loaded irradiator and apply exposures that completed. */
 	void AdvanceIrradiation(double DeltaSeconds);
 	/** Apply one exposure of Radiation to Box; returns a log message. */
 	FString ApplyExposure(FLRLootBoxInstance& Box, const FLRRadiationDef& Radiation, const FLRItemDef& IrradiatorDef);
-	/** Host evaporation and the cosmic clock. */
+	/** The host: evaporation, feeding, the safeties and the storage ring. */
+	void AdvanceHost(double DeltaSeconds);
+	/** The cosmic clock. */
 	void AdvanceCosmos(double DeltaSeconds);
 	/** Overdensities: yield matter into their own cell and, in later epochs, deepen on their own. */
 	void AdvanceStructures(double DeltaSeconds);
@@ -228,5 +267,11 @@ private:
 	int32 EpochIndex = 0;
 	double EpochStartedAt = 0.0;
 	double CosmicTime = 0.0;
-	double HostMass = 1.0;
+	double HostMass = 0.0;
+	double InjectorTarget = 0.0;
+	FLRInjectorState Injector;
+	double RingCharge = 0.0;
+	bool bRingRecharging = false;
+	/** The low-mass warning has been logged (until the host recovers). Not saved. */
+	bool bHostWarned = false;
 };

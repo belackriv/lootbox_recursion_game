@@ -16,8 +16,11 @@ MODIFIER_KINDS = {"extra_rolls", "item_weight_mult", "item_count_mult", "add_ent
 KINDS_NEEDING_ITEM = {"item_weight_mult", "item_count_mult", "add_entry"}
 CONDITIONS = {"gt", "gte", "lt", "lte", "eq"}
 CHECKS = {"matter", "placed", "stat", "unlocked", "epoch", "host"}
-REQUIRED_ACTIONS = {"perturb", "feed", "craft", "use", "dismantle"}
-HOST_DEFAULTS = {"lifetimeSeconds": 0, "perturbCost": 0, "seedFeeds": 0, "feedAmount": 0, "warningMass": 0.25}
+REQUIRED_ACTIONS = {"perturb", "craft", "use", "dismantle"}
+HOST_DEFAULTS = {"startMass": 0, "lifetimeSeconds": 0, "seedCost": 0, "perturbCost": 0, "eddingtonRate": 0,
+                 "injectorMaxRate": 0, "injectorResponseSeconds": 15, "chamberRadius": 0, "safetyGravity": 9.80665,
+                 "ringMass": 0, "ringRefillRate": 0, "warningSeconds": 300}
+G = 6.674e-11  # mirrors LRPhysics::G
 
 
 def main() -> int:
@@ -54,7 +57,7 @@ def main() -> int:
         if doc.get("reachRadius", -1) >= 0:
             reach_radius = doc["reachRadius"]
         file_host = doc.get("host")
-        if file_host and any(file_host.get(k, 0) > 0 for k in ("lifetimeSeconds", "perturbCost", "feedAmount")):
+        if file_host and file_host.get("startMass", 0) > 0:
             host = {**HOST_DEFAULTS, **file_host}
 
     def check_item(item_id, where):
@@ -206,11 +209,22 @@ def main() -> int:
     if reach_radius < 0:
         errors.append("reachRadius must be >= 0")
 
-    if (host["lifetimeSeconds"] < 0 or not 0 <= host["perturbCost"] <= 1 or not 0 <= host["feedAmount"] <= 1
-            or not 0 <= host["warningMass"] <= 1):
-        errors.append("host: need lifetimeSeconds >= 0, and perturbCost, feedAmount and warningMass between 0 and 1")
-    if host["seedFeeds"] < 0 or host["seedFeeds"] * host["feedAmount"] > 1:
-        errors.append("host: seedFeeds must be >= 0, and seedFeeds * feedAmount at most 1")
+    if host["startMass"] < 0:
+        errors.append("host: startMass must be >= 0")
+    if host["startMass"] > 0:
+        if any(host[k] < 0 for k in ("lifetimeSeconds", "eddingtonRate", "injectorMaxRate", "chamberRadius", "ringMass",
+                                     "ringRefillRate", "warningSeconds")):
+            errors.append("host: lifetimeSeconds, eddingtonRate, injectorMaxRate, chamberRadius, ringMass, ringRefillRate and warningSeconds must be >= 0")
+        if (host["seedCost"] < 0 or host["perturbCost"] < 0 or host["seedCost"] >= host["startMass"]
+                or host["perturbCost"] >= host["startMass"]):
+            errors.append("host: seedCost and perturbCost must be >= 0 and less than startMass")
+        if host["injectorResponseSeconds"] <= 0 or host["safetyGravity"] <= 0:
+            errors.append("host: injectorResponseSeconds and safetyGravity must be > 0")
+        if host["ringMass"] > 0 and host["ringRefillRate"] <= 0:
+            errors.append("host: a storage ring (ringMass > 0) needs ringRefillRate > 0")
+        cap = host["safetyGravity"] * host["chamberRadius"] ** 2 / G if host["chamberRadius"] > 0 else 0
+        if 0 < cap <= host["startMass"]:
+            errors.append(f"host: the chamber caps the host at {cap:.0f} kg, not above its startMass")
 
     if errors:
         print(f"{len(errors)} problem(s) in {DATA_DIR}:")

@@ -1,8 +1,12 @@
 #include "UI/SLRGameHud.h"
 
+#include "Framework/Application/SlateApplication.h"
 #include "Game/LRGameSubsystem.h"
+#include "Simulation/LRPhysics.h"
 #include "Simulation/LRSimulation.h"
 #include "UI/LRHudStyle.h"
+#include "UI/SLRChamberView.h"
+#include "UI/SLRFeedDial.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -22,6 +26,41 @@ namespace
 	FText AsText(const FString& String)
 	{
 		return FText::FromString(String);
+	}
+
+	/** "45 s", "12 min", "3.2 hours", "12 days". */
+	FString FormatDuration(double Seconds)
+	{
+		if (Seconds >= 1e15)
+		{
+			return TEXT("practically forever");
+		}
+		if (Seconds < 90.0)
+		{
+			return FString::Printf(TEXT("%.0f s"), FMath::Max(Seconds, 0.0));
+		}
+		if (Seconds < 5400.0)
+		{
+			return FString::Printf(TEXT("%.0f min"), Seconds / 60.0);
+		}
+		if (Seconds < 172800.0)
+		{
+			return FString::Printf(TEXT("%.1f hours"), Seconds / 3600.0);
+		}
+		return FString::Printf(TEXT("%.0f days"), Seconds / 86400.0);
+	}
+
+	/** "+1.2 t/s" / "-324 kg/s". */
+	FString FormatSignedRate(double KgPerSecond)
+	{
+		return (KgPerSecond >= 0.0 ? TEXT("+") : TEXT("-")) + FLRSimulation::FormatRate(FMath::Abs(KgPerSecond));
+	}
+
+	/** How far the outside panel has slid down, eased. */
+	float EaseOut(float Alpha)
+	{
+		const float Inverse = 1.f - FMath::Clamp(Alpha, 0.f, 1.f);
+		return 1.f - Inverse * Inverse * Inverse;
 	}
 }
 
@@ -116,7 +155,32 @@ void SLRGameHud::Construct(const FArguments& InArgs)
 				BuildLogPanel()
 			]
 		]
+		// The outside view: drops down from the top over the inside view (which stays live).
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Top)
+		.Padding(FMargin(8.f, 60.f, 8.f, 8.f))
+		[
+			SAssignNew(OutsidePanel, SBox)
+			.Visibility_Lambda([this]() { return OutsideDrop > 0.001f ? EVisibility::Visible : EVisibility::Collapsed; })
+			.RenderTransform_Lambda([this]() -> TOptional<FSlateRenderTransform>
+			{
+				const float Height = OutsidePanel.IsValid() ? static_cast<float>(OutsidePanel->GetDesiredSize().Y) : 500.f;
+				return FSlateRenderTransform(FVector2f(0.f, -(1.f - EaseOut(OutsideDrop)) * (Height + 70.f)));
+			})
+			[
+				BuildOutsidePanel()
+			]
+		]
 	];
+}
+
+void SLRGameHud::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
+{
+	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+	const ULRGameSubsystem* Sub = GetSubsystem();
+	const float Goal = (Sub && Sub->IsOutsideViewOpen()) ? 1.f : 0.f;
+	OutsideDrop = FMath::FInterpConstantTo(OutsideDrop, Goal, InDeltaTime, 4.f); // a quarter of a second
 }
 
 TSharedRef<SWidget> SLRGameHud::MakePanel(const FText& Title, const TSharedRef<SWidget>& Content,
@@ -202,7 +266,7 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 			.Padding(FMargin(16.f, 0.f))
 			[
 				SNew(STextBlock)
-				.Text(LOCTEXT("Help", "Click a cell to select it  |  WASD pan, wheel zoom, hold right mouse to look, Q/E orbit, PgUp/PgDn layer, R reset view, H home  |  ~ console: LRGive hydrogen 500 (into the selected cell), LRTimeScale 10"))
+				.Text(LOCTEXT("Help", "Click a cell to select it  |  WASD pan, wheel zoom, hold right mouse to look, Q/E orbit, PgUp/PgDn layer, R reset view, H home, F outside  |  ~ console: LRGive hydrogen 500 (into the selected cell), LRTimeScale 10"))
 				.Font(Style.SmallFont)
 				.ColorAndOpacity(Style.TextDim)
 			]
@@ -225,11 +289,11 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 					return AsText(FString::Printf(TEXT("%s  |  %s after the Big Bang"), *Sub->GetEpochName(), *Sub->GetCosmicTimeText()));
 				})
 			]
-			// The host black hole's mass: red once it's low, and while the universe is frozen.
+			// The host black hole, whichever view is up: its mass and net rate, red while it shrinks.
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(FMargin(0.f, 0.f, 16.f, 0.f))
+			.Padding(FMargin(0.f, 0.f, 10.f, 0.f))
 			[
 				SNew(STextBlock)
 				.Font(Style.BodyFont)
@@ -240,17 +304,62 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 					{
 						return FText::GetEmpty();
 					}
-					return Sim->IsFrozen()
-						? LOCTEXT("HostFrozen", "Host evaporated: universe frozen, feed the horizon!")
-						: AsText(FString::Printf(TEXT("Host mass %d%%"), FMath::FloorToInt32(Sim->GetHostMass() * 100.0)));
+					if (Sim->IsFrozen())
+					{
+						return LOCTEXT("HostFrozen", "Host evaporated: universe frozen. Ignite a new one (F)");
+					}
+					return AsText(FString::Printf(TEXT("Host %s  %s"), *FLRSimulation::FormatMass(Sim->GetHostMass()),
+						*FormatSignedRate(Sim->GetNetRate())));
 				})
 				.ColorAndOpacity_Lambda([this]() -> FSlateColor
 				{
 					const FLRHudStyle& S = FLRHudStyle::Get();
 					const FLRSimulation* Sim = GetSimulation();
-					const bool bLow = Sim && Sim->GetHostMass() <= Sim->GetData().Host.WarningMass;
-					return bLow ? S.Red : S.TextDim;
+					if (!Sim || Sim->IsFrozen())
+					{
+						return S.Red;
+					}
+					return Sim->GetNetRate() < 0.0 ? S.Red : S.Green;
 				})
+			]
+			// OUTSIDE: drops the injector panel down. It pulses when the outside needs attention.
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(FMargin(0.f, 0.f, 16.f, 0.f))
+			[
+				SNew(SButton)
+				.ButtonStyle(&Style.ButtonStyle)
+				.IsFocusable(false)
+				.ContentPadding(FMargin(10.f, 3.f))
+				.ToolTipText(LOCTEXT("OutsideTip", "The facility's injectors: the feed dial, the host in its chamber, the storage ring and Ignite (F or Tab)"))
+				.ButtonColorAndOpacity_Lambda([this]() -> FSlateColor
+				{
+					if (!DoesOutsideNeedAttention())
+					{
+						return FLinearColor::White;
+					}
+					const float Pulse = 0.5f + 0.5f * FMath::Sin(static_cast<float>(FSlateApplication::Get().GetCurrentTime()) * 6.f);
+					return FMath::Lerp(FLinearColor::White, FLinearColor(2.2f, 0.9f, 0.9f), Pulse);
+				})
+				.OnClicked_Lambda([this]()
+				{
+					if (ULRGameSubsystem* Sub = GetSubsystem())
+					{
+						Sub->ToggleOutsideView();
+					}
+					return FReply::Handled();
+				})
+				[
+					SNew(STextBlock)
+					.Font(Style.HeadingFont)
+					.ColorAndOpacity(Style.Orange)
+					.Text_Lambda([this]()
+					{
+						const ULRGameSubsystem* Sub = GetSubsystem();
+						return (Sub && Sub->IsOutsideViewOpen()) ? LOCTEXT("InsideButton", "INSIDE [F]") : LOCTEXT("OutsideButton", "OUTSIDE [F]");
+					})
+				]
 			]
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
@@ -331,19 +440,6 @@ TSharedRef<SWidget> SLRGameHud::BuildActionsPanel()
 			},
 			// Needs a selected cell that is empty or holds a ripple that can still deepen.
 			[this]() { return CanPerturbSelectedCell(); })
-	];
-
-	Box->AddSlot()
-	.AutoHeight()
-	.Padding(FMargin(0.f, 0.f, 0.f, 6.f))
-	[
-		MakeActionButton(LRNames::Feed, [this]()
-		{
-			if (ULRGameSubsystem* Sub = GetSubsystem())
-			{
-				Sub->RequestSimpleAction(LRNames::Feed);
-			}
-		})
 	];
 
 	// Build: one button per recipe, built in the selected cell (Rails: CraftToggleButton +
@@ -1293,7 +1389,7 @@ FString SLRGameHud::DescribeOverdensity(const FLRPlacedEntity& Overdensity) cons
 
 	if (Sim->IsFrozen())
 	{
-		Text += TEXT("\nFrozen: the host black hole has evaporated.");
+		Text += TEXT("\nFrozen: the host black hole has evaporated. Ignite a new one (outside panel, F).");
 	}
 	else if (Overdensity.Amplitude >= Def->MaxAmplitude)
 	{
@@ -1547,6 +1643,290 @@ void SLRGameHud::RebuildLog()
 			.Text(AsText(Line.Text))
 		];
 	}
+}
+
+// ---------------------------------------------------------------------------------------
+// Outside: the facility's injectors
+// ---------------------------------------------------------------------------------------
+
+bool SLRGameHud::DoesOutsideNeedAttention() const
+{
+	const FLRSimulation* Sim = GetSimulation();
+	if (!Sim || !Sim->GetData().Host.IsDefined())
+	{
+		return false;
+	}
+	const double Cap = Sim->GetSafetyCap();
+	return Sim->IsFrozen() || Sim->IsRingRecharging() || Sim->GetNetRate() < 0.0
+		|| (Cap > 0.0 && Sim->GetHostMass() >= Cap * 0.95);
+}
+
+TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
+{
+	const FLRHudStyle& Style = FLRHudStyle::Get();
+
+	// A line of readout text bound to the simulation.
+	auto Readout = [this, &Style](TFunction<FString(const FLRSimulation&)> Describe, const FSlateFontInfo& Font) -> TSharedRef<SWidget>
+	{
+		return SNew(STextBlock)
+			.Font(Font)
+			.ColorAndOpacity(Style.Text)
+			.AutoWrapText(true)
+			.Text_Lambda([this, Describe]()
+			{
+				const FLRSimulation* Sim = GetSimulation();
+				return (Sim && Sim->GetData().Host.IsDefined()) ? AsText(Describe(*Sim)) : FText::GetEmpty();
+			});
+	};
+	auto Preset = [this](const FText& Label, const FText& Tip, TFunction<double(const FLRSimulation&)> Rate) -> TSharedRef<SWidget>
+	{
+		const FLRHudStyle& S = FLRHudStyle::Get();
+		return SNew(SButton)
+			.ButtonStyle(&S.ButtonStyle)
+			.IsFocusable(false)
+			.ContentPadding(FMargin(8.f, 2.f))
+			.ToolTipText(Tip)
+			.OnClicked_Lambda([this, Rate]()
+			{
+				ULRGameSubsystem* Sub = GetSubsystem();
+				if (Sub && Sub->GetSimulation())
+				{
+					Sub->SetInjectorTarget(Rate(*Sub->GetSimulation()));
+				}
+				return FReply::Handled();
+			})
+			[
+				SNew(STextBlock).Font(S.SmallFont).ColorAndOpacity(S.Text).Text(Label)
+			];
+	};
+
+	// Left: the dial, with presets.
+	TSharedRef<SWidget> DialColumn = SNew(SVerticalBox)
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.HAlign(HAlign_Center)
+		[
+			SNew(SLRFeedDial).Subsystem(Subsystem)
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.HAlign(HAlign_Center)
+		.Padding(FMargin(0.f, 4.f))
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(2.f, 0.f))
+			[
+				Preset(LOCTEXT("DialOff", "Off"), LOCTEXT("DialOffTip", "Turn the injectors off"),
+					[](const FLRSimulation&) { return 0.0; })
+			]
+			+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(2.f, 0.f))
+			[
+				Preset(LOCTEXT("DialHold", "Hold"), LOCTEXT("DialHoldTip", "Just outpace evaporation: the host holds its mass (a little over the HOLD mark)"),
+					[](const FLRSimulation& Sim) { return Sim.GetEvaporationRate() * 1.05; })
+			]
+			+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(2.f, 0.f))
+			[
+				Preset(LOCTEXT("DialLimit", "Limit"), LOCTEXT("DialLimitTip", "Feed at the rated limit: the fastest the host can grow right now"),
+					[](const FLRSimulation& Sim) { return Sim.GetRatedLimit(); })
+			]
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			SNew(SBox)
+			.WidthOverride(250.f)
+			[
+				SNew(STextBlock)
+				.Font(Style.SmallFont)
+				.ColorAndOpacity(Style.TextDim)
+				.AutoWrapText(true)
+				.Text(LOCTEXT("DialHelp", "Drag or scroll the dial. Green: the host grows. Above LIMIT the flow is blown back out. The flow lags the dial (the lens magnets ramp), so dial back before the cap."))
+			]
+		];
+
+	// Middle: the numbers.
+	TSharedRef<SWidget> Numbers = SNew(SBox)
+		.WidthOverride(230.f)
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 2.f))
+			[
+				Readout([](const FLRSimulation& Sim)
+				{
+					return Sim.IsFrozen() ? FString(TEXT("Host: evaporated"))
+						: FString::Printf(TEXT("Host: %s"), *FLRSimulation::FormatMass(Sim.GetHostMass()));
+				}, Style.HeadingFont)
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 2.f))
+			[
+				Readout([](const FLRSimulation& Sim)
+				{
+					const double Net = Sim.GetNetRate();
+					return FString::Printf(TEXT("Net %s (%s)"), *FormatSignedRate(Net),
+						Sim.IsFrozen() ? TEXT("frozen") : (Net >= 0.0 ? TEXT("growing") : TEXT("shrinking")));
+				}, Style.BodyFont)
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 2.f))
+			[
+				Readout([](const FLRSimulation& Sim)
+				{
+					return FString::Printf(TEXT("Flow %s, dial %s"), *FLRSimulation::FormatRate(Sim.GetInjectorFlow()),
+						*FLRSimulation::FormatRate(Sim.GetInjectorTarget()));
+				}, Style.BodyFont)
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 2.f))
+			[
+				Readout([](const FLRSimulation& Sim)
+				{
+					return FString::Printf(TEXT("LIMIT %s: rated at %.1e x Eddington"), *FLRSimulation::FormatRate(Sim.GetRatedLimit()),
+						Sim.GetData().Host.GetEddingtonMultiple());
+				}, Style.BodyFont)
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 2.f))
+			[
+				Readout([](const FLRSimulation& Sim)
+				{
+					return FString::Printf(TEXT("HOLD %s: Hawking evaporation"), *FLRSimulation::FormatRate(Sim.GetEvaporationRate()));
+				}, Style.BodyFont)
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 2.f))
+			[
+				Readout([](const FLRSimulation& Sim)
+				{
+					return Sim.IsFrozen() ? FString()
+						: FString::Printf(TEXT("Unfed, it evaporates in %s"), *FormatDuration(Sim.GetData().Host.GetUnfedLifetime(Sim.GetHostMass())));
+				}, Style.BodyFont)
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 2.f))
+			[
+				Readout([](const FLRSimulation& Sim)
+				{
+					const double Cap = Sim.GetSafetyCap();
+					return Cap > 0.0 ? FString::Printf(TEXT("Safety cap %s (%.0f%% of it)"), *FLRSimulation::FormatMass(Cap), 100.0 * Sim.GetHostMass() / Cap)
+						: FString(TEXT("No safety cap"));
+				}, Style.BodyFont)
+			]
+		];
+
+	// Right of that: the host in its chamber, to scale.
+	TSharedRef<SWidget> Chamber = SNew(SVerticalBox)
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.HAlign(HAlign_Center)
+		[
+			SNew(SLRChamberView).Subsystem(Subsystem)
+		]
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			Readout([](const FLRSimulation& Sim)
+			{
+				const FLRHostDef& Host = Sim.GetData().Host;
+				return FString::Printf(TEXT("1 g radius %.1f mm, wall %.1f mm"), Host.GetGravityRadius(Sim.GetHostMass()) * 1000.0,
+					static_cast<double>(Host.ChamberRadius) * 1000.0);
+			}, Style.SmallFont)
+		]
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			Readout([](const FLRSimulation& Sim)
+			{
+				const double Mass = Sim.GetHostMass();
+				return Mass <= 0.0 ? FString()
+					: FString::Printf(TEXT("Horizon %.1e m. Glows at %.1e K, %.1e W"), LRPhysics::SchwarzschildRadius(Mass),
+						LRPhysics::HawkingTemperature(Mass), LRPhysics::HawkingPower(Mass));
+			}, Style.SmallFont)
+		];
+
+	// Far right: the storage ring and Ignite.
+	TSharedRef<SWidget> Ring = SNew(SBox)
+		.WidthOverride(210.f)
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight()
+			[
+				SNew(STextBlock).Font(Style.HeadingFont).ColorAndOpacity(Style.Orange).Text(LOCTEXT("RingTitle", "STORAGE RING"))
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 4.f))
+			[
+				SNew(SBox)
+				.HeightOverride(10.f)
+				[
+					SNew(SProgressBar)
+					.Style(&Style.ProgressStyle)
+					.Percent_Lambda([this]() -> TOptional<float>
+					{
+						const FLRSimulation* Sim = GetSimulation();
+						const double Full = Sim ? Sim->GetData().Host.RingMass : 0.0;
+						return Full > 0.0 ? static_cast<float>(Sim->GetRingCharge() / Full) : 0.f;
+					})
+					.FillColorAndOpacity_Lambda([this]() -> FSlateColor
+					{
+						const FLRHudStyle& S = FLRHudStyle::Get();
+						const FLRSimulation* Sim = GetSimulation();
+						return (Sim && Sim->IsRingRecharging()) ? S.Red : S.Green;
+					})
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 2.f))
+			[
+				Readout([](const FLRSimulation& Sim)
+				{
+					const double Full = Sim.GetData().Host.RingMass;
+					if (Sim.IsRingRecharging())
+					{
+						return FString::Printf(TEXT("Recharging (%.0f%%): feeding is locked out"), Full > 0.0 ? 100.0 * Sim.GetRingCharge() / Full : 0.0);
+					}
+					return FString::Printf(TEXT("Charged: %s of neutronium"), *FLRSimulation::FormatMass(Sim.GetRingCharge()));
+				}, Style.BodyFont)
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 6.f))
+			[
+				SNew(SButton)
+				.ButtonStyle(&Style.ButtonStyle)
+				.IsFocusable(false)
+				.HAlign(HAlign_Center)
+				.ContentPadding(FMargin(8.f, 5.f))
+				.IsEnabled_Lambda([this]()
+				{
+					const FLRSimulation* Sim = GetSimulation();
+					return Sim && Sim->CanIgnite();
+				})
+				.ToolTipText(LOCTEXT("IgniteTip", "Once the host has evaporated: fire the storage ring's whole charge at the singularity. A charge that big collapses straight into a new horizon."))
+				.OnClicked_Lambda([this]()
+				{
+					if (ULRGameSubsystem* Sub = GetSubsystem())
+					{
+						Sub->Ignite();
+					}
+					return FReply::Handled();
+				})
+				[
+					SNew(STextBlock).Font(Style.HeadingFont).ColorAndOpacity(Style.Orange).Text(LOCTEXT("Ignite", "IGNITE"))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 6.f, 0.f, 0.f))
+			[
+				SNew(STextBlock)
+				.Font(Style.SmallFont)
+				.ColorAndOpacity(Style.TextDim)
+				.AutoWrapText(true)
+				.Text(LOCTEXT("InjectorLore", "Neutronium injectors: neutral matter the host's glow barely pushes, focused by a graviton lens. The safeties dump the beam when the 1 g sphere reaches the chamber wall."))
+			]
+		];
+
+	TSharedRef<SWidget> Body = SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 12.f, 0.f))[DialColumn]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 12.f, 0.f))[Numbers]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 12.f, 0.f))[Chamber]
+		+ SHorizontalBox::Slot().AutoWidth()[Ring];
+
+	return MakePanel(LOCTEXT("OutsideTitle", "OUTSIDE: THE FACILITY'S INJECTORS"), Body,
+		MakeSmallButton(LOCTEXT("OutsideClose", "Back inside [F]"), [this]()
+		{
+			if (ULRGameSubsystem* Sub = GetSubsystem())
+			{
+				Sub->SetOutsideViewOpen(false);
+			}
+		}));
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -56,6 +56,7 @@ void ALRPlayerController::SetupInputComponent()
 	UInputAction* LookAction = MakeAction(TEXT("IA_Look"));
 	LookAction->ValueType = EInputActionValueType::Axis2D;
 	UInputAction* SelectAction = MakeAction(TEXT("IA_Select"));
+	UInputAction* OutsideAction = MakeAction(TEXT("IA_ToggleOutside"));
 
 	MappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Default"));
 	MappingContext->MapKey(PanLeftAction, EKeys::A);
@@ -79,6 +80,8 @@ void ALRPlayerController::SetupInputComponent()
 	MappingContext->MapKey(FreeLookAction, EKeys::RightMouseButton);
 	MappingContext->MapKey(LookAction, EKeys::Mouse2D);
 	MappingContext->MapKey(SelectAction, EKeys::LeftMouseButton);
+	MappingContext->MapKey(OutsideAction, EKeys::F);
+	MappingContext->MapKey(OutsideAction, EKeys::Tab);
 
 	if (UEnhancedInputComponent* Input = Cast<UEnhancedInputComponent>(InputComponent))
 	{
@@ -99,6 +102,7 @@ void ALRPlayerController::SetupInputComponent()
 		Input->BindAction(LookAction, ETriggerEvent::Triggered, this, &ALRPlayerController::Look);
 		// Clicks on HUD buttons are consumed by Slate and never reach this.
 		Input->BindAction(SelectAction, ETriggerEvent::Started, this, &ALRPlayerController::SelectHovered);
+		Input->BindAction(OutsideAction, ETriggerEvent::Started, this, &ALRPlayerController::ToggleOutside);
 	}
 
 	// SetupInputComponent runs once this controller has its LocalPlayer, so the
@@ -115,6 +119,14 @@ void ALRPlayerController::SetupInputComponent()
 ALRCameraPawn* ALRPlayerController::GetCameraPawn() const
 {
 	return Cast<ALRCameraPawn>(GetPawn());
+}
+
+void ALRPlayerController::ToggleOutside()
+{
+	if (ULRGameSubsystem* Sub = ULRGameSubsystem::Get(this))
+	{
+		Sub->ToggleOutsideView();
+	}
 }
 
 void ALRPlayerController::PanLeft()
