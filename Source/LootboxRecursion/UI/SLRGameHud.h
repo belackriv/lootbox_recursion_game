@@ -60,8 +60,20 @@ public:
 	bool IsMenuOpen() const { return bMenuOpen; }
 	/** The menu key: back out of the menu's page, help, the Build card or the outside panel, else open the menu. */
 	void HandleMenuKey();
-	/** A command card slot's key (0-based): does what that slot shows, if it's enabled. */
+	/**
+	 * A command card slot's key (0-based): does what that slot shows, if it's enabled. While the
+	 * outside panel is down, the same keys press its buttons (RunOutsideSlot) instead.
+	 */
 	void ActivateCardSlot(int32 Slot);
+	/**
+	 * Turn the feed dial with the keys (the camera's pan keys, while the outside panel is down):
+	 * Direction +1 up, -1 down; bCoarse for the up/down keys, fine for left/right.
+	 */
+	void NudgeDial(float Direction, bool bCoarse, float DeltaSeconds);
+
+	/** How fast the keys turn the dial, as a fraction of its arc per second. */
+	static constexpr float DialFineSpeed = 0.1f;
+	static constexpr float DialCoarseSpeed = 0.4f;
 
 private:
 	enum class EHoverKind : uint8
@@ -123,6 +135,24 @@ private:
 	/** The key bound to a command, for labels ("1"), or empty. */
 	FText GetKeyLabel(FName Command) const;
 	void SetMenuOpen(bool bOpen);
+
+	// The outside panel's buttons, in key order (slot keys 1-8 while the panel is down)
+	enum class EOutsideSlot : uint8
+	{
+		Off,
+		Hold,
+		Limit,
+		Max,
+		AutoHold,
+		AutoLimit,
+		Vent,
+		Ignite,
+		Count,
+	};
+	bool IsOutsideSlotEnabled(EOutsideSlot Button) const;
+	void RunOutsideSlot(EOutsideSlot Button);
+	/** "[1] Off": the button's label with its key. */
+	FText GetOutsideSlotLabel(EOutsideSlot Button, const FText& Label) const;
 	float GetUIScale() const;
 	/** bConsole: styled for the light outside console. */
 	TSharedRef<SWidget> MakeSmallButton(const FText& Label, TFunction<void()> OnClick, bool bConsole = false);

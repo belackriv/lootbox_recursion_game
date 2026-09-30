@@ -3,6 +3,7 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/World.h"
 #include "Game/LRCameraPawn.h"
 #include "Game/LRGameSubsystem.h"
 #include "Game/LRHud.h"
@@ -192,6 +193,18 @@ void ALRPlayerController::RunCommand(FName Command)
 	}
 	if (IsMenuOpen())
 	{
+		return;
+	}
+
+	// While the outside panel is down, the pan keys turn the feed dial instead: left/right in
+	// fine steps, up/down in coarse ones.
+	const ULRGameSubsystem* Sub = ULRGameSubsystem::Get(this);
+	const bool bPan = Command == Names::PanForward || Command == Names::PanBack || Command == Names::PanLeft || Command == Names::PanRight;
+	if (bPan && Hud && Sub && Sub->IsOutsideViewOpen())
+	{
+		const float Direction = (Command == Names::PanForward || Command == Names::PanRight) ? 1.f : -1.f;
+		const bool bCoarse = Command == Names::PanForward || Command == Names::PanBack;
+		Hud->NudgeDial(Direction, bCoarse, GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.f);
 		return;
 	}
 

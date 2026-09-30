@@ -268,7 +268,8 @@ A way to shed mass on purpose, faster than evaporation. At the cap the host evap
   instead of forcing mass in, the injectors draw radiation out. All that radiation floods the
   chamber, so the instruments are down while venting, as after a trip.
 - **The rule.**
-  - VENT (on the outside panel, next to Ignite) needs a **full stored charge** to start.
+  - VENT (on the outside panel, next to Ignite) needs a **full stored charge** to start. It
+    doesn't use the charge up.
   - Starting it sets the dial to OFF and turns auto off. The dial then sets how hard the
     injectors pull, and they pull no harder than the rated limit (the lens pulls only as hard
     as it can push). At the cap, full reverse (20 t/s) sheds about 1,000 t a minute.
@@ -276,9 +277,10 @@ A way to shed mass on purpose, faster than evaporation. At the cap the host evap
     venting stops.
   - **Only the dial works.** The presets and auto buttons under it are disabled.
   - The instruments are down while venting, and until the reversed flow has wound down.
-  - **The interlock.** Venting stops itself at the **vent floor**, 1.25 × the point of no
-    return (about 1,250 t), cutting the reversed beam at once and setting the dial to OFF. It
-    won't start below the floor.
+  - **No interlock.** Nothing stops venting at the point of no return: vent too far and the
+    host can't be saved (the log warns as it crosses). Like over-perturbing, it's the
+    player's mistake to make. (An interlock at 1.25 × the point of no return was tried and
+    dropped.)
   - STOP VENTING sets the dial to OFF, and the reversed flow winds down (about 15 s).
 - **What you see.** The dial's screen turns violet and reads REVERSED. The zone up to LIMIT is
   violet (everything up to it is drawn out), HOLD is hidden, and the flow needle is violet.
@@ -545,6 +547,12 @@ key belongs to the slot, not to an action: what a slot does depends on what's se
   Universe panel above it.
 - **Next.** The same idea for the rest of the UI: hotkeys bound to slots in each panel, so
   the key stays put while what it does follows the context.
+
+**The outside panel's keys.** While the outside panel is down, the slot keys (1-8) press its
+buttons instead, in order: Off, Hold, Limit, Max, Auto Hold, Auto Limit, VENT, IGNITE (each
+button shows its key). The camera's pan keys turn the dial: left/right (A/D) in fine steps,
+up/down (W/S) in coarse ones, along the dial's arc like dragging it. That's manual tuning, so
+it also works while venting and turns auto off.
 
 **The menu.** Esc (F10 in the editor, where Esc stops Play; or MENU on the status bar) opens
 it and pauses the game. Esc first backs out of whatever else is open: the Build page, help,

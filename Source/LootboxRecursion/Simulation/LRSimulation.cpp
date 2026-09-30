@@ -28,7 +28,6 @@ namespace
 	const FName ReasonRecharging(TEXT("recharging"));
 	const FName ReasonHostAlive(TEXT("host_alive"));
 	const FName ReasonInstrumentsDown(TEXT("instruments_down"));
-	const FName ReasonVentFloor(TEXT("vent_floor"));
 
 	const FName IrradiateEvent(TEXT("irradiate"));
 	const FName UnlockEvent(TEXT("unlock"));
@@ -58,7 +57,6 @@ FString FLRSimulation::DescribeReason(FName Reason)
 	if (Reason == ReasonRecharging) { return TEXT("the stored charge is still recharging"); }
 	if (Reason == ReasonHostAlive) { return TEXT("the host is still there, feed it with the dial"); }
 	if (Reason == ReasonInstrumentsDown) { return TEXT("the instruments are down"); }
-	if (Reason == ReasonVentFloor) { return TEXT("the host is too close to its point of no return to vent"); }
 	return Reason.ToString();
 }
 
@@ -351,17 +349,6 @@ void FLRSimulation::AdvanceHost(double DeltaSeconds)
 		const double Extraction = (bFeeding && Injector.Flow < 0.0) ? FMath::Min(-Injector.Flow, Limit) : 0.0;
 		HostMass += (Intake - Extraction) * Step;
 
-		// The vent interlock: cut the reversed beam at once before the host gets near its
-		// point of no return.
-		if (bVenting && HostMass <= GetVentFloor())
-		{
-			bVenting = false;
-			InjectorTarget = 0.0;
-			Injector = FLRInjectorState();
-			Messages.Add(FString::Printf(TEXT("VENT INTERLOCK: the host (%s) reached the vent floor, %s above its point of no return. The reversed beam was cut and the dial set to OFF; the instruments are back online."),
-				*FormatMass(HostMass), *FormatMass(GetVentFloor() - GetTippingMass())));
-		}
-
 		// The safeties: once the 1 g radius reaches the chamber wall, dump the beam at once.
 		if (Cap > 0.0 && Intake > 0.0 && HostMass >= Cap)
 		{
@@ -529,16 +516,11 @@ bool FLRSimulation::AreInstrumentsDown() const
 	return Data.Host.IsDefined() && (bRecharging || bVenting || Injector.Flow < 0.0);
 }
 
-double FLRSimulation::GetVentFloor() const
-{
-	return GetTippingMass() * VentFloorFactor;
-}
-
 bool FLRSimulation::CanVent() const
 {
 	const FLRHostDef& Host = Data.Host;
 	return Host.IsDefined() && !bVenting && Host.ChargeCapacity > 0.0 && !bRecharging && StoredCharge >= Host.ChargeCapacity
-		&& HostMass > 0.0 && HostMass > GetVentFloor();
+		&& HostMass > 0.0;
 }
 
 FLRActionResult FLRSimulation::SetVenting(bool bVent)
@@ -569,10 +551,6 @@ FLRActionResult FLRSimulation::SetVenting(bool bVent)
 	{
 		Reason = ReasonRecharging;
 	}
-	else if (HostMass <= GetVentFloor())
-	{
-		Reason = ReasonVentFloor;
-	}
 	if (!Reason.IsNone())
 	{
 		FLRActionResult Failure = MakeFailure(LRNames::Vent, Reason, FString::Printf(TEXT("Can't vent: %s"), *DescribeReason(Reason)));
@@ -584,8 +562,8 @@ FLRActionResult FLRSimulation::SetVenting(bool bVent)
 	InjectorAuto = ELRInjectorAuto::Off;
 	InjectorTarget = 0.0;
 	Result.bSuccess = true;
-	Result.Message = FString::Printf(TEXT("Venting: the injectors run in reverse. The graviton lens drives the horizon into stimulated emission, and the beamline draws the radiation off, so the host sheds mass as fast as the dial says (up to the rated limit). The radiation floods the chamber, so the instruments are down while it runs. Turn the dial up to start; the interlock stops it at %s."),
-		*FormatMass(GetVentFloor()));
+	Result.Message = FString::Printf(TEXT("Venting: the injectors run in reverse. The graviton lens drives the horizon into stimulated emission, and the beamline draws the radiation off, so the host sheds mass as fast as the dial says (up to the rated limit). The radiation floods the chamber, so the instruments are down while it runs. Turn the dial up to start. Nothing stops it at the point of no return (%s): watch the host."),
+		*FormatMass(GetTippingMass()));
 	Complete(Result);
 	return Result;
 }

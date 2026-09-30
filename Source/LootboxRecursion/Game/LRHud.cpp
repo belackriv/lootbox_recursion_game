@@ -64,6 +64,14 @@ void ALRHud::ActivateCardSlot(int32 Slot)
 	}
 }
 
+void ALRHud::NudgeDial(float Direction, bool bCoarse, float DeltaSeconds)
+{
+	if (HudWidget.IsValid())
+	{
+		HudWidget->NudgeDial(Direction, bCoarse, DeltaSeconds);
+	}
+}
+
 void ALRHud::HandleActionCompleted(const FLRActionResult& Result)
 {
 	if (HudWidget.IsValid() && !Result.Message.IsEmpty())

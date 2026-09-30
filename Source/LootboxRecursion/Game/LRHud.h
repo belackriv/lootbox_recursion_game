@@ -26,8 +26,10 @@ public:
 	bool IsMenuOpen() const;
 	/** The menu key: back out of whatever is open (help, the Build card), else open or close the menu. */
 	void HandleMenuKey();
-	/** A command card slot's key (0-based). */
+	/** A command card slot's key (0-based); the outside panel's buttons while it's down. */
 	void ActivateCardSlot(int32 Slot);
+	/** Turn the feed dial with the keys (see SLRGameHud::NudgeDial). */
+	void NudgeDial(float Direction, bool bCoarse, float DeltaSeconds);
 
 	/**
 	 * Material hook (see LRMaterialHooks and docs/MATERIALS.md) for the TV static over the 3D

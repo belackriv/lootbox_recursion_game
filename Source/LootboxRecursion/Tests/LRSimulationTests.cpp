@@ -1260,23 +1260,17 @@ bool FLRHostVentTest::RunTest(const FString& Parameters)
 	const FLRActionResult NoCharge = Tripped.SetVenting(true);
 	TestTrue(TEXT("refused"), !NoCharge.bSuccess && NoCharge.Reason == FName(TEXT("recharging")) && !Tripped.IsVenting());
 
-	// The interlock stops it above the point of no return (322 kg here; the floor is 402 kg).
+	// Nothing stops it at the point of no return (322 kg here): vent too far and the host is lost.
 	FLRSimulation Deep(LRTest::MakeCosmosData(), 1);
 	LRTest::FMessageLog DeepLog(Deep);
-	TestTrue(TEXT("the floor is a margin above the point of no return"),
-		FMath::IsNearlyEqual(Deep.GetVentFloor(), Deep.GetTippingMass() * FLRSimulation::VentFloorFactor, 1e-9));
 	Deep.SetVenting(true);
 	Deep.SetInjectorTarget(50.0);
-	for (int32 Step = 0; Step < 1000 && Deep.IsVenting(); ++Step)
+	for (int32 Step = 0; Step < 1000 && !Deep.IsFrozen(); ++Step)
 	{
-		Deep.Advance(0.5);
+		Deep.Advance(0.5); // about 93 s to the point of no return, 116 s to the end
 	}
-	TestFalse(TEXT("the interlock stopped it"), Deep.IsVenting());
-	TestTrue(TEXT("at the vent floor"), DeepLog.Contains(TEXT("VENT INTERLOCK"))
-		&& Deep.GetHostMass() <= Deep.GetVentFloor() && Deep.GetHostMass() > Deep.GetVentFloor() - 5.0);
-	TestTrue(TEXT("the beam was cut at once"), Deep.GetInjectorFlow() == 0.0 && Deep.GetInjectorTarget() == 0.0 && !Deep.AreInstrumentsDown());
-	const FLRActionResult TooLow = Deep.SetVenting(true);
-	TestTrue(TEXT("and it won't start again below the floor"), !TooLow.bSuccess && TooLow.Reason == FName(TEXT("vent_floor")));
+	TestTrue(TEXT("it vented past the point of no return"), DeepLog.Contains(TEXT("point of no return")));
+	TestTrue(TEXT("and on until the host was gone"), Deep.IsFrozen() && !Deep.IsVenting());
 	return true;
 }
 

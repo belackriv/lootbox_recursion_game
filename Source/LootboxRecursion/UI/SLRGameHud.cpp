@@ -1012,6 +1012,16 @@ void SLRGameHud::ActivateCardSlot(int32 Slot)
 	{
 		return;
 	}
+	// While the outside panel is down, the slot keys press its buttons instead.
+	const ULRGameSubsystem* Sub = GetSubsystem();
+	if (Sub && Sub->IsOutsideViewOpen())
+	{
+		if (Slot >= 0 && Slot < static_cast<int32>(EOutsideSlot::Count))
+		{
+			RunOutsideSlot(static_cast<EOutsideSlot>(Slot));
+		}
+		return;
+	}
 	const FCardEntry Entry = GetCardEntry(Slot);
 	if (IsCardEntryEnabled(Entry))
 	{
@@ -1872,7 +1882,7 @@ TSharedRef<SWidget> SLRGameHud::BuildHelpDialog()
 		{ TEXT("PgUp / PgDn, ] / ["), TEXT("Build layer up / down") },
 		{ TEXT("R"), TEXT("Reset the camera angle and zoom") },
 		{ TEXT("H / Home"), TEXT("Fly to the first thing you placed") },
-		{ TEXT("F / Tab, OUTSIDE"), TEXT("The outside console: feed the host with the dial (drag or scroll), watch it in its chamber, Ignite a new one if it evaporates") },
+		{ TEXT("F / Tab, OUTSIDE"), TEXT("The outside console: feed the host with the dial (drag or scroll, or WASD / arrows: A/D fine, W/S coarse), watch it in its chamber, Ignite a new one if it evaporates. While it's down, 1-8 press its buttons.") },
 		{ TEXT("Esc / F10, MENU"), TEXT("The menu: save, load, settings (rebind any key), quit. The game pauses while it's open. (In the editor, Esc stops Play; use F10.)") },
 		{ TEXT("~"), TEXT("Console: LRGive hydrogen 500 (into the selected cell), LRTimeScale 10, LRSave, LRReset") },
 		{ TEXT("Keys"), TEXT("These are the defaults: rebind any of them in MENU > Settings.") },
@@ -1937,6 +1947,70 @@ bool SLRGameHud::DoesOutsideNeedAttention() const
 		|| (Cap > 0.0 && Sim->GetHostMass() >= Cap * 0.95);
 }
 
+bool SLRGameHud::IsOutsideSlotEnabled(EOutsideSlot Button) const
+{
+	const FLRSimulation* Sim = GetSimulation();
+	if (!Sim || !Sim->GetData().Host.IsDefined())
+	{
+		return false;
+	}
+	switch (Button)
+	{
+	case EOutsideSlot::Vent:   return Sim->IsVenting() || Sim->CanVent();
+	case EOutsideSlot::Ignite: return Sim->CanIgnite();
+	default:                   return !Sim->IsVenting(); // only the dial itself works while venting
+	}
+}
+
+void SLRGameHud::RunOutsideSlot(EOutsideSlot Button)
+{
+	ULRGameSubsystem* Sub = GetSubsystem();
+	const FLRSimulation* Sim = Sub ? Sub->GetSimulation() : nullptr;
+	if (!Sim || !IsOutsideSlotEnabled(Button))
+	{
+		return;
+	}
+	switch (Button)
+	{
+	case EOutsideSlot::Off:       Sub->SetInjectorTarget(0.0); break;
+	case EOutsideSlot::Hold:      Sub->SetInjectorTarget(Sim->GetEvaporationRate() * 1.05); break; // a little over the HOLD mark
+	case EOutsideSlot::Limit:     Sub->SetInjectorTarget(Sim->GetRatedLimit()); break;
+	case EOutsideSlot::Max:       Sub->SetInjectorTarget(Sim->GetData().Host.InjectorMaxRate); break;
+	case EOutsideSlot::AutoHold:
+		Sub->SetInjectorAuto(Sub->GetInjectorAuto() == ELRInjectorAuto::Hold ? ELRInjectorAuto::Off : ELRInjectorAuto::Hold);
+		break;
+	case EOutsideSlot::AutoLimit:
+		Sub->SetInjectorAuto(Sub->GetInjectorAuto() == ELRInjectorAuto::Limit ? ELRInjectorAuto::Off : ELRInjectorAuto::Limit);
+		break;
+	case EOutsideSlot::Vent:      Sub->SetVenting(!Sub->IsVenting()); break;
+	case EOutsideSlot::Ignite:    Sub->Ignite(); break;
+	default: break;
+	}
+}
+
+FText SLRGameHud::GetOutsideSlotLabel(EOutsideSlot Button, const FText& Label) const
+{
+	const FText Key = GetKeyLabel(LRInput::SlotCommand(static_cast<int32>(Button)));
+	return Key.IsEmpty() ? Label : FText::Format(LOCTEXT("OutsideSlotLabel", "[{0}] {1}"), Key, Label);
+}
+
+void SLRGameHud::NudgeDial(float Direction, bool bCoarse, float DeltaSeconds)
+{
+	ULRGameSubsystem* Sub = GetSubsystem();
+	const FLRSimulation* Sim = Sub ? Sub->GetSimulation() : nullptr;
+	if (!Sim || !Sim->GetData().Host.IsDefined() || bMenuOpen)
+	{
+		return;
+	}
+	// Along the dial's arc (so it's logarithmic, like dragging it), the same scale as the widget.
+	const double MaxRate = FMath::Max(Sim->GetData().Host.InjectorMaxRate, SLRFeedDial::MinRate * 10.0);
+	const double Step = Direction * (bCoarse ? DialCoarseSpeed : DialFineSpeed) * DeltaSeconds;
+	const double Fraction = FMath::Clamp(SLRFeedDial::RateToFraction(Sim->GetInjectorTarget(), MaxRate) + Step, 0.0, 1.0);
+	// Turning it down snaps to OFF at the bottom (turning it up from OFF has to start from there).
+	const bool bOff = Step < 0.0 && Fraction < 0.01;
+	Sub->SetInjectorTarget(bOff ? 0.0 : SLRFeedDial::FractionToRate(Fraction, MaxRate));
+}
+
 TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 {
 	const FLRHudStyle& Style = FLRHudStyle::Get();
@@ -1954,13 +2028,9 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 				return (Sim && Sim->GetData().Host.IsDefined()) ? AsText(Describe(*Sim)) : FText::GetEmpty();
 			});
 	};
-	// While venting only the dial itself works: the buttons under it are disabled.
-	auto NotVenting = [this]()
-	{
-		const ULRGameSubsystem* Sub = GetSubsystem();
-		return !(Sub && Sub->IsVenting());
-	};
-	auto Preset = [this, NotVenting](const FText& Label, const FText& Tip, TFunction<double(const FLRSimulation&)> Rate) -> TSharedRef<SWidget>
+	// The buttons are numbered (RunOutsideSlot): while the panel is down, their keys (1-8 by
+	// default) press them. A preset sets the dial once; they're disabled while venting.
+	auto Preset = [this](const FText& Label, const FText& Tip, EOutsideSlot Button) -> TSharedRef<SWidget>
 	{
 		const FLRHudStyle& S = FLRHudStyle::Get();
 		return SNew(SButton)
@@ -1968,23 +2038,22 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			.IsFocusable(false)
 			.ContentPadding(FMargin(4.f, 2.f))
 			.HAlign(HAlign_Center)
-			.IsEnabled_Lambda(NotVenting)
+			.IsEnabled_Lambda([this, Button]() { return IsOutsideSlotEnabled(Button); })
 			.ToolTipText(Tip)
-			.OnClicked_Lambda([this, Rate]()
+			.OnClicked_Lambda([this, Button]()
 			{
-				ULRGameSubsystem* Sub = GetSubsystem();
-				if (Sub && Sub->GetSimulation())
-				{
-					Sub->SetInjectorTarget(Rate(*Sub->GetSimulation()));
-				}
+				RunOutsideSlot(Button);
 				return FReply::Handled();
 			})
 			[
-				SNew(STextBlock).Font(S.SmallFont).ColorAndOpacity(S.ConsoleText).Text(Label)
+				SNew(STextBlock)
+				.Font(S.SmallFont)
+				.ColorAndOpacity(S.ConsoleText)
+				.Text_Lambda([this, Label, Button]() { return GetOutsideSlotLabel(Button, Label); })
 			];
 	};
 	// A toggle for one of the dial's auto modes: lit while it's on; clicking it again stops it.
-	auto AutoToggle = [this, NotVenting](const FText& Label, const FText& Tip, ELRInjectorAuto Mode) -> TSharedRef<SWidget>
+	auto AutoToggle = [this](const FText& Label, const FText& Tip, ELRInjectorAuto Mode, EOutsideSlot Button) -> TSharedRef<SWidget>
 	{
 		const FLRHudStyle& S = FLRHudStyle::Get();
 		auto IsOn = [this, Mode]()
@@ -1997,21 +2066,18 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			.IsFocusable(false)
 			.ContentPadding(FMargin(4.f, 2.f))
 			.HAlign(HAlign_Center)
-			.IsEnabled_Lambda(NotVenting)
+			.IsEnabled_Lambda([this, Button]() { return IsOutsideSlotEnabled(Button); })
 			.ToolTipText(Tip)
 			.ButtonColorAndOpacity_Lambda([IsOn]() -> FSlateColor { return IsOn() ? FLinearColor(1.f, 0.72f, 0.35f) : FLinearColor::White; })
-			.OnClicked_Lambda([this, Mode, IsOn]()
+			.OnClicked_Lambda([this, Button]()
 			{
-				if (ULRGameSubsystem* Sub = GetSubsystem())
-				{
-					Sub->SetInjectorAuto(IsOn() ? ELRInjectorAuto::Off : Mode);
-				}
+				RunOutsideSlot(Button);
 				return FReply::Handled();
 			})
 			[
 				SNew(STextBlock)
 				.Font(S.SmallFont)
-				.Text(Label)
+				.Text_Lambda([this, Label, Button]() { return GetOutsideSlotLabel(Button, Label); })
 				.ColorAndOpacity_Lambda([IsOn]() -> FSlateColor
 				{
 					const FLRHudStyle& Inner = FLRHudStyle::Get();
@@ -2070,23 +2136,22 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(2.f, 0.f))
 				[
-					Preset(LOCTEXT("DialOff", "Off"), LOCTEXT("DialOffTip", "Turn the injectors off"),
-						[](const FLRSimulation&) { return 0.0; })
+					Preset(LOCTEXT("DialOff", "Off"), LOCTEXT("DialOffTip", "Turn the injectors off"), EOutsideSlot::Off)
 				]
 				+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(2.f, 0.f))
 				[
 					Preset(LOCTEXT("DialHold", "Hold"), LOCTEXT("DialHoldTip", "Just outpace evaporation: the host holds its mass (a little over the HOLD mark). The mark moves as the mass changes; Auto Hold follows it."),
-						[](const FLRSimulation& Sim) { return Sim.GetEvaporationRate() * 1.05; })
+						EOutsideSlot::Hold)
 				]
 				+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(2.f, 0.f))
 				[
 					Preset(LOCTEXT("DialLimit", "Limit"), LOCTEXT("DialLimitTip", "Feed at the rated limit: the fastest the host can grow right now. The limit rises as it grows; Auto Limit follows it."),
-						[](const FLRSimulation& Sim) { return Sim.GetRatedLimit(); })
+						EOutsideSlot::Limit)
 				]
 				+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(2.f, 0.f))
 				[
 					Preset(LOCTEXT("DialMax", "Max"), LOCTEXT("DialMaxTip", "Open the injectors all the way. Anything over the rated limit is blown back out."),
-						[](const FLRSimulation& Sim) { return Sim.GetData().Host.InjectorMaxRate; })
+						EOutsideSlot::Max)
 				]
 			]
 		]
@@ -2102,12 +2167,12 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 				+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(2.f, 0.f))
 				[
 					AutoToggle(LOCTEXT("DialAutoHold", "Auto Hold"), LOCTEXT("DialAutoHoldTip", "Keep the dial on the HOLD mark as the host's mass changes, so it holds its mass. Moving the dial or a preset stops it."),
-						ELRInjectorAuto::Hold)
+						ELRInjectorAuto::Hold, EOutsideSlot::AutoHold)
 				]
 				+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(2.f, 0.f))
 				[
 					AutoToggle(LOCTEXT("DialAutoLimit", "Auto Limit"), LOCTEXT("DialAutoLimitTip", "Keep the dial on the LIMIT mark as the host grows, the fastest growth there is. It doesn't stop at the chamber wall: watch the safeties. Moving the dial or a preset stops it."),
-						ELRInjectorAuto::Limit)
+						ELRInjectorAuto::Limit, EOutsideSlot::AutoLimit)
 				]
 			]
 		]
@@ -2302,23 +2367,16 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 				.IsFocusable(false)
 				.HAlign(HAlign_Center)
 				.ContentPadding(FMargin(8.f, 5.f))
-				.IsEnabled_Lambda([this]()
-				{
-					const FLRSimulation* Sim = GetSimulation();
-					return Sim && (Sim->IsVenting() || Sim->CanVent());
-				})
+				.IsEnabled_Lambda([this]() { return IsOutsideSlotEnabled(EOutsideSlot::Vent); })
 				.ButtonColorAndOpacity_Lambda([this]() -> FSlateColor
 				{
 					const FLRSimulation* Sim = GetSimulation();
 					return (Sim && Sim->IsVenting()) ? FLinearColor(1.f, 0.6f, 0.9f) : FLinearColor::White;
 				})
-				.ToolTipText(LOCTEXT("VentTip", "Run the injectors in reverse to shed mass: the graviton lens drives the horizon into stimulated emission and the beamline draws the radiation off, as fast as the dial says (up to the rated limit). Needs a full stored charge. The radiation floods the chamber, so the instruments are down while it runs; only the dial works. It stops itself a margin above the point of no return."))
+				.ToolTipText(LOCTEXT("VentTip", "Run the injectors in reverse to shed mass: the graviton lens drives the horizon into stimulated emission and the beamline draws the radiation off, as fast as the dial says (up to the rated limit). Needs a full stored charge. The radiation floods the chamber, so the instruments are down while it runs; only the dial works. It doesn't use the charge up, and nothing stops it at the point of no return: vent too far and the host is lost."))
 				.OnClicked_Lambda([this]()
 				{
-					if (ULRGameSubsystem* Sub = GetSubsystem())
-					{
-						Sub->SetVenting(!Sub->IsVenting());
-					}
+					RunOutsideSlot(EOutsideSlot::Vent);
 					return FReply::Handled();
 				})
 				[
@@ -2328,7 +2386,8 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 					.Text_Lambda([this]()
 					{
 						const FLRSimulation* Sim = GetSimulation();
-						return (Sim && Sim->IsVenting()) ? LOCTEXT("VentStop", "STOP VENTING") : LOCTEXT("Vent", "VENT");
+						return GetOutsideSlotLabel(EOutsideSlot::Vent,
+							(Sim && Sim->IsVenting()) ? LOCTEXT("VentStop", "STOP VENTING") : LOCTEXT("Vent", "VENT"));
 					})
 				]
 			]
@@ -2339,22 +2398,18 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 				.IsFocusable(false)
 				.HAlign(HAlign_Center)
 				.ContentPadding(FMargin(8.f, 5.f))
-				.IsEnabled_Lambda([this]()
-				{
-					const FLRSimulation* Sim = GetSimulation();
-					return Sim && Sim->CanIgnite();
-				})
+				.IsEnabled_Lambda([this]() { return IsOutsideSlotEnabled(EOutsideSlot::Ignite); })
 				.ToolTipText(LOCTEXT("IgniteTip", "Once the host has evaporated: fire the whole stored charge at the singularity. A charge that big collapses straight into a new horizon."))
 				.OnClicked_Lambda([this]()
 				{
-					if (ULRGameSubsystem* Sub = GetSubsystem())
-					{
-						Sub->Ignite();
-					}
+					RunOutsideSlot(EOutsideSlot::Ignite);
 					return FReply::Handled();
 				})
 				[
-					SNew(STextBlock).Font(Style.HeadingFont).ColorAndOpacity(Style.ConsoleAccent).Text(LOCTEXT("Ignite", "IGNITE"))
+					SNew(STextBlock)
+					.Font(Style.HeadingFont)
+					.ColorAndOpacity(Style.ConsoleAccent)
+					.Text_Lambda([this]() { return GetOutsideSlotLabel(EOutsideSlot::Ignite, LOCTEXT("Ignite", "IGNITE")); })
 				]
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 6.f, 0.f, 0.f))

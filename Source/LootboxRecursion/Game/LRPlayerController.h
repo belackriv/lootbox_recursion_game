@@ -22,8 +22,9 @@ struct FInputActionValue;
  *   R                         reset camera angle and zoom
  *   PageUp/PageDown or ] [    build layer up / down
  *   H / Home                  fly to the first deployed entity
- *   1-9, 0                    command card slots
- *   F / Tab                   drop the outside panel (the feed dial) down, or raise it
+ *   1-9, 0                    command card slots (the outside panel's buttons while it's down)
+ *   F / Tab                   drop the outside panel (the feed dial) down, or raise it; while
+ *                             it's down, WASD / arrows turn the dial (A/D fine, W/S coarse)
  *   Esc / F10                 back out of the Build card, or the menu (pauses)
  * Fixed:
  *   Mouse wheel               zoom

@@ -161,19 +161,16 @@ public:
 	 * Venting (docs/DESIGN.md, "Venting mass"): the injectors run in reverse. The graviton lens
 	 * drives the horizon into stimulated emission and the beamline draws the radiation off, so
 	 * the host sheds mass at the dial's rate (up to the rated limit), far faster than it
-	 * evaporates. Starting it needs a full stored charge and a host above the vent floor; it
-	 * sets the dial to OFF and turns auto off. While it runs (and until the reversed flow has
-	 * wound down) the instruments are down, and only the dial itself works. It stops itself at
-	 * the vent floor. Stopping it sets the dial to OFF again.
+	 * evaporates. Starting it needs a full stored charge (it doesn't use it up); it sets the
+	 * dial to OFF and turns auto off. While it runs (and until the reversed flow has wound
+	 * down) the instruments are down, and only the dial itself works. Nothing stops it at the
+	 * point of no return: venting too far is the player's mistake to make. Stopping it sets
+	 * the dial to OFF again.
 	 */
 	FLRActionResult SetVenting(bool bVent);
 	bool IsVenting() const { return bVenting; }
 	/** Venting could start now. */
 	bool CanVent() const;
-	/** The interlock stops venting here: a margin above the point of no return. */
-	double GetVentFloor() const;
-	/** The vent floor as a multiple of the point of no return. */
-	static constexpr double VentFloorFactor = 1.25;
 	/** Once venting stops, a reversed flow weaker than this (kg/s) snaps to zero. */
 	static constexpr double VentResidualRate = 1.0;
 	/** Below this mass the host can't be fed out of evaporating (see FLRHostDef::GetTippingMass). */
