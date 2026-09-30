@@ -87,6 +87,12 @@ public:
 	 * bCheckCost is false: a job that already paid).
 	 */
 	FName ValidateBuild(FName RecipeId, const FIntVector& Cell, bool bCheckCost = true) const;
+	/**
+	 * Why there's nothing to build at Cell (NAME_None if there is): the cell is busy, or no
+	 * unlocked recipe's output could go there ("no_builds"). Missing matter doesn't count: that
+	 * recipe is still an option, just not an affordable one yet.
+	 */
+	FName CheckBuildsAt(const FIntVector& Cell) const;
 	/** A failure reason as a short phrase for the log and tooltips ("not enough matter within reach"). */
 	static FString DescribeReason(FName Reason);
 	/** A few words for a refusal, for tight spots like the command card ("busy", "host too small"). */

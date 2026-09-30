@@ -792,7 +792,9 @@ bool FLRSimIrradiateRulesTest::RunTest(const FString& Parameters)
 {
 	FLRSimulation Sim(LRTest::MakeData(), 1);
 	const FIntVector Cell(0, 0, 0);
+	TestTrue(TEXT("an empty cell has builds, even with no matter"), Sim.CheckBuildsAt(Cell).IsNone());
 	LRTest::BuildIrradiator(Sim, Cell);
+	TestTrue(TEXT("an empty irradiator takes a source or a box"), Sim.CheckBuildsAt(Cell).IsNone());
 
 	Sim.GiveMatter(Cell, LRTest::Carbon, 1);
 	const FLRActionResult TooStrong = LRTest::Build(Sim, LRTest::GammaEmitter, Cell);
@@ -809,6 +811,7 @@ bool FLRSimIrradiateRulesTest::RunTest(const FString& Parameters)
 	Sim.GiveMatter(Cell, LRTest::Carbon, 5);
 	const FLRActionResult Second = LRTest::Build(Sim, LRTest::Lamp, Cell);
 	TestTrue(TEXT("one source per irradiator"), !Second.bSuccess && Second.Reason == FName(TEXT("source_full")));
+	TestTrue(TEXT("a full irradiator has no builds"), Sim.CheckBuildsAt(Cell) == FName(TEXT("no_builds")));
 	return true;
 }
 

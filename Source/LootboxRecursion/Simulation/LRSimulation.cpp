@@ -28,6 +28,7 @@ namespace
 	const FName ReasonRecharging(TEXT("recharging"));
 	const FName ReasonHostAlive(TEXT("host_alive"));
 	const FName ReasonInstrumentsDown(TEXT("instruments_down"));
+	const FName ReasonNoBuilds(TEXT("no_builds"));
 
 	const FName IrradiateEvent(TEXT("irradiate"));
 	const FName UnlockEvent(TEXT("unlock"));
@@ -52,6 +53,7 @@ FString FLRSimulation::DescribeReasonShort(FName Reason)
 	if (Reason == ReasonRippleAtMax) { return TEXT("at max"); }
 	if (Reason == ReasonHorizonWeak) { return TEXT("host too small"); }
 	if (Reason == ReasonNoHost) { return TEXT("no host"); }
+	if (Reason == ReasonNoBuilds) { return TEXT("no builds"); }
 	return TEXT("unavailable");
 }
 
@@ -78,6 +80,7 @@ FString FLRSimulation::DescribeReason(FName Reason)
 	if (Reason == ReasonRecharging) { return TEXT("the stored charge is still recharging"); }
 	if (Reason == ReasonHostAlive) { return TEXT("the host is still there, feed it with the dial"); }
 	if (Reason == ReasonInstrumentsDown) { return TEXT("the instruments are down"); }
+	if (Reason == ReasonNoBuilds) { return TEXT("nothing can be built there"); }
 	return Reason.ToString();
 }
 
@@ -1001,6 +1004,22 @@ FName FLRSimulation::ValidateBuild(FName RecipeId, const FIntVector& Cell, bool 
 		return ReasonOccupied;
 	}
 	return (!bCheckCost || CanAffordAt(Cell, Recipe->Cost)) ? NAME_None : ReasonInsufficientMaterials;
+}
+
+FName FLRSimulation::CheckBuildsAt(const FIntVector& Cell) const
+{
+	if (IsCellBusy(Cell))
+	{
+		return ReasonCellBusy;
+	}
+	for (const FLRRecipeDef& Recipe : Data.Recipes)
+	{
+		if (ValidateBuild(Recipe.Id, Cell, /*bCheckCost*/ false).IsNone())
+		{
+			return NAME_None;
+		}
+	}
+	return ReasonNoBuilds;
 }
 
 // ---------------------------------------------------------------------------------------

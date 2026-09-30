@@ -544,7 +544,8 @@ key belongs to the slot, not to an action: what a slot does depends on what's se
 - **The Build page.** Build... turns the card into a page of the unlocked recipes, on the
   same keys, with Back in the last slot (Esc also backs out). Building something, or
   selecting another cell, goes back to the main page. (More than nine recipes will need
-  paging.)
+  paging.) If no unlocked recipe could go in the cell (a full irradiator, say), Build... is
+  disabled with "no builds"; a recipe that's only short of matter still counts as an option.
 - **Around it.** Under the card, a strip for the build layer (- Layer, Z, Layer +, Home).
   The Grid panel's list of everything placed is gone; the selected cell, the cursor and an
   irradiator's progress are in Info, which sits at the bottom right above the log. The
@@ -560,7 +561,8 @@ presses; that's all that holds the player back.
   else there is refused as "busy"), but every other cell is free, so you can start jobs in
   several cells at once. Dismantle is instant.
 - **Seen on the cell.** A job traces its cell's hex outline in amber, from one corner round
-  to the same corner as it runs (drawn with the grid beam hook). The card shows it too: the
+  to the same corner as it runs (drawn with the grid beam hook). Amber is kept for jobs: the
+  selected cell is outlined in pale blue. The card shows it too: the
   selected cell's job fills its slot's bar, and the card's heading says what's under way.
 - **Paid up front, refunded exactly.** A job pays when it starts: a recipe's matter comes out
   of the cells in reach (nearest first) and a seed's mass out of the host, so two jobs can't

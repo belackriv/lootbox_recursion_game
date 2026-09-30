@@ -954,7 +954,7 @@ FName SLRGameHud::GetCardEntryBlocker(const FCardEntry& Entry) const
 		Request.Choice = Entry.Name;
 		break;
 	case ECardKind::BuildPage:
-		return Sim->IsCellBusy(Cell) ? FName(TEXT("cell_busy")) : NAME_None;
+		return Sim->CheckBuildsAt(Cell); // busy, or nothing unlocked fits in this cell
 	default:
 		return NAME_None;
 	}

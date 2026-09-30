@@ -23,7 +23,8 @@ namespace
 {
 	// The grid is thin beams of light in the void. Tints above 1 are HDR and glow through bloom.
 	const FLinearColor LineColor(0.85f, 0.92f, 1.f);
-	const FLinearColor SelectedColor(FColor::FromHex(TEXT("F2A93B"))); // accretion-disk amber
+	const FLinearColor SelectedColor(FColor::FromHex(TEXT("8FD3FF"))); // pale blue, bluer than the grid lines
+	const FLinearColor JobColor(FColor::FromHex(TEXT("F2A93B"))); // accretion-disk amber: the job ring alone
 
 	// A cache (d4) as a fraction of a cell: Z is X / sqrt(2) for a regular tetrahedron, a
 	// little taller so it reads as a point from the default camera tilt.
@@ -138,7 +139,7 @@ void ALRWorldGridActor::BeginPlay()
 	HoverOutline->SetVisibility(false);
 	SelectionOutline = CreateBeamLayer(Glow(SelectedColor, 3.f));
 	SelectionOutline->SetVisibility(false);
-	JobTraces = CreateBeamLayer(Glow(SelectedColor, 5.f));
+	JobTraces = CreateBeamLayer(Glow(JobColor, 5.f));
 	RebuildLines();
 
 	UMaterialInstanceDynamic* HoverMat = nullptr;
