@@ -118,6 +118,11 @@ private:
 	void RebuildLines();
 	void UpdateLineWidth();
 	void MoveTiles(const FIntVector& Anchor);
+	/**
+	 * Put the patch's beams round TileAnchor. Like the outlines, existing beams are teleported
+	 * rather than their components moved, so the jump isn't smeared by motion blur and TSR.
+	 */
+	void PlaceTiles();
 	void UpdateHover();
 	void UpdateMarkers();
 	/** Draw each cell's job as a trace filling its outline (Simulation jobs, see FLRCellJob). */
@@ -217,6 +222,8 @@ private:
 	/** The cell the tile patch is currently centred on. */
 	FIntVector TileAnchor = FIntVector::ZeroValue;
 	bool bTilesPlaced = false;
+	/** The patch's beams per brightness layer, centred on the origin (placed at TileAnchor by PlaceTiles). */
+	TArray<TArray<FTransform>> TilePattern;
 
 	/** Beam width multiplier for the current zoom (a power of LineWidthStep). */
 	float LineWidthScale = 1.f;

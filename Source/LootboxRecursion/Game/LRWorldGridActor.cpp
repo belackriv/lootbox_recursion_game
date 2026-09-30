@@ -173,8 +173,8 @@ void ALRWorldGridActor::Tick(float DeltaSeconds)
 	UpdateLineWidth();
 
 	// Any whole-cell shift maps the hexagon pattern onto itself, so the patch just follows the
-	// focus a few cells at a time: moving a few components now and then is cheap, rebuilding
-	// thousands of instances every time the camera crosses a cell is not.
+	// focus a few cells at a time: teleporting thousands of beams now and then is fine, doing
+	// it every time the camera crosses a cell is not.
 	const FIntVector Focus = GetFocusCell();
 	if (!bTilesPlaced || Focus.Z != TileAnchor.Z || FLRHexGrid::Distance(Focus, TileAnchor) > PatchRecentreCells)
 	{
@@ -366,10 +366,31 @@ void ALRWorldGridActor::BuildTilePattern()
 		}
 	}
 
-	for (int32 Layer = 0; Layer < TileLayers.Num(); ++Layer)
+	TilePattern = MoveTemp(PerLayer);
+	PlaceTiles();
+}
+
+void ALRWorldGridActor::PlaceTiles()
+{
+	const FVector Offset = CellToLocal(TileAnchor);
+	for (int32 Layer = 0; Layer < TileLayers.Num() && Layer < TilePattern.Num(); ++Layer)
 	{
-		TileLayers[Layer]->ClearInstances();
-		TileLayers[Layer]->AddInstances(PerLayer[Layer], /*bShouldReturnIndices*/ false);
+		TArray<FTransform> Beams = TilePattern[Layer];
+		for (FTransform& Beam : Beams)
+		{
+			Beam.AddToTranslation(Offset);
+		}
+		UInstancedStaticMeshComponent* Tiles = TileLayers[Layer];
+		if (Tiles->GetInstanceCount() == Beams.Num())
+		{
+			// Teleport: no velocity, so no motion blur or temporal smear from the jump.
+			Tiles->BatchUpdateInstancesTransforms(0, Beams, /*bWorldSpace*/ false, /*bMarkRenderStateDirty*/ true, /*bTeleport*/ true);
+		}
+		else
+		{
+			Tiles->ClearInstances();
+			Tiles->AddInstances(Beams, /*bShouldReturnIndices*/ false);
+		}
 	}
 }
 
@@ -426,10 +447,7 @@ void ALRWorldGridActor::MoveTiles(const FIntVector& Anchor)
 {
 	TileAnchor = Anchor;
 	bTilesPlaced = true;
-	for (const TObjectPtr<UInstancedStaticMeshComponent>& Tiles : TileLayers)
-	{
-		Tiles->SetRelativeLocation(CellToLocal(Anchor));
-	}
+	PlaceTiles();
 }
 
 // ---- Hover / selection ----------------------------------------------------------------
