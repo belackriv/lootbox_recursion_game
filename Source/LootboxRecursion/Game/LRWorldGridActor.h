@@ -109,7 +109,12 @@ private:
 	UInstancedStaticMeshComponent* CreateBeamLayer(const FLinearColor& Tint);
 	FIntVector GetFocusCell() const;
 	void BuildTilePattern();
-	void BuildOutline(UInstancedStaticMeshComponent* Outline, float Width);
+	/**
+	 * Put an outline's six beams round Cell. Once built, they're teleported rather than the
+	 * component moved: a moved component reads to the renderer as a fast-moving object, so
+	 * motion blur and TSR would smear it across the screen for a few frames.
+	 */
+	void BuildOutline(UInstancedStaticMeshComponent* Outline, float Width, const FIntVector& Cell);
 	void RebuildLines();
 	void UpdateLineWidth();
 	void MoveTiles(const FIntVector& Anchor);
@@ -181,6 +186,10 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UInstancedStaticMeshComponent> SelectionOutline;
+
+	/** The cells the outlines were last built round (their components stay put). */
+	FIntVector HoverOutlineCell = FIntVector::ZeroValue;
+	FIntVector SelectionOutlineCell = FIntVector::ZeroValue;
 
 	/** Jobs under way: amber traces around their cells' outlines, drawn with the grid beam hook. */
 	UPROPERTY()

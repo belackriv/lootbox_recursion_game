@@ -373,24 +373,33 @@ void ALRWorldGridActor::BuildTilePattern()
 	}
 }
 
-void ALRWorldGridActor::BuildOutline(UInstancedStaticMeshComponent* Outline, float Width)
+void ALRWorldGridActor::BuildOutline(UInstancedStaticMeshComponent* Outline, float Width, const FIntVector& Cell)
 {
-	// Six beams around one hexagon, centred on the component (which sits on the cell's centre).
+	// Six beams around the cell's hexagon.
 	const float Thickness = Width * (CellSize / 100.f) * LineWidthScale;
+	const FVector Centre = CellToLocal(Cell);
 	TArray<FTransform> Beams;
 	for (int32 Edge = 0; Edge < 6; ++Edge)
 	{
-		Beams.Add(EdgeBeam(FVector::ZeroVector, Edge, CellSize, Thickness));
+		Beams.Add(EdgeBeam(Centre, Edge, CellSize, Thickness));
 	}
-	Outline->ClearInstances();
-	Outline->AddInstances(Beams, /*bShouldReturnIndices*/ false);
+	if (Outline->GetInstanceCount() == Beams.Num())
+	{
+		// Teleport: no velocity, so no motion blur or temporal smear from the jump.
+		Outline->BatchUpdateInstancesTransforms(0, Beams, /*bWorldSpace*/ false, /*bMarkRenderStateDirty*/ true, /*bTeleport*/ true);
+	}
+	else
+	{
+		Outline->ClearInstances();
+		Outline->AddInstances(Beams, /*bShouldReturnIndices*/ false);
+	}
 }
 
 void ALRWorldGridActor::RebuildLines()
 {
 	BuildTilePattern();
-	BuildOutline(HoverOutline, HoverWidth);
-	BuildOutline(SelectionOutline, SelectionWidth);
+	BuildOutline(HoverOutline, HoverWidth, HoverOutlineCell);
+	BuildOutline(SelectionOutline, SelectionWidth, SelectionOutlineCell);
 }
 
 void ALRWorldGridActor::UpdateLineWidth()
@@ -506,9 +515,10 @@ void ALRWorldGridActor::UpdateMarkers()
 	FIntVector Selected;
 	const bool bHasSelection = Subsystem->GetSelectedCell(Selected);
 	SelectionOutline->SetVisibility(bHasSelection);
-	if (bHasSelection)
+	if (bHasSelection && Selected != SelectionOutlineCell)
 	{
-		SelectionOutline->SetRelativeLocation(CellToLocal(Selected));
+		SelectionOutlineCell = Selected;
+		BuildOutline(SelectionOutline, SelectionWidth, Selected);
 	}
 
 	FIntVector Hovered;
@@ -519,7 +529,11 @@ void ALRWorldGridActor::UpdateMarkers()
 	{
 		return;
 	}
-	HoverOutline->SetRelativeLocation(CellToLocal(Hovered));
+	if (Hovered != HoverOutlineCell)
+	{
+		HoverOutlineCell = Hovered;
+		BuildOutline(HoverOutline, HoverWidth, Hovered);
+	}
 }
 
 // ---- Deployed entities ----------------------------------------------------------------
