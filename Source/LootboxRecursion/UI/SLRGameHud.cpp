@@ -11,6 +11,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SScaleBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSpacer.h"
 #include "Widgets/Layout/SUniformGridPanel.h"
@@ -176,7 +177,13 @@ void SLRGameHud::Construct(const FArguments& InArgs)
 				return FSlateRenderTransform(FVector2f(0.f, -(1.f - EaseOut(OutsideDrop)) * (Height + 70.f)));
 			})
 			[
-				BuildOutsidePanel()
+				// With the 640 x 480 camera it's tall: on a small viewport, shrink it to fit.
+				SNew(SScaleBox)
+				.Stretch(EStretch::ScaleToFit)
+				.StretchDirection(EStretchDirection::DownOnly)
+				[
+					BuildOutsidePanel()
+				]
 			]
 		]
 		// Help: the (?) button on the status bar opens it.
@@ -2253,7 +2260,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			]
 		];
 
-	// Under the dial and the chamber: a 4:3 camera looking into the chamber. For now it's a dark
+	// Under the dial and the chamber: a 640 x 480 camera looking into the chamber. For now it's a dark
 	// screen (later, a 3D view of the containment field, the injectors and the singularity),
 	// and it shows static while the instruments are down.
 	TSharedRef<SWidget> Camera = Screen(
@@ -2261,7 +2268,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 		+ SOverlay::Slot()
 		[
 			SNew(SLRStaticNoise)
-			.Resolution(FIntPoint(200, 150))
+			.Resolution(FIntPoint(256, 192))
 			.Material(StaticMaterial)
 			.Intensity_Lambda([this]() { return StaticLevel; })
 		]
@@ -2285,7 +2292,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			.Visibility_Lambda([this]() { return StaticLevel > 0.5f ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
 			.Text(LOCTEXT("CameraNoSignal", "NO SIGNAL"))
 		],
-		/*Width*/ 524.f, /*Height*/ 393.f); // 4:3, as wide as the dial and chamber together
+		/*Width*/ 640.f, /*Height*/ 480.f); // classic 640 x 480
 
 	TSharedRef<SWidget> Instruments = SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
@@ -2293,9 +2300,14 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 12.f, 0.f))[DialColumn]
+			// The camera below is wider than the two screens: put them at its edges.
+			+ SHorizontalBox::Slot().FillWidth(1.f)
+			[
+				SNew(SSpacer)
+			]
 			+ SHorizontalBox::Slot().AutoWidth()
 			[
-				SNew(SBox).WidthOverride(262.f)[Chamber] // the screen's width, so the camera below spans both
+				SNew(SBox).WidthOverride(262.f)[Chamber] // the screen's width
 			]
 		]
 		+ SVerticalBox::Slot()

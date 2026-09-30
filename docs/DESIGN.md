@@ -221,8 +221,8 @@ The outside panel shows the host itself, not only numbers:
   hottest and brightest when it's small and in danger (3.5×10¹⁶ K and 3×10¹⁹ W at the start).
 - **Size is readable at a glance.** How close the bubble is to the wall shows how close the
   trip is, with no arithmetic.
-- **A camera into the chamber** (built as a placeholder). A large 4:3 screen under the dial
-  and the chamber view, as wide as both, labelled CAM 1. For now it's black, and shows static while the instruments
+- **A camera into the chamber** (built as a placeholder). A classic 640 × 480 screen under
+  the dial and the chamber view, labelled CAM 1. (The panel shrinks to fit a small viewport.) For now it's black, and shows static while the instruments
   are down. Later it becomes an elaborate 3D scene of the chamber:
   - the containment field, flaring as the 1 g sphere nears the wall;
   - the injectors, firing the neutronium beam through the graviton lens;
