@@ -23,7 +23,6 @@ void ALRHud::BeginPlay()
 	Viewport->AddViewportWidgetContent(HudWidget.ToSharedRef());
 
 	Subsystem->OnActionCompleted.AddDynamic(this, &ALRHud::HandleActionCompleted);
-	Subsystem->OnWorldChanged.AddDynamic(this, &ALRHud::HandleWorldChanged);
 	HudWidget->AddLogMessage(TEXT("Horizon link established. Click a cell and Perturb to seed the first ripple."), false);
 }
 
@@ -32,7 +31,6 @@ void ALRHud::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (ULRGameSubsystem* Subsystem = ULRGameSubsystem::Get(this))
 	{
 		Subsystem->OnActionCompleted.RemoveDynamic(this, &ALRHud::HandleActionCompleted);
-		Subsystem->OnWorldChanged.RemoveDynamic(this, &ALRHud::HandleWorldChanged);
 	}
 	if (HudWidget.IsValid())
 	{
@@ -45,11 +43,24 @@ void ALRHud::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void ALRHud::HandleWorldChanged()
+bool ALRHud::IsMenuOpen() const
+{
+	return HudWidget.IsValid() && HudWidget->IsMenuOpen();
+}
+
+void ALRHud::HandleMenuKey()
 {
 	if (HudWidget.IsValid())
 	{
-		HudWidget->RebuildDeployedList();
+		HudWidget->HandleMenuKey();
+	}
+}
+
+void ALRHud::ActivateCardSlot(int32 Slot)
+{
+	if (HudWidget.IsValid())
+	{
+		HudWidget->ActivateCardSlot(Slot);
 	}
 }
 

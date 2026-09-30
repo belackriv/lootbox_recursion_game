@@ -2,16 +2,20 @@
 
 #include "Framework/Application/SlateApplication.h"
 #include "Game/LRGameSubsystem.h"
+#include "Game/LRInputCommands.h"
+#include "Game/LRUserSettings.h"
 #include "Simulation/LRPhysics.h"
 #include "Simulation/LRSimulation.h"
 #include "UI/LRHudStyle.h"
 #include "UI/SLRChamberCamera.h"
 #include "UI/SLRChamberView.h"
 #include "UI/SLRFeedDial.h"
+#include "UI/SLRGameMenu.h"
 #include "UI/SLRStaticNoise.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SDPIScaler.h"
 #include "Widgets/Layout/SScaleBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSpacer.h"
@@ -81,6 +85,11 @@ void SLRGameHud::Construct(const FArguments& InArgs)
 	// while its children (the panels) still receive them.
 	ChildSlot
 	[
+		// The player's UI scale applies to everything.
+		SNew(SDPIScaler)
+		.Visibility(EVisibility::SelfHitTestInvisible)
+		.DPIScale_Lambda([this]() { return GetUIScale(); })
+		[
 		SNew(SOverlay)
 		.Visibility(EVisibility::SelfHitTestInvisible)
 		// Under the panels: static over the 3D view while the instruments are down.
@@ -105,7 +114,7 @@ void SLRGameHud::Construct(const FArguments& InArgs)
 				SNew(SHorizontalBox)
 				.Visibility(EVisibility::SelfHitTestInvisible)
 
-				// Left column: actions + inventory
+				// Top left: the command card, with the build layer strip under it.
 				+ SHorizontalBox::Slot()
 				.AutoWidth()
 				[
@@ -115,12 +124,6 @@ void SLRGameHud::Construct(const FArguments& InArgs)
 					.AutoHeight()
 					[
 						BuildActionsPanel()
-					]
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(FMargin(0.f, 8.f, 0.f, 0.f))
-					[
-						BuildUniversePanel()
 					]
 				]
 
@@ -132,20 +135,26 @@ void SLRGameHud::Construct(const FArguments& InArgs)
 					.Visibility(EVisibility::SelfHitTestInvisible)
 				]
 
-				// Right column: grid and selection, info
+				// Bottom right, just above the log: the Universe (matter), then Info.
 				+ SHorizontalBox::Slot()
 				.AutoWidth()
 				[
 					SNew(SBox)
-					.WidthOverride(280.f)
+					.WidthOverride(360.f)
 					.Visibility(EVisibility::SelfHitTestInvisible)
 					[
 						SNew(SVerticalBox)
 						.Visibility(EVisibility::SelfHitTestInvisible)
 						+ SVerticalBox::Slot()
+						.FillHeight(1.f)
+						[
+							SNew(SSpacer)
+							.Visibility(EVisibility::SelfHitTestInvisible)
+						]
+						+ SVerticalBox::Slot()
 						.AutoHeight()
 						[
-							BuildWorldPanel()
+							BuildUniversePanel()
 						]
 						+ SVerticalBox::Slot()
 						.AutoHeight()
@@ -202,7 +211,73 @@ void SLRGameHud::Construct(const FArguments& InArgs)
 				BuildHelpDialog()
 			]
 		]
+		// The game menu, over everything (Esc or MENU; it pauses the game).
+		+ SOverlay::Slot()
+		[
+			SAssignNew(Menu, SLRGameMenu)
+			.Subsystem(Subsystem)
+			.OnClose(FSimpleDelegate::CreateLambda([this]() { SetMenuOpen(false); }))
+			.Visibility_Lambda([this]() { return bMenuOpen ? EVisibility::Visible : EVisibility::Collapsed; })
+		]
+		]
 	];
+}
+
+float SLRGameHud::GetUIScale() const
+{
+	const ULRGameSubsystem* Sub = GetSubsystem();
+	const ULRUserSettings* Settings = Sub ? Sub->GetUserSettings() : nullptr;
+	return Settings ? FMath::Clamp(Settings->UIScale, 0.5f, 2.f) : 1.f;
+}
+
+void SLRGameHud::SetMenuOpen(bool bOpen)
+{
+	bMenuOpen = bOpen;
+	if (ULRGameSubsystem* Sub = GetSubsystem())
+	{
+		Sub->SetPaused(bOpen);
+	}
+	if (bOpen)
+	{
+		bHelpOpen = false;
+		if (Menu.IsValid())
+		{
+			Menu->Open();
+		}
+	}
+	else
+	{
+		FSlateApplication::Get().SetAllUserFocusToGameViewport();
+	}
+}
+
+void SLRGameHud::HandleMenuKey()
+{
+	if (bMenuOpen)
+	{
+		if (Menu.IsValid())
+		{
+			Menu->Back();
+		}
+		return;
+	}
+	ULRGameSubsystem* Sub = GetSubsystem();
+	if (bHelpOpen)
+	{
+		bHelpOpen = false;
+	}
+	else if (bBuildPage)
+	{
+		bBuildPage = false;
+	}
+	else if (Sub && Sub->IsOutsideViewOpen())
+	{
+		Sub->SetOutsideViewOpen(false);
+	}
+	else
+	{
+		SetMenuOpen(true);
+	}
 }
 
 void SLRGameHud::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
@@ -211,7 +286,18 @@ void SLRGameHud::Tick(const FGeometry& AllottedGeometry, const double InCurrentT
 	const ULRGameSubsystem* Sub = GetSubsystem();
 	const float Goal = (Sub && Sub->IsOutsideViewOpen()) ? 1.f : 0.f;
 	OutsideDrop = FMath::FInterpConstantTo(OutsideDrop, Goal, InDeltaTime, 4.f); // a quarter of a second
-	ViewSize = FVector2f(AllottedGeometry.GetLocalSize());
+	// In the UI's own (scaled) units, which is what the panels are laid out in.
+	ViewSize = FVector2f(AllottedGeometry.GetLocalSize()) / GetUIScale();
+
+	// A different selection (or none) puts the card back on its main page.
+	FIntVector Selected = FIntVector::ZeroValue;
+	const bool bHasSelection = GetSelected(Selected);
+	if (bHasSelection != bCardHadSelection || (bHasSelection && Selected != CardCell))
+	{
+		bBuildPage = false;
+		bCardHadSelection = bHasSelection;
+		CardCell = Selected;
+	}
 
 	// Fit the 4:3 camera into the space under the dial and the chamber, no wider than the panel
 	// allows next to its other columns, and never below CameraMinHeight.
@@ -368,6 +454,29 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 					.Font(Style.HeadingFont)
 					.ColorAndOpacity(Style.Orange)
 					.Text(LOCTEXT("HelpButton", "?"))
+				]
+			]
+			// MENU: the game menu (Esc).
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(FMargin(6.f, 0.f, 0.f, 0.f))
+			[
+				SNew(SButton)
+				.ButtonStyle(&Style.ButtonStyle)
+				.IsFocusable(false)
+				.ContentPadding(FMargin(8.f, 1.f))
+				.ToolTipText(LOCTEXT("MenuTip", "The menu: save, load, settings, quit (Esc)"))
+				.OnClicked_Lambda([this]()
+				{
+					SetMenuOpen(true);
+					return FReply::Handled();
+				})
+				[
+					SNew(STextBlock)
+					.Font(Style.HeadingFont)
+					.ColorAndOpacity(Style.Orange)
+					.Text(LOCTEXT("MenuButton", "MENU"))
 				]
 			]
 			+ SHorizontalBox::Slot()
@@ -547,61 +656,40 @@ TSharedRef<SWidget> SLRGameHud::BuildActionsPanel()
 	const FLRHudStyle& Style = FLRHudStyle::Get();
 	TSharedRef<SVerticalBox> Box = SNew(SVerticalBox);
 
+	// What the card is for: the selected cell and what's in it.
 	Box->AddSlot()
 	.AutoHeight()
 	.Padding(FMargin(0.f, 0.f, 0.f, 6.f))
 	[
-		MakeActionButton(LRNames::Perturb,
-			[this]()
-			{
-				if (ULRGameSubsystem* Sub = GetSubsystem())
-				{
-					Sub->RequestActionWithSelection(LRNames::Perturb);
-				}
-			},
-			// Needs a selected cell that is empty or holds a ripple that can still deepen.
-			[this]() { return CanPerturbSelectedCell(); })
-	];
-
-	// Build: one button per recipe, built in the selected cell (Rails: CraftToggleButton +
-	// CraftActionButton choices).
-	Box->AddSlot()
-	.AutoHeight()
-	.Padding(FMargin(0.f, 4.f, 0.f, 2.f))
-	[
-		SNew(SHorizontalBox)
-		.Visibility_Lambda([this]() { return GetStatus(LRNames::Craft).bRevealed ? EVisibility::Visible : EVisibility::Collapsed; })
-		+ SHorizontalBox::Slot()
-		.AutoWidth()
-		.VAlign(VAlign_Center)
-		.Padding(FMargin(0.f, 0.f, 8.f, 0.f))
-		[
-			SNew(STextBlock)
-			.Font(Style.HeadingFont)
-			.ColorAndOpacity(Style.Text)
-			.Text_Lambda([this]() { return AsText(GetStatus(LRNames::Craft).Label); })
-		]
-		+ SHorizontalBox::Slot()
-		.FillWidth(1.f)
-		.VAlign(VAlign_Center)
-		[
-			MakeActionProgress(LRNames::Craft)
-		]
-	];
-
-	if (const FLRSimulation* Sim = GetSimulation())
-	{
-		for (const FLRRecipeDef& Recipe : Sim->GetData().Recipes)
+		SNew(STextBlock)
+		.Font(Style.BodyFont)
+		.ColorAndOpacity(Style.Orange)
+		.AutoWrapText(true)
+		.Text_Lambda([this]()
 		{
-			Box->AddSlot()
-			.AutoHeight()
-			.Padding(FMargin(0.f, 2.f))
-			[
-				MakeRecipeButton(Recipe.Id)
-			];
-		}
+			const FLRSimulation* Sim = GetSimulation();
+			FIntVector Cell;
+			if (!Sim || !GetSelected(Cell))
+			{
+				return LOCTEXT("CardNoSelection", "Click a cell to see what you can do there.");
+			}
+			const FLRPlacedEntity* Entity = Sim->FindPlaced(Cell);
+			return AsText(FString::Printf(TEXT("%s%s  %s"), bBuildPage ? TEXT("Build in ") : TEXT(""), *FLRSimulation::DescribeCell(Cell),
+				Entity ? *Sim->GetData().GetDisplayName(Entity->Item) : TEXT("(empty)")));
+		})
+	];
+
+	for (int32 Slot = 0; Slot < LRInput::CardSlotCount; ++Slot)
+	{
+		Box->AddSlot()
+		.AutoHeight()
+		.Padding(FMargin(0.f, 1.f))
+		[
+			MakeCardSlot(Slot)
+		];
 	}
 
+	// On the Build page: how many recipes are still to discover.
 	Box->AddSlot()
 	.AutoHeight()
 	.Padding(FMargin(0.f, 4.f, 0.f, 0.f))
@@ -609,6 +697,7 @@ TSharedRef<SWidget> SLRGameHud::BuildActionsPanel()
 		SNew(STextBlock)
 		.Font(Style.SmallFont)
 		.ColorAndOpacity(Style.TextDark)
+		.Visibility_Lambda([this]() { return bBuildPage ? EVisibility::Visible : EVisibility::Collapsed; })
 		.Text_Lambda([this]()
 		{
 			const FLRSimulation* Sim = GetSimulation();
@@ -620,16 +709,373 @@ TSharedRef<SWidget> SLRGameHud::BuildActionsPanel()
 					Locked += Sim->IsRecipeUnlocked(Recipe.Id) ? 0 : 1;
 				}
 			}
-			FIntVector Cell;
-			const FString Hint = GetSelected(Cell) ? FString() : TEXT("Select a cell to build in.  ");
-			return AsText(Hint + (Locked > 0 ? FString::Printf(TEXT("%d recipe(s) still to discover..."), Locked) : FString()));
+			return Locked > 0 ? AsText(FString::Printf(TEXT("%d recipe(s) still to discover..."), Locked)) : FText::GetEmpty();
 		})
-		.Visibility_Lambda([this]() { return GetStatus(LRNames::Craft).bRevealed ? EVisibility::Visible : EVisibility::Collapsed; })
 	];
 
-	return MakePanel(LOCTEXT("Actions", "ACTIONS"),
-		SNew(SBox).WidthOverride(440.f)[Box],
-		SNullWidget::NullWidget);
+	Box->AddSlot()
+	.AutoHeight()
+	.Padding(FMargin(0.f, 8.f, 0.f, 0.f))
+	[
+		BuildLayerStrip()
+	];
+
+	TSharedRef<SWidget> PageLabel = SNew(STextBlock)
+		.Font(Style.SmallFont)
+		.ColorAndOpacity(Style.TextDim)
+		.Text_Lambda([this]()
+		{
+			if (!bBuildPage)
+			{
+				return FText::GetEmpty();
+			}
+			return AsText(FString::Printf(TEXT("BUILD  (%s: back)"), *GetKeyLabel(LRInput::Names::Menu).ToString()));
+		});
+
+	return MakePanel(LOCTEXT("Actions", "ACTIONS"), SNew(SBox).WidthOverride(340.f)[Box], PageLabel);
+}
+
+TSharedRef<SWidget> SLRGameHud::MakeCardSlot(int32 Slot)
+{
+	const FLRHudStyle& Style = FLRHudStyle::Get();
+	const FName Command = LRInput::SlotCommand(Slot);
+
+	// Cast progress fills orange; cooldown drains dim (for the slot's action, or Build for a recipe).
+	auto ActionOf = [this, Slot]()
+	{
+		const FCardEntry Entry = GetCardEntry(Slot);
+		return Entry.Kind == ECardKind::Action ? Entry.Name : (Entry.Kind == ECardKind::Recipe ? LRNames::Craft : FName());
+	};
+
+	return SNew(SHorizontalBox)
+		// The slot's key.
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(FMargin(0.f, 0.f, 4.f, 0.f))
+		[
+			SNew(SBox)
+			.WidthOverride(28.f)
+			.HAlign(HAlign_Center)
+			[
+				SNew(STextBlock)
+				.Font(Style.SmallFont)
+				.ColorAndOpacity(Style.TextDim)
+				.Text_Lambda([this, Command]() { return GetKeyLabel(Command); })
+			]
+		]
+		+ SHorizontalBox::Slot()
+		.FillWidth(1.f)
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			[
+				SNew(SButton)
+				.ButtonStyle(&Style.ButtonStyle)
+				.IsFocusable(false)
+				.ContentPadding(FMargin(8.f, 4.f))
+				.IsEnabled_Lambda([this, Slot]() { return IsCardEntryEnabled(GetCardEntry(Slot)); })
+				.OnClicked_Lambda([this, Slot]()
+				{
+					ActivateCardSlot(Slot);
+					return FReply::Handled();
+				})
+				.OnHovered_Lambda([this, Slot]()
+				{
+					const FCardEntry Entry = GetCardEntry(Slot);
+					if (Entry.Kind == ECardKind::Action)
+					{
+						SetHover(EHoverKind::Action, Entry.Name);
+					}
+					else if (Entry.Kind == ECardKind::Recipe)
+					{
+						SetHover(EHoverKind::Recipe, Entry.Name);
+					}
+					else
+					{
+						ClearHover();
+					}
+				})
+				.OnUnhovered_Lambda([this]() { ClearHover(); })
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.f)
+					.VAlign(VAlign_Center)
+					[
+						SNew(STextBlock)
+						.Font(Style.BodyFont)
+						.ColorAndOpacity(Style.Text)
+						.Text_Lambda([this, Slot]() { return GetCardEntryLabel(GetCardEntry(Slot)); })
+					]
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					[
+						SNew(STextBlock)
+						.Font(Style.SmallFont)
+						.Text_Lambda([this, Slot]() { return GetCardEntryDetail(GetCardEntry(Slot)); })
+						.ColorAndOpacity_Lambda([this, Slot]() -> FSlateColor
+						{
+							// A recipe's cost turns red when there isn't enough matter in reach.
+							const FLRHudStyle& S = FLRHudStyle::Get();
+							const FCardEntry Entry = GetCardEntry(Slot);
+							const FLRSimulation* Sim = GetSimulation();
+							const FLRRecipeDef* Recipe = (Sim && Entry.Kind == ECardKind::Recipe) ? Sim->GetData().FindRecipe(Entry.Name) : nullptr;
+							FIntVector Cell;
+							return (Recipe && GetSelected(Cell) && !Sim->CanAffordAt(Cell, Recipe->Cost)) ? S.Red : S.TextDim;
+						})
+					]
+				]
+			]
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(FMargin(0.f, 1.f, 0.f, 0.f))
+			[
+				SNew(SBox)
+				.HeightOverride(3.f)
+				[
+					SNew(SProgressBar)
+					.Style(&Style.ProgressStyle)
+					.Percent_Lambda([this, ActionOf]() -> TOptional<float>
+					{
+						const FName ActionName = ActionOf();
+						if (ActionName.IsNone())
+						{
+							return 0.f;
+						}
+						const FLRActionStatus Status = GetStatus(ActionName);
+						if (Status.bCasting)
+						{
+							return Status.CastProgress;
+						}
+						return (Status.bOnCooldown && Status.Cooldown > 0.f) ? Status.CooldownRemaining / Status.Cooldown : 0.f;
+					})
+					.FillColorAndOpacity_Lambda([this, ActionOf]() -> FSlateColor
+					{
+						const FLRHudStyle& S = FLRHudStyle::Get();
+						const FName ActionName = ActionOf();
+						return (!ActionName.IsNone() && GetStatus(ActionName).bCasting) ? S.Orange : S.TextDark;
+					})
+				]
+			]
+		];
+}
+
+TArray<SLRGameHud::FCardEntry> SLRGameHud::GetCardEntries() const
+{
+	TArray<FCardEntry> Entries;
+	const FLRSimulation* Sim = GetSimulation();
+	FIntVector Cell;
+	if (!Sim || !GetSelected(Cell))
+	{
+		return Entries;
+	}
+	const FLRGameData& Data = Sim->GetData();
+
+	// The Build page: every unlocked recipe, and Back in the last slot.
+	if (bBuildPage)
+	{
+		for (const FLRRecipeDef& Recipe : Data.Recipes)
+		{
+			if (Sim->IsRecipeUnlocked(Recipe.Id) && Entries.Num() < LRInput::CardSlotCount - 1)
+			{
+				Entries.Add({ ECardKind::Recipe, Recipe.Id });
+			}
+		}
+		Entries.SetNum(LRInput::CardSlotCount - 1);
+		Entries.Add({ ECardKind::Back, NAME_None });
+		return Entries;
+	}
+
+	// The main page: what can be done with this cell's contents, from the top, in a fixed order.
+	const FLRPlacedEntity* Entity = Sim->FindPlaced(Cell);
+	const FLRItemDef* Def = Entity ? Data.FindItem(Entity->Item) : nullptr;
+	const FLRActionDef* Perturb = Data.FindAction(LRNames::Perturb);
+	const bool bRipple = Entity && Perturb && Entity->Item == Perturb->Places;
+	if (GetStatus(LRNames::Perturb).bRevealed && (!Entity || bRipple))
+	{
+		Entries.Add({ ECardKind::Action, LRNames::Perturb });
+	}
+	if (GetStatus(LRNames::Craft).bRevealed && (!Entity || (Def && Def->IsIrradiator())))
+	{
+		Entries.Add({ ECardKind::BuildPage, LRNames::Craft });
+	}
+	if (GetStatus(LRNames::Use).bRevealed && Def && (Def->IsLootBox() || Def->IsIrradiator()))
+	{
+		Entries.Add({ ECardKind::Action, LRNames::Use });
+	}
+	if (GetStatus(LRNames::Dismantle).bRevealed && Entity && !(Def && Def->IsStructure()))
+	{
+		Entries.Add({ ECardKind::Action, LRNames::Dismantle });
+	}
+	return Entries;
+}
+
+SLRGameHud::FCardEntry SLRGameHud::GetCardEntry(int32 Slot) const
+{
+	const TArray<FCardEntry> Entries = GetCardEntries();
+	return Entries.IsValidIndex(Slot) ? Entries[Slot] : FCardEntry();
+}
+
+bool SLRGameHud::IsCardEntryEnabled(const FCardEntry& Entry) const
+{
+	switch (Entry.Kind)
+	{
+	case ECardKind::Action:
+	{
+		const bool bFits = Entry.Name == LRNames::Perturb ? CanPerturbSelectedCell()
+			: Entry.Name == LRNames::Use ? CanOpenSelectedCell()
+			: Entry.Name == LRNames::Dismantle ? CanDismantleSelectedCell()
+			: true;
+		return bFits && GetStatus(Entry.Name).bEnabled;
+	}
+	case ECardKind::BuildPage:
+		return GetStatus(LRNames::Craft).bRevealed;
+	case ECardKind::Recipe:
+	{
+		const FLRSimulation* Sim = GetSimulation();
+		FIntVector Cell;
+		return Sim && GetStatus(LRNames::Craft).bEnabled && GetSelected(Cell) && Sim->ValidateBuild(Entry.Name, Cell).IsNone();
+	}
+	case ECardKind::Back:
+		return true;
+	default:
+		return false;
+	}
+}
+
+FText SLRGameHud::GetCardEntryLabel(const FCardEntry& Entry) const
+{
+	switch (Entry.Kind)
+	{
+	case ECardKind::Action:
+	{
+		const FLRActionStatus Status = GetStatus(Entry.Name);
+		return AsText(Status.bCasting ? FString::Printf(TEXT("%s..."), *Status.Label) : Status.Label);
+	}
+	case ECardKind::BuildPage:
+		return AsText(FString::Printf(TEXT("%s..."), *GetStatus(LRNames::Craft).Label));
+	case ECardKind::Recipe:
+	{
+		const FLRSimulation* Sim = GetSimulation();
+		const FLRRecipeDef* Recipe = Sim ? Sim->GetData().FindRecipe(Entry.Name) : nullptr;
+		return AsText(Recipe ? Recipe->Label : Entry.Name.ToString());
+	}
+	case ECardKind::Back:
+		return LOCTEXT("CardBack", "Back");
+	default:
+		return FText::GetEmpty();
+	}
+}
+
+FText SLRGameHud::GetCardEntryDetail(const FCardEntry& Entry) const
+{
+	return Entry.Kind == ECardKind::Recipe ? AsText(DescribeCost(Entry.Name, /*bMultiline*/ false)) : FText::GetEmpty();
+}
+
+void SLRGameHud::RunCardEntry(const FCardEntry& Entry)
+{
+	ULRGameSubsystem* Sub = GetSubsystem();
+	if (!Sub)
+	{
+		return;
+	}
+	switch (Entry.Kind)
+	{
+	case ECardKind::Action:
+		Sub->RequestActionWithSelection(Entry.Name);
+		break;
+	case ECardKind::BuildPage:
+		bBuildPage = true;
+		ClearHover();
+		break;
+	case ECardKind::Recipe:
+		if (Sub->Craft(Entry.Name).bSuccess)
+		{
+			bBuildPage = false; // built: back to the cell's actions
+		}
+		break;
+	case ECardKind::Back:
+		bBuildPage = false;
+		break;
+	default:
+		break;
+	}
+}
+
+void SLRGameHud::ActivateCardSlot(int32 Slot)
+{
+	if (bMenuOpen)
+	{
+		return;
+	}
+	const FCardEntry Entry = GetCardEntry(Slot);
+	if (IsCardEntryEnabled(Entry))
+	{
+		RunCardEntry(Entry);
+	}
+}
+
+FText SLRGameHud::GetKeyLabel(FName Command) const
+{
+	const ULRGameSubsystem* Sub = GetSubsystem();
+	const ULRUserSettings* Settings = Sub ? Sub->GetUserSettings() : nullptr;
+	if (!Settings)
+	{
+		return FText::GetEmpty();
+	}
+	FKey Primary;
+	FKey Secondary;
+	Settings->GetKeys(Command, Primary, Secondary);
+	const FKey Shown = Primary.IsValid() ? Primary : Secondary;
+	return Shown.IsValid() ? Shown.GetDisplayName(/*bLongDisplayName*/ false) : FText::GetEmpty();
+}
+
+TSharedRef<SWidget> SLRGameHud::BuildLayerStrip()
+{
+	const FLRHudStyle& Style = FLRHudStyle::Get();
+	return SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		[
+			MakeSmallButton(LOCTEXT("LayerDown", "- Layer"), [this]()
+			{
+				if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->ChangeBuildLayer(-1); }
+			})
+		]
+		+ SHorizontalBox::Slot()
+		.FillWidth(1.f)
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Center)
+		[
+			SNew(STextBlock)
+			.Font(Style.HeadingFont)
+			.ColorAndOpacity(Style.Text)
+			.Text_Lambda([this]()
+			{
+				const ULRGameSubsystem* Sub = GetSubsystem();
+				return AsText(FString::Printf(TEXT("Layer Z = %d"), Sub ? Sub->GetBuildLayer() : 0));
+			})
+		]
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		[
+			MakeSmallButton(LOCTEXT("LayerUp", "Layer +"), [this]()
+			{
+				if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->ChangeBuildLayer(1); }
+			})
+		]
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.Padding(FMargin(4.f, 0.f, 0.f, 0.f))
+		[
+			MakeSmallButton(LOCTEXT("Home", "Home"), [this]()
+			{
+				if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->FocusHome(); }
+			})
+		];
 }
 
 TSharedRef<SWidget> SLRGameHud::BuildUniversePanel()
@@ -715,223 +1161,8 @@ TSharedRef<SWidget> SLRGameHud::BuildUniversePanel()
 	];
 
 	return MakePanel(LOCTEXT("Universe", "UNIVERSE"),
-		SNew(SBox).WidthOverride(440.f)[Box],
+		Box, // as wide as the right-hand column
 		SNullWidget::NullWidget);
-}
-
-TSharedRef<SWidget> SLRGameHud::BuildWorldPanel()
-{
-	const FLRHudStyle& Style = FLRHudStyle::Get();
-	TSharedRef<SVerticalBox> Box = SNew(SVerticalBox);
-
-	// Build layer controls
-	Box->AddSlot()
-	.AutoHeight()
-	.Padding(FMargin(0.f, 0.f, 0.f, 4.f))
-	[
-		SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot()
-		.AutoWidth()
-		[
-			MakeSmallButton(LOCTEXT("LayerDown", "- Layer"), [this]()
-			{
-				if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->ChangeBuildLayer(-1); }
-			})
-		]
-		+ SHorizontalBox::Slot()
-		.FillWidth(1.f)
-		.HAlign(HAlign_Center)
-		.VAlign(VAlign_Center)
-		[
-			SNew(STextBlock)
-			.Font(Style.HeadingFont)
-			.ColorAndOpacity(Style.Text)
-			.Text_Lambda([this]()
-			{
-				const ULRGameSubsystem* Sub = GetSubsystem();
-				return AsText(FString::Printf(TEXT("Layer Z = %d"), Sub ? Sub->GetBuildLayer() : 0));
-			})
-		]
-		+ SHorizontalBox::Slot()
-		.AutoWidth()
-		[
-			MakeSmallButton(LOCTEXT("LayerUp", "Layer +"), [this]()
-			{
-				if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->ChangeBuildLayer(1); }
-			})
-		]
-	];
-
-	// Cursor / selection readout
-	Box->AddSlot()
-	.AutoHeight()
-	.Padding(FMargin(0.f, 2.f))
-	[
-		SNew(STextBlock)
-		.Font(Style.SmallFont)
-		.ColorAndOpacity(Style.TextDim)
-		.Text_Lambda([this]()
-		{
-			const ULRGameSubsystem* Sub = GetSubsystem();
-			FIntVector Cell;
-			if (!Sub || !Sub->GetHoveredCell(Cell))
-			{
-				return LOCTEXT("NoCursor", "Cursor: -");
-			}
-			return AsText(FString::Printf(TEXT("Cursor: %s"), *FLRSimulation::DescribeCell(Cell)));
-		})
-	];
-	Box->AddSlot()
-	.AutoHeight()
-	.Padding(FMargin(0.f, 2.f, 0.f, 4.f))
-	[
-		SNew(STextBlock)
-		.Font(Style.BodyFont)
-		.ColorAndOpacity(Style.Orange)
-		.AutoWrapText(true)
-		.Text_Lambda([this]()
-		{
-			const ULRGameSubsystem* Sub = GetSubsystem();
-			const FLRSimulation* Sim = GetSimulation();
-			FIntVector Cell;
-			if (!Sub || !Sim || !Sub->GetSelectedCell(Cell))
-			{
-				return LOCTEXT("NoSelection", "Selected: none (click a cell)");
-			}
-			const FLRPlacedEntity* Entity = Sim->FindPlaced(Cell);
-			return AsText(FString::Printf(TEXT("Selected: %s  %s"), *FLRSimulation::DescribeCell(Cell),
-				Entity ? *Sim->GetData().GetDisplayName(Entity->Item) : TEXT("(empty)")));
-		})
-	];
-
-	// Open and Dismantle act on whatever is in the selected cell.
-	Box->AddSlot()
-	.AutoHeight()
-	.Padding(FMargin(0.f, 2.f, 0.f, 6.f))
-	[
-		SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot()
-		.FillWidth(1.f)
-		.Padding(FMargin(0.f, 0.f, 3.f, 0.f))
-		[
-			MakeActionButton(LRNames::Use,
-				[this]()
-				{
-					if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->RequestActionWithSelection(LRNames::Use); }
-				},
-				[this]() { return CanOpenSelectedCell(); })
-		]
-		+ SHorizontalBox::Slot()
-		.FillWidth(1.f)
-		.Padding(FMargin(3.f, 0.f, 0.f, 0.f))
-		[
-			MakeActionButton(LRNames::Dismantle,
-				[this]()
-				{
-					if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->RequestActionWithSelection(LRNames::Dismantle); }
-				},
-				[this]() { return CanDismantleSelectedCell(); })
-		]
-	];
-
-	// Irradiation: shown only when the selected cell holds an irradiator.
-	Box->AddSlot()
-	.AutoHeight()
-	.Padding(FMargin(0.f, 0.f, 0.f, 6.f))
-	[
-		SNew(SBorder)
-		.BorderImage(&Style.WhiteBrush)
-		.BorderBackgroundColor(Style.PanelInner)
-		.Padding(FMargin(6.f))
-		.Visibility_Lambda([this]() { return GetSelectedIrradiator() ? EVisibility::Visible : EVisibility::Collapsed; })
-		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			[
-				SNew(STextBlock)
-				.Font(Style.SmallFont)
-				.ColorAndOpacity(Style.Text)
-				.AutoWrapText(true)
-				.Text_Lambda([this]()
-				{
-					const FLRPlacedEntity* Irradiator = GetSelectedIrradiator();
-					return Irradiator ? AsText(DescribeIrradiator(*Irradiator)) : FText::GetEmpty();
-				})
-			]
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(FMargin(0.f, 4.f))
-			[
-				SNew(SBox)
-				.HeightOverride(4.f)
-				[
-					SNew(SProgressBar)
-					.Style(&Style.ProgressStyle)
-					.FillColorAndOpacity(Style.Orange)
-					.Percent_Lambda([this]() -> TOptional<float> { return GetSelectedExposureFraction(); })
-				]
-			]
-		]
-	];
-
-	// Everything in the pocket universe, on every layer. Rebuilt when the world changes (RebuildDeployedList).
-	Box->AddSlot()
-	.AutoHeight()
-	[
-		SNew(SBox)
-		.MaxDesiredHeight(220.f)
-		[
-			SNew(SScrollBox)
-			+ SScrollBox::Slot()
-			[
-				SAssignNew(DeployedBox, SVerticalBox)
-			]
-		]
-	];
-	RebuildDeployedList();
-
-	TSharedRef<SWidget> HomeButton = MakeSmallButton(LOCTEXT("Home", "Home"), [this]()
-	{
-		if (ULRGameSubsystem* Sub = GetSubsystem()) { Sub->FocusHome(); }
-	});
-
-	return MakePanel(LOCTEXT("Grid", "GRID"), Box, HomeButton);
-}
-
-void SLRGameHud::RebuildDeployedList()
-{
-	if (!DeployedBox.IsValid())
-	{
-		return;
-	}
-	const FLRHudStyle& Style = FLRHudStyle::Get();
-	DeployedBox->ClearChildren();
-
-	const ULRGameSubsystem* Sub = GetSubsystem();
-	const TArray<FLRPlacedEntity> Placed = Sub ? Sub->GetPlacedSorted() : TArray<FLRPlacedEntity>();
-	if (Placed.IsEmpty())
-	{
-		DeployedBox->AddSlot()
-		.AutoHeight()
-		[
-			SNew(STextBlock)
-			.Font(Style.SmallFont)
-			.ColorAndOpacity(Style.TextDark)
-			.AutoWrapText(true)
-			.Text(LOCTEXT("NothingDeployed", "The pocket universe is empty. Click a cell, then Perturb to seed a ripple there."))
-		];
-		return;
-	}
-	for (const FLRPlacedEntity& Entity : Placed)
-	{
-		DeployedBox->AddSlot()
-		.AutoHeight()
-		.Padding(FMargin(0.f, 1.f))
-		[
-			MakeDeployedRow(Entity)
-		];
-	}
 }
 
 TSharedRef<SWidget> SLRGameHud::BuildInfoPanel()
@@ -942,9 +1173,73 @@ TSharedRef<SWidget> SLRGameHud::BuildInfoPanel()
 		.MinDesiredHeight(120.f)
 		[
 			SNew(SVerticalBox)
+			// Where things are: the selected cell, and the cell under the cursor.
 			+ SVerticalBox::Slot()
 			.AutoHeight()
-			.Padding(FMargin(0.f, 0.f, 0.f, 4.f))
+			[
+				SNew(STextBlock)
+				.Font(Style.SmallFont)
+				.ColorAndOpacity(Style.TextDim)
+				.Text_Lambda([this]()
+				{
+					const ULRGameSubsystem* Sub = GetSubsystem();
+					const FLRSimulation* Sim = GetSimulation();
+					FIntVector Cell;
+					FString Selected = TEXT("Selected: none");
+					if (Sub && Sim && Sub->GetSelectedCell(Cell))
+					{
+						const FLRPlacedEntity* Entity = Sim->FindPlaced(Cell);
+						Selected = FString::Printf(TEXT("Selected: %s %s"), *FLRSimulation::DescribeCell(Cell),
+							Entity ? *Sim->GetData().GetDisplayName(Entity->Item) : TEXT("(empty)"));
+					}
+					FIntVector Hovered;
+					const FString Cursor = (Sub && Sub->GetHoveredCell(Hovered)) ? FLRSimulation::DescribeCell(Hovered) : FString(TEXT("-"));
+					return AsText(FString::Printf(TEXT("%s    Cursor: %s"), *Selected, *Cursor));
+				})
+			]
+			// Irradiation: shown only when the selected cell holds an irradiator.
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(FMargin(0.f, 4.f, 0.f, 0.f))
+			[
+				SNew(SBorder)
+				.BorderImage(&Style.WhiteBrush)
+				.BorderBackgroundColor(Style.PanelInner)
+				.Padding(FMargin(6.f))
+				.Visibility_Lambda([this]() { return GetSelectedIrradiator() ? EVisibility::Visible : EVisibility::Collapsed; })
+				[
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					[
+						SNew(STextBlock)
+						.Font(Style.SmallFont)
+						.ColorAndOpacity(Style.Text)
+						.AutoWrapText(true)
+						.Text_Lambda([this]()
+						{
+							const FLRPlacedEntity* Irradiator = GetSelectedIrradiator();
+							return Irradiator ? AsText(DescribeIrradiator(*Irradiator)) : FText::GetEmpty();
+						})
+					]
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.Padding(FMargin(0.f, 4.f))
+					[
+						SNew(SBox)
+						.HeightOverride(4.f)
+						[
+							SNew(SProgressBar)
+							.Style(&Style.ProgressStyle)
+							.FillColorAndOpacity(Style.Orange)
+							.Percent_Lambda([this]() -> TOptional<float> { return GetSelectedExposureFraction(); })
+						]
+					]
+				]
+			]
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(FMargin(0.f, 6.f, 0.f, 4.f))
 			[
 				SNew(STextBlock)
 				.Font(Style.HeadingFont)
@@ -998,154 +1293,6 @@ TSharedRef<SWidget> SLRGameHud::BuildLogPanel()
 // ---------------------------------------------------------------------------------------
 // Reusable pieces
 // ---------------------------------------------------------------------------------------
-
-TSharedRef<SWidget> SLRGameHud::MakeActionButton(FName ActionName, TFunction<void()> OnClick, TFunction<bool()> ExtraEnabled)
-{
-	const FLRHudStyle& Style = FLRHudStyle::Get();
-
-	// Tech tree: actions stay hidden until revealed (then they stay).
-	return SNew(SVerticalBox)
-		.Visibility_Lambda([this, ActionName]() { return GetStatus(ActionName).bRevealed ? EVisibility::Visible : EVisibility::Collapsed; })
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		[
-			SNew(SButton)
-			.ButtonStyle(&Style.ButtonStyle)
-			.IsFocusable(false)
-			.HAlign(HAlign_Center)
-			.ContentPadding(FMargin(10.f, 5.f))
-			.IsEnabled_Lambda([this, ActionName, ExtraEnabled]()
-			{
-				return GetStatus(ActionName).bEnabled && (!ExtraEnabled || ExtraEnabled());
-			})
-			.OnClicked_Lambda([OnClick]()
-			{
-				OnClick();
-				return FReply::Handled();
-			})
-			.OnHovered_Lambda([this, ActionName]() { SetHover(EHoverKind::Action, ActionName); })
-			.OnUnhovered_Lambda([this]() { ClearHover(); })
-			[
-				SNew(STextBlock)
-				.Font(Style.HeadingFont)
-				.ColorAndOpacity(Style.Text)
-				.Text_Lambda([this, ActionName]()
-				{
-					const FLRActionStatus Status = GetStatus(ActionName);
-					if (Status.bCasting)
-					{
-						return AsText(FString::Printf(TEXT("%s..."), *Status.Label));
-					}
-					return AsText(Status.Label);
-				})
-			]
-		]
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(FMargin(0.f, 2.f, 0.f, 0.f))
-		[
-			MakeActionProgress(ActionName)
-		];
-}
-
-TSharedRef<SWidget> SLRGameHud::MakeActionProgress(FName ActionName)
-{
-	const FLRHudStyle& Style = FLRHudStyle::Get();
-
-	// Cast progress fills orange; cooldown drains dim. Rails: ActionButton.vue's progress bar.
-	return SNew(SBox)
-		.HeightOverride(4.f)
-		[
-			SNew(SProgressBar)
-			.Style(&Style.ProgressStyle)
-			.Percent_Lambda([this, ActionName]() -> TOptional<float>
-			{
-				const FLRActionStatus Status = GetStatus(ActionName);
-				if (Status.bCasting)
-				{
-					return Status.CastProgress;
-				}
-				if (Status.bOnCooldown && Status.Cooldown > 0.f)
-				{
-					return Status.CooldownRemaining / Status.Cooldown;
-				}
-				return 0.f;
-			})
-			.FillColorAndOpacity_Lambda([this, ActionName]() -> FSlateColor
-			{
-				const FLRHudStyle& S = FLRHudStyle::Get();
-				return GetStatus(ActionName).bCasting ? S.Orange : S.TextDark;
-			})
-		];
-}
-
-TSharedRef<SWidget> SLRGameHud::MakeRecipeButton(FName RecipeId)
-{
-	const FLRHudStyle& Style = FLRHudStyle::Get();
-	const FLRSimulation* Simulation = GetSimulation();
-	const FLRRecipeDef* RecipeDef = Simulation ? Simulation->GetData().FindRecipe(RecipeId) : nullptr;
-	const FText Label = AsText(RecipeDef ? RecipeDef->Label : RecipeId.ToString());
-
-	return SNew(SButton)
-		.ButtonStyle(&Style.ButtonStyle)
-		.IsFocusable(false)
-		.ContentPadding(FMargin(10.f, 4.f))
-		// Tech tree: only unlocked recipes are shown.
-		.Visibility_Lambda([this, RecipeId]()
-		{
-			const FLRSimulation* S = GetSimulation();
-			return (S && S->IsRecipeUnlocked(RecipeId) && GetStatus(LRNames::Craft).bRevealed) ? EVisibility::Visible : EVisibility::Collapsed;
-		})
-		// Buildable in the selected cell: it can take the output and there's enough matter in reach.
-		.IsEnabled_Lambda([this, RecipeId]()
-		{
-			const FLRSimulation* S = GetSimulation();
-			FIntVector Cell;
-			return S && GetStatus(LRNames::Craft).bEnabled && GetSelected(Cell) && S->ValidateBuild(RecipeId, Cell).IsNone();
-		})
-		.OnClicked_Lambda([this, RecipeId]()
-		{
-			if (ULRGameSubsystem* Sub = GetSubsystem())
-			{
-				Sub->Craft(RecipeId);
-			}
-			return FReply::Handled();
-		})
-		.OnHovered_Lambda([this, RecipeId]() { SetHover(EHoverKind::Recipe, RecipeId); })
-		.OnUnhovered_Lambda([this]() { ClearHover(); })
-		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.FillWidth(1.f)
-			.VAlign(VAlign_Center)
-			[
-				SNew(STextBlock)
-				.Font(Style.BodyFont)
-				.ColorAndOpacity(Style.Text)
-				.Text(Label)
-			]
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			[
-				SNew(STextBlock)
-				.Font(Style.SmallFont)
-				.Text(AsText(DescribeCost(RecipeId, /*bMultiline*/ false)))
-				.ColorAndOpacity_Lambda([this, RecipeId]() -> FSlateColor
-				{
-					const FLRHudStyle& S = FLRHudStyle::Get();
-					const FLRSimulation* Sim = GetSimulation();
-					const FLRRecipeDef* R = Sim ? Sim->GetData().FindRecipe(RecipeId) : nullptr;
-					FIntVector Cell;
-					if (!R || !GetSelected(Cell))
-					{
-						return S.TextDim;
-					}
-					return Sim->CanAffordAt(Cell, R->Cost) ? S.TextDim : S.Red;
-				})
-			]
-		];
-}
 
 TSharedRef<SWidget> SLRGameHud::MakeMatterRow(FName Item)
 {
@@ -1220,60 +1367,6 @@ TSharedRef<SWidget> SLRGameHud::MakeMatterRow(FName Item)
 					FIntVector Cell;
 					return (S && GetSelected(Cell)) ? FText::AsNumber(S->GetMatterInReach(Cell, Item)) : FText::FromString(TEXT("-"));
 				})
-			]
-		];
-}
-
-TSharedRef<SWidget> SLRGameHud::MakeDeployedRow(const FLRPlacedEntity& Entity)
-{
-	const FLRHudStyle& Style = FLRHudStyle::Get();
-	const FIntVector Cell = Entity.Cell;
-	const FLRSimulation* Sim = GetSimulation();
-	const FString Name = Sim ? Sim->GetData().GetDisplayName(Entity.Item) : Entity.Item.ToString();
-
-	// Rails: WorldCellSlot.vue. Clicking a row selects the cell and flies the camera there.
-	return SNew(SBorder)
-		.BorderImage(&Style.WhiteBrush)
-		.Padding(FMargin(1.f))
-		.BorderBackgroundColor_Lambda([this, Cell]() -> FSlateColor
-		{
-			const FLRHudStyle& S = FLRHudStyle::Get();
-			return IsCellSelected(Cell) ? S.Orange : S.SlotBorder;
-		})
-		[
-			SNew(SButton)
-			.ButtonStyle(&Style.SlotButtonStyle)
-			.IsFocusable(false)
-			.ContentPadding(FMargin(6.f, 2.f))
-			.OnClicked_Lambda([this, Cell]()
-			{
-				if (ULRGameSubsystem* Sub = GetSubsystem())
-				{
-					Sub->SelectCell(Cell, /*bToggle*/ false);
-					Sub->FocusOnCell(Cell);
-				}
-				return FReply::Handled();
-			})
-			.OnHovered_Lambda([this, Cell]() { SetHover(EHoverKind::WorldCell, NAME_None, 0, Cell); })
-			.OnUnhovered_Lambda([this]() { ClearHover(); })
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.f)
-				[
-					SNew(STextBlock)
-					.Font(Style.SmallFont)
-					.ColorAndOpacity(Style.Text)
-					.Text(AsText(Name))
-				]
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				[
-					SNew(STextBlock)
-					.Font(Style.SmallFont)
-					.ColorAndOpacity(Style.TextDim)
-					.Text(AsText(FLRSimulation::DescribeCell(Cell)))
-				]
 			]
 		];
 }
@@ -1547,8 +1640,9 @@ bool SLRGameHud::GetInfoCell(FIntVector& OutCell) const
 		OutCell = HoverCell;
 		return true;
 	}
+	// Otherwise the cell under the 3D cursor, or failing that the selected one.
 	const ULRGameSubsystem* Sub = GetSubsystem();
-	return HoverKind == EHoverKind::None && Sub && Sub->GetHoveredCell(OutCell);
+	return HoverKind == EHoverKind::None && Sub && (Sub->GetHoveredCell(OutCell) || Sub->GetSelectedCell(OutCell));
 }
 
 FString SLRGameHud::DescribeCost(FName RecipeId, bool bMultiline) const
@@ -1775,7 +1869,8 @@ TSharedRef<SWidget> SLRGameHud::BuildHelpDialog()
 		const TCHAR* Does;
 	};
 	const FHelpRow Rows[] = {
-		{ TEXT("Click a cell"), TEXT("Select it (click again to deselect). Building, Perturb, Open and Dismantle act on the selected cell.") },
+		{ TEXT("Click a cell"), TEXT("Select it (click again to deselect). The Actions card fills with what you can do there.") },
+		{ TEXT("1-9, 0"), TEXT("The Actions card's slots, top to bottom (Build opens a page of recipes; Esc goes back)") },
 		{ TEXT("WASD / arrows"), TEXT("Pan across the build layer") },
 		{ TEXT("Mouse wheel"), TEXT("Zoom") },
 		{ TEXT("Right mouse (hold)"), TEXT("Look around: orbit and tilt") },
@@ -1784,7 +1879,9 @@ TSharedRef<SWidget> SLRGameHud::BuildHelpDialog()
 		{ TEXT("R"), TEXT("Reset the camera angle and zoom") },
 		{ TEXT("H / Home"), TEXT("Fly to the first thing you placed") },
 		{ TEXT("F / Tab, OUTSIDE"), TEXT("The outside console: feed the host with the dial (drag or scroll), watch it in its chamber, Ignite a new one if it evaporates") },
+		{ TEXT("Esc / F10, MENU"), TEXT("The menu: save, load, settings (rebind any key), quit. The game pauses while it's open. (In the editor, Esc stops Play; use F10.)") },
 		{ TEXT("~"), TEXT("Console: LRGive hydrogen 500 (into the selected cell), LRTimeScale 10, LRSave, LRReset") },
+		{ TEXT("Keys"), TEXT("These are the defaults: rebind any of them in MENU > Settings.") },
 	};
 
 	TSharedRef<SVerticalBox> List = SNew(SVerticalBox);

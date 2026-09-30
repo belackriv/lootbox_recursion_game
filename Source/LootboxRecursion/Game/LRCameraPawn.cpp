@@ -81,8 +81,9 @@ void ALRCameraPawn::Tick(float DeltaSeconds)
 	TargetFocus.Z = Subsystem->GetBuildLayer() * CellSize;
 
 	// Orbit (Q/E) and free look (right mouse drag: X orbits, Y tilts)
-	TargetOrbitYaw += PendingOrbit * OrbitSpeed * DeltaSeconds + PendingLook.X * LookSensitivity;
-	TargetPitch = FMath::Clamp(TargetPitch + PendingLook.Y * LookSensitivity, MinPitch, MaxPitch);
+	const float Look = LookSensitivity * LookSensitivityScale;
+	TargetOrbitYaw += PendingOrbit * OrbitSpeed * DeltaSeconds + PendingLook.X * Look;
+	TargetPitch = FMath::Clamp(TargetPitch + PendingLook.Y * Look * (bInvertLook ? -1.f : 1.f), MinPitch, MaxPitch);
 	PendingOrbit = 0.f;
 	PendingLook = FVector2D::ZeroVector;
 	OrbitYaw = FMath::FInterpTo(OrbitYaw, TargetOrbitYaw, DeltaSeconds, FollowSpeed * 2.f);
@@ -96,7 +97,7 @@ void ALRCameraPawn::Tick(float DeltaSeconds)
 	const FVector2D Pan = PendingPan.GetClampedToMaxSize(1.f);
 	PendingPan = FVector2D::ZeroVector;
 	const float ZoomFactor = SpringArm->TargetArmLength / FMath::Max(DefaultArmLength, 1.f);
-	TargetFocus += (Right * Pan.X + Forward * Pan.Y) * PanSpeed * CellSize * ZoomFactor * DeltaSeconds;
+	TargetFocus += (Right * Pan.X + Forward * Pan.Y) * PanSpeed * PanSpeedScale * CellSize * ZoomFactor * DeltaSeconds;
 
 	CurrentFocus = FMath::VInterpTo(CurrentFocus, TargetFocus, DeltaSeconds, FollowSpeed);
 

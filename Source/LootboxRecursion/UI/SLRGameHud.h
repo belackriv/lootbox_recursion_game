@@ -5,6 +5,7 @@
 #include "Widgets/SCompoundWidget.h"
 
 class FLRSimulation;
+class SLRGameMenu;
 class SScrollBox;
 class SVerticalBox;
 class ULRGameSubsystem;
@@ -21,10 +22,12 @@ struct FLRPlacedEntity;
  * properties. Because of that most of the UI is simply "bound" to the simulation and never
  * needs manual refreshes. Only the message log is event-driven (AddLogMessage).
  *
- * Layout: Actions (with the build list) and the Universe (matter totals) on the left, the 3D
- * grid visible in the middle, the Grid panel (layer, selection, cell actions, entity list) and
- * Info on the right, and the Log across the bottom. There is no inventory: everything the
- * player makes lives in grid cells, so most actions work on the selected cell.
+ * Layout: the Actions panel top left is a command card (docs/DESIGN.md, "The command card"):
+ * ten slots with fixed keys (1-0 by default), filled with what the selected cell allows, and a
+ * Build page of recipes; the build layer strip sits under it. The 3D grid shows in the middle;
+ * the Universe (matter totals) and Info panels sit at the bottom right, above the Log across
+ * the bottom. There is no inventory: everything the player makes lives in grid cells, so
+ * actions work on the selected cell.
  *
  * That's the inside view. The outside panel (the facility's injectors: the feed dial, the host
  * in its chamber, the stored charge and Ignite) drops down from the top when the status bar's
@@ -32,6 +35,9 @@ struct FLRPlacedEntity;
  *
  * While the instruments are down (the stored charge is rebuilding), TV static covers the 3D
  * view and the chamber camera, and every action is disabled.
+ *
+ * Esc (or the MENU button) opens the game menu (SLRGameMenu) over everything and pauses. The
+ * whole HUD is scaled by the player's UI scale setting.
  */
 class LOOTBOXRECURSION_API SLRGameHud : public SCompoundWidget
 {
@@ -50,8 +56,12 @@ public:
 
 	void AddLogMessage(const FString& Message, bool bIsError);
 
-	/** Refresh the list of deployed entities (call when the world changes). */
-	void RebuildDeployedList();
+	/** The game menu is open (the game is paused). */
+	bool IsMenuOpen() const { return bMenuOpen; }
+	/** The menu key: back out of the menu's page, help, the Build card or the outside panel, else open the menu. */
+	void HandleMenuKey();
+	/** A command card slot's key (0-based): does what that slot shows, if it's enabled. */
+	void ActivateCardSlot(int32 Slot);
 
 private:
 	enum class EHoverKind : uint8
@@ -67,8 +77,9 @@ private:
 	TSharedRef<SWidget> BuildHeader();
 	TSharedRef<SWidget> BuildActionsPanel();
 	TSharedRef<SWidget> BuildUniversePanel();
-	TSharedRef<SWidget> BuildWorldPanel();
 	TSharedRef<SWidget> BuildInfoPanel();
+	/** Under the card: build layer down / up, and Home. */
+	TSharedRef<SWidget> BuildLayerStrip();
 	TSharedRef<SWidget> BuildLogPanel();
 	/** The outside view: the facility's injector controls. */
 	TSharedRef<SWidget> BuildOutsidePanel();
@@ -80,11 +91,39 @@ private:
 	bool DoesOutsideNeedAttention() const;
 	TSharedRef<SWidget> MakePanel(const FText& Title, const TSharedRef<SWidget>& Content,
 		const TSharedRef<SWidget>& HeaderExtra, bool bFillHeight = false, bool bConsole = false);
-	TSharedRef<SWidget> MakeActionButton(FName ActionName, TFunction<void()> OnClick, TFunction<bool()> ExtraEnabled = nullptr);
-	TSharedRef<SWidget> MakeActionProgress(FName ActionName);
-	TSharedRef<SWidget> MakeRecipeButton(FName RecipeId);
 	TSharedRef<SWidget> MakeMatterRow(FName Item);
-	TSharedRef<SWidget> MakeDeployedRow(const FLRPlacedEntity& Entity);
+	TSharedRef<SWidget> MakeCardSlot(int32 Slot);
+
+	// The command card
+	enum class ECardKind : uint8
+	{
+		Empty,
+		/** An action on the selected cell (Perturb, Open, Dismantle). */
+		Action,
+		/** Opens the Build page. */
+		BuildPage,
+		/** A recipe on the Build page. */
+		Recipe,
+		/** Back from the Build page. */
+		Back,
+	};
+	struct FCardEntry
+	{
+		ECardKind Kind = ECardKind::Empty;
+		FName Name;
+	};
+	/** What the card's slots hold for the current selection (fewer than CardSlotCount: the rest are empty). */
+	TArray<FCardEntry> GetCardEntries() const;
+	FCardEntry GetCardEntry(int32 Slot) const;
+	bool IsCardEntryEnabled(const FCardEntry& Entry) const;
+	FText GetCardEntryLabel(const FCardEntry& Entry) const;
+	/** Small text on the right of a slot: a recipe's cost. */
+	FText GetCardEntryDetail(const FCardEntry& Entry) const;
+	void RunCardEntry(const FCardEntry& Entry);
+	/** The key bound to a command, for labels ("1"), or empty. */
+	FText GetKeyLabel(FName Command) const;
+	void SetMenuOpen(bool bOpen);
+	float GetUIScale() const;
 	/** bConsole: styled for the light outside console. */
 	TSharedRef<SWidget> MakeSmallButton(const FText& Label, TFunction<void()> OnClick, bool bConsole = false);
 
@@ -136,7 +175,6 @@ private:
 	TArray<FLogLine> LogLines;
 	TSharedPtr<SVerticalBox> LogBox;
 	TSharedPtr<SScrollBox> LogScroll;
-	TSharedPtr<SVerticalBox> DeployedBox;
 
 	/** The outside panel, and how far it has dropped down (0 = hidden, 1 = fully down). */
 	TSharedPtr<SWidget> OutsidePanel;
@@ -161,6 +199,13 @@ private:
 	FVector2f CameraSize = FVector2f(640.f, 480.f);
 	TSharedPtr<SWidget> CameraArea;
 	bool bHelpOpen = false;
+	/** The card shows the Build page (recipes) rather than the cell's actions. */
+	bool bBuildPage = false;
+	/** The selection the card was last showing: a new selection goes back to the main page. */
+	FIntVector CardCell = FIntVector::ZeroValue;
+	bool bCardHadSelection = false;
+	bool bMenuOpen = false;
+	TSharedPtr<SLRGameMenu> Menu;
 	/** How strong the static is (0 = none), fading towards whether the instruments are down. */
 	float StaticLevel = 0.f;
 	UMaterialInterface* StaticMaterial = nullptr;

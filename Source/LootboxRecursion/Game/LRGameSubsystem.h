@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Containers/Ticker.h"
+#include "Game/LRSaveGame.h"
 #include "Simulation/LRSimulation.h"
 #include "Simulation/LRSimTypes.h"
 #include "Subsystems/GameInstanceSubsystem.h"
@@ -9,6 +10,9 @@
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FLRSimpleEvent);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FLRActionCompletedEvent, const FLRActionResult&, Result);
+
+class ULRSaveIndex;
+class ULRUserSettings;
 
 /**
  * Owns the simulation for the lifetime of the game session, ticks it, saves/loads it, and
@@ -184,8 +188,43 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Debug")
 	void ResetGame();
 
+	/** Autosave now (the autosave slot). */
 	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Debug")
 	bool SaveNow();
+
+	// ---- The game menu: pause, save slots, settings -------------------------------------
+	/** Paused (the Esc menu is open): the simulation doesn't advance and nothing autosaves. */
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Menu")
+	void SetPaused(bool bInPaused) { bPaused = bInPaused; }
+
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Menu")
+	bool IsPaused() const { return bPaused; }
+
+	/** Every save, the autosave first, then the newest first. */
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Menu")
+	TArray<FLRSaveSlotInfo> GetSaveSlots() const;
+
+	/** Save the game as a new named save. */
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Menu")
+	bool SaveToNewSlot(const FString& DisplayName);
+
+	/** Save the game over an existing save (keeping its name). */
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Menu")
+	bool SaveToSlot(const FString& SlotName);
+
+	/** Load a save; the game then carries on autosaving into the autosave slot. */
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Menu")
+	bool LoadFromSlot(const FString& SlotName);
+
+	/** Delete a manual save (not the autosave). */
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Menu")
+	bool DeleteSlot(const FString& SlotName);
+
+	/** The player's settings (never null after Initialize). Change them, then call SaveUserSettings. */
+	ULRUserSettings* GetUserSettings() const { return UserSettings; }
+
+	/** Save the settings and tell everyone to apply them (OnSettingsChanged). */
+	void SaveUserSettings();
 
 	// ---- Events (Rails: PlayerInventoryChannel / PlayerActionsChannel broadcasts) ------
 	/** Matter in some cell changed. */
@@ -201,11 +240,23 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Quantum Recursion")
 	FLRActionCompletedEvent OnActionCompleted;
 
+	/** The player's settings changed (key bindings, camera, UI scale). */
+	UPROPERTY(BlueprintAssignable, Category = "Quantum Recursion")
+	FLRSimpleEvent OnSettingsChanged;
+
+	/** The autosave's slot. */
 	static const FString SaveSlotName;
+	static const FString SaveIndexSlotName;
 
 private:
 	bool Tick(float DeltaSeconds);
-	bool LoadGame();
+	/** Load the game in a slot into the simulation. */
+	bool LoadGame(const FString& SlotName);
+	/** Write the game to a slot, and list it in the index under DisplayName. */
+	bool WriteSlot(const FString& SlotName, const FString& DisplayName, bool bAutosave);
+	ULRSaveIndex* LoadSaveIndex() const;
+	/** After the simulation's state was replaced: clear the selection and redraw everything. */
+	void HandleGameReplaced();
 	void HandleSimMatterChanged();
 	void HandleSimWorldChanged();
 	void HandleSimActionCompleted(const FLRActionResult& Result);
@@ -216,6 +267,10 @@ private:
 
 	float TimeScale = 1.f;
 	double SecondsSinceAutosave = 0.0;
+	bool bPaused = false;
+
+	UPROPERTY(Transient)
+	TObjectPtr<ULRUserSettings> UserSettings;
 
 	FIntVector SelectedCell = FIntVector::ZeroValue;
 	bool bHasSelectedCell = false;

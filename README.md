@@ -86,11 +86,12 @@ In the editor, press **Play** (Alt+P).
 
 | Input | Does |
 |---|---|
-| Click a grid cell, then **Perturb** | Seed a ripple there, or deepen the one there. Ripples gather matter into their cell every 10s. |
+| Click a grid cell | Select it. The **Actions** card (top left) fills with what you can do there, one slot per key: `1`-`9`, `0` |
+| Select a cell, then **Perturb** (on the card) | Seed a ripple there, or deepen the one there. Ripples gather matter into their cell every 10s. |
 | **(?)** on the status bar | The controls |
+| `Esc` / `F10`, or **MENU** on the status bar | The menu (pauses): Resume, New Game, Save, Load, Settings (rebind any key, camera speeds, invert look, UI scale, graphics), Quit. In the editor, `Esc` stops Play, so use `F10`. `Esc` first backs out of the Build page, help or the outside panel. |
 | **F** / **Tab**, or **OUTSIDE** on the status bar | Drop down the outside panel: the feed dial (drag or scroll; Off / Hold / Limit / Max presets; Auto Hold / Auto Limit keep it on its mark), the host in its chamber, the stored charge, VENT (run the injectors in reverse to shed mass; only the dial works meanwhile) and Ignite. Keep the host between HOLD (evaporation) and LIMIT, and dial back before its gravity well reaches the chamber wall, or the safeties trip and the instruments go down (static, no inside actions) until the stored charge is full again. At zero the universe freezes until you Ignite. |
-| Click a **Craft** recipe | Quantum Cache (hydrogen and helium), irradiators, radiation sources (as they unlock) |
-| Select a cell, then click a **Build** recipe | Build it there, paid from the matter within 2 cells. Caches and machines take the cell; a source goes into the irradiator there. |
+| Select a cell, then **Build...** on the card | The card turns into a page of recipes (same keys; the last slot is Back): Quantum Cache (hydrogen and helium), irradiators, radiation sources (as they unlock). Build one there, paid from the matter within 2 cells. Caches and machines take the cell; a source goes into the irradiator there. |
 | Select a cache (or an irradiator holding one), then **Open** | Collapse it; the loot lands in that cell |
 | Select an irradiator, then build a cache and a source into it | Irradiate the cache. Each exposure adds a modifier; X-rays observe it (revealing and fixing the contents). Open it in place when done. |
 | Select an occupied cell, then **Dismantle** | Take it apart and get its cost back in the cell (an irradiator: source first, then cache). Ripples stay. |
@@ -98,8 +99,7 @@ In the editor, press **Play** (Alt+P).
 | Mouse wheel | Zoom |
 | Hold right mouse and drag | Free look: orbit and tilt (tilt up swings below the layer to look up at the sky) |
 | Hold `Q`/`E` | Orbit the camera |
-| `PageUp`/`PageDown` or `]`/`[` | Build layer up / down (Z) |
-| Click a row in the **Grid** panel's list | Select that entity and fly the camera to it |
+| `PageUp`/`PageDown` or `]`/`[`, or the strip under the card | Build layer up / down (Z) |
 | `R` | Reset camera angle and zoom |
 | `H` / **Home** | Fly to the first deployed entity (or the origin) |
 | `~` | Console: `LRGive hydrogen 500` (into the selected cell), `LRTimeScale 10`, `LRItems`, `LRSave`, `LRReset` |
@@ -108,8 +108,10 @@ New games start during inflation, with just **Perturb**. Everything else unlocks
 and as the epochs advance (see *The pocket universe* and *Tech tree* in
 [docs/DESIGN.md](docs/DESIGN.md)); the log announces each unlock and each new epoch.
 
-The game autosaves every 30s and on exit to `Saved/SaveGames/LootboxRecursion.sav`. Use
-`LRReset` to start over.
+The game autosaves every 30s and on exit to `Saved/SaveGames/LootboxRecursion.sav`, and you can
+make named saves from the menu (`Save_1.sav`...; `SaveIndex.sav` lists them). Settings live in
+`Settings.sav` (graphics quality in the engine's `GameUserSettings.ini`). New Game (menu) or
+`LRReset` starts over. The keys above are the defaults: all the keyboard ones can be rebound.
 
 ---
 

@@ -59,11 +59,20 @@ See [DESIGN.md](DESIGN.md#irradiation-implemented-v1).
 
 ## M2.5: Game menu
 
-- [ ] Esc opens a pause menu: Resume, New Game, Save, Load, Settings, Quit.
-- [ ] Save slots (several named saves instead of the single autosave slot).
-- [ ] Settings: key rebinding (Enhanced Input user settings), mouse and free-look
-      sensitivity, invert Y, pan speed, UI scale, graphics quality.
-- [ ] Settings persist per user (`USaveGame` or `UGameUserSettings`).
+- [x] Esc (F10 in the editor, or MENU) opens a pause menu: Resume, New Game, Save, Load,
+      Settings, Quit.
+- [x] Save slots: named saves beside the autosave, listed in a save index.
+- [x] Settings: key rebinding (our own bindings over code-built Enhanced Input mappings,
+      rebuilt on change), free-look speed, invert look, pan speed, UI scale, graphics
+      quality.
+- [x] Settings persist per user (`ULRUserSettings`, a `USaveGame`; graphics in
+      `UGameUserSettings`).
+- [x] The command card (DESIGN.md, "The command card"): the Actions panel is ten slots on
+      keys 1-0, filled with what the selected cell allows, with a Build page of recipes. The
+      Grid panel's entity list is gone; Universe and Info moved to the bottom right.
+- [ ] Hotkeys for the rest of the UI (the outside panel's buttons and dial, the log...),
+      through the same slot idea.
+- [ ] More than nine recipes on the Build page (paging).
 
 ## M3: Logistics on the grid
 

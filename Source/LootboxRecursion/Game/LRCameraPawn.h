@@ -75,6 +75,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
 	float FollowSpeed = 8.f;
 
+	/** The player's settings (ULRUserSettings), applied by the controller: multiples of the above. */
+	UPROPERTY(Transient, BlueprintReadWrite, Category = "Camera")
+	float PanSpeedScale = 1.f;
+
+	UPROPERTY(Transient, BlueprintReadWrite, Category = "Camera")
+	float LookSensitivityScale = 1.f;
+
+	/** Free look: moving the mouse up tilts the view down. */
+	UPROPERTY(Transient, BlueprintReadWrite, Category = "Camera")
+	bool bInvertLook = false;
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<USpringArmComponent> SpringArm;

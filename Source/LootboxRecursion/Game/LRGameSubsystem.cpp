@@ -4,11 +4,13 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "Game/LRSaveGame.h"
+#include "Game/LRUserSettings.h"
 #include "Kismet/GameplayStatics.h"
 #include "LootboxRecursion.h"
 #include "Misc/DateTime.h"
 
 const FString ULRGameSubsystem::SaveSlotName = TEXT("LootboxRecursion");
+const FString ULRGameSubsystem::SaveIndexSlotName = TEXT("SaveIndex");
 
 namespace
 {
@@ -47,7 +49,8 @@ void ULRGameSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	Simulation->OnWorldChanged.AddUObject(this, &ULRGameSubsystem::HandleSimWorldChanged);
 	Simulation->OnActionCompleted.AddUObject(this, &ULRGameSubsystem::HandleSimActionCompleted);
 
-	LoadGame();
+	UserSettings = ULRUserSettings::LoadOrCreate();
+	LoadGame(SaveSlotName);
 
 	// FTSTicker calls us once per engine frame, independent of any world or actor.
 	TickHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &ULRGameSubsystem::Tick));
@@ -70,6 +73,10 @@ void ULRGameSubsystem::Deinitialize()
 
 bool ULRGameSubsystem::Tick(float DeltaSeconds)
 {
+	if (bPaused)
+	{
+		return true; // the menu is open: nothing moves
+	}
 	if (Simulation)
 	{
 		Simulation->Advance(static_cast<double>(DeltaSeconds) * TimeScale);
@@ -88,6 +95,11 @@ bool ULRGameSubsystem::Tick(float DeltaSeconds)
 
 bool ULRGameSubsystem::SaveNow()
 {
+	return WriteSlot(SaveSlotName, TEXT("Autosave"), /*bAutosave*/ true);
+}
+
+bool ULRGameSubsystem::WriteSlot(const FString& SlotName, const FString& DisplayName, bool bAutosave)
+{
 	if (!Simulation || !DataErrors.IsEmpty())
 	{
 		// Never overwrite a good save while running on broken data.
@@ -99,22 +111,146 @@ bool ULRGameSubsystem::SaveNow()
 		return false;
 	}
 	Save->Data = Simulation->Save();
-	return UGameplayStatics::SaveGameToSlot(Save, SaveSlotName, 0);
+	if (!UGameplayStatics::SaveGameToSlot(Save, SlotName, 0))
+	{
+		return false;
+	}
+
+	// List it in the index, with a line about the game in it.
+	ULRSaveIndex* Index = LoadSaveIndex();
+	if (!Index)
+	{
+		return true;
+	}
+	FLRSaveSlotInfo* Info = Index->Slots.FindByPredicate([&SlotName](const FLRSaveSlotInfo& Each) { return Each.SlotName == SlotName; });
+	if (!Info)
+	{
+		Info = &Index->Slots.AddDefaulted_GetRef();
+		Info->SlotName = SlotName;
+	}
+	Info->DisplayName = DisplayName;
+	Info->bAutosave = bAutosave;
+	Info->SavedAt = FDateTime::Now();
+	const FString Epoch = GetEpochName();
+	Info->Summary = FString::Printf(TEXT("%s%shost %s, played %.0f min"), *Epoch, Epoch.IsEmpty() ? TEXT("") : TEXT(", "),
+		*FLRSimulation::FormatMass(Simulation->GetHostMass()), Simulation->GetNow() / 60.0);
+	UGameplayStatics::SaveGameToSlot(Index, SaveIndexSlotName, 0);
+	return true;
 }
 
-bool ULRGameSubsystem::LoadGame()
+ULRSaveIndex* ULRGameSubsystem::LoadSaveIndex() const
 {
-	if (!Simulation || !UGameplayStatics::DoesSaveGameExist(SaveSlotName, 0))
+	if (UGameplayStatics::DoesSaveGameExist(SaveIndexSlotName, 0))
+	{
+		if (ULRSaveIndex* Index = Cast<ULRSaveIndex>(UGameplayStatics::LoadGameFromSlot(SaveIndexSlotName, 0)))
+		{
+			return Index;
+		}
+	}
+	return Cast<ULRSaveIndex>(UGameplayStatics::CreateSaveGameObject(ULRSaveIndex::StaticClass()));
+}
+
+TArray<FLRSaveSlotInfo> ULRGameSubsystem::GetSaveSlots() const
+{
+	TArray<FLRSaveSlotInfo> Slots;
+	if (const ULRSaveIndex* Index = LoadSaveIndex())
+	{
+		for (const FLRSaveSlotInfo& Info : Index->Slots)
+		{
+			if (UGameplayStatics::DoesSaveGameExist(Info.SlotName, 0))
+			{
+				Slots.Add(Info);
+			}
+		}
+	}
+	Slots.Sort([](const FLRSaveSlotInfo& A, const FLRSaveSlotInfo& B)
+	{
+		return A.bAutosave != B.bAutosave ? A.bAutosave : A.SavedAt > B.SavedAt;
+	});
+	return Slots;
+}
+
+bool ULRGameSubsystem::SaveToNewSlot(const FString& DisplayName)
+{
+	ULRSaveIndex* Index = LoadSaveIndex();
+	if (!Index)
 	{
 		return false;
 	}
-	const ULRSaveGame* Save = Cast<ULRSaveGame>(UGameplayStatics::LoadGameFromSlot(SaveSlotName, 0));
+	const FString SlotName = FString::Printf(TEXT("Save_%d"), Index->NextSlotNumber++);
+	UGameplayStatics::SaveGameToSlot(Index, SaveIndexSlotName, 0); // claim the number
+	const FString Name = DisplayName.TrimStartAndEnd();
+	return WriteSlot(SlotName, Name.IsEmpty() ? SlotName.Replace(TEXT("_"), TEXT(" ")) : Name, /*bAutosave*/ false);
+}
+
+bool ULRGameSubsystem::SaveToSlot(const FString& SlotName)
+{
+	const TArray<FLRSaveSlotInfo> Slots = GetSaveSlots();
+	const FLRSaveSlotInfo* Info = Slots.FindByPredicate([&SlotName](const FLRSaveSlotInfo& Each) { return Each.SlotName == SlotName; });
+	return Info && WriteSlot(SlotName, Info->DisplayName, Info->bAutosave);
+}
+
+bool ULRGameSubsystem::LoadFromSlot(const FString& SlotName)
+{
+	if (!LoadGame(SlotName))
+	{
+		return false;
+	}
+	HandleGameReplaced();
+	if (SlotName != SaveSlotName)
+	{
+		SaveNow(); // the loaded game is now the one that autosaves
+	}
+	return true;
+}
+
+bool ULRGameSubsystem::DeleteSlot(const FString& SlotName)
+{
+	if (SlotName == SaveSlotName)
+	{
+		return false;
+	}
+	UGameplayStatics::DeleteGameInSlot(SlotName, 0);
+	if (ULRSaveIndex* Index = LoadSaveIndex())
+	{
+		Index->Slots.RemoveAll([&SlotName](const FLRSaveSlotInfo& Each) { return Each.SlotName == SlotName; });
+		UGameplayStatics::SaveGameToSlot(Index, SaveIndexSlotName, 0);
+	}
+	return true;
+}
+
+void ULRGameSubsystem::HandleGameReplaced()
+{
+	bHasSelectedCell = false;
+	SecondsSinceAutosave = 0.0;
+	FocusHome();
+	OnSelectionChanged.Broadcast();
+	OnWorldChanged.Broadcast();
+	OnMatterChanged.Broadcast();
+}
+
+void ULRGameSubsystem::SaveUserSettings()
+{
+	if (UserSettings)
+	{
+		UserSettings->SaveToDisk();
+	}
+	OnSettingsChanged.Broadcast();
+}
+
+bool ULRGameSubsystem::LoadGame(const FString& SlotName)
+{
+	if (!Simulation || !UGameplayStatics::DoesSaveGameExist(SlotName, 0))
+	{
+		return false;
+	}
+	const ULRSaveGame* Save = Cast<ULRSaveGame>(UGameplayStatics::LoadGameFromSlot(SlotName, 0));
 	if (!Save || !Simulation->Load(Save->Data))
 	{
-		UE_LOG(LogLootbox, Warning, TEXT("Save slot '%s' could not be loaded (incompatible version?) - starting fresh"), *SaveSlotName);
+		UE_LOG(LogLootbox, Warning, TEXT("Save slot '%s' could not be loaded (incompatible version?)"), *SlotName);
 		return false;
 	}
-	UE_LOG(LogLootbox, Log, TEXT("Loaded save slot '%s' (sim time %.0fs)"), *SaveSlotName, Simulation->GetNow());
+	UE_LOG(LogLootbox, Log, TEXT("Loaded save slot '%s' (sim time %.0fs)"), *SlotName, Simulation->GetNow());
 	return true;
 }
 

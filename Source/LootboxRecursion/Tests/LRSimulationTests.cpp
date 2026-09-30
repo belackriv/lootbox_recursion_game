@@ -8,6 +8,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Data/LRGameData.h"
+#include "Game/LRInputCommands.h"
+#include "Game/LRUserSettings.h"
 #include "Cosmos/LRBlackHoleRenderer.h"
 #include "Misc/Paths.h"
 #include "Simulation/LRHexGrid.h"
@@ -1630,5 +1632,47 @@ bool FLRBlackHoleRenderTest::RunTest(const FString& Parameters)
 }
 
 #undef LR_TEST_FLAGS
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRInputBindingsTest, "LootboxRecursion.Input.DefaultKeysAndRebinding", LR_TEST_FLAGS)
+bool FLRInputBindingsTest::RunTest(const FString& Parameters)
+{
+	// Out of the box, no key does two things.
+	TSet<FKey> Seen;
+	bool bClash = false;
+	for (const LRInput::FCommand& Command : LRInput::GetCommands())
+	{
+		for (const FKey& Key : { Command.DefaultPrimary, Command.DefaultSecondary })
+		{
+			if (Key.IsValid())
+			{
+				bClash |= Seen.Contains(Key);
+				Seen.Add(Key);
+			}
+		}
+	}
+	TestFalse(TEXT("no default key does two things"), bClash);
+
+	// The command card's slots are on 1-9 and 0.
+	for (int32 Slot = 0; Slot < LRInput::CardSlotCount; ++Slot)
+	{
+		TestNotNull(*FString::Printf(TEXT("slot %d"), Slot + 1), LRInput::FindCommand(LRInput::SlotCommand(Slot)));
+	}
+	TestTrue(TEXT("slot 1 is on 1"), LRInput::FindCommand(LRInput::SlotCommand(0))->DefaultPrimary == EKeys::One);
+	TestTrue(TEXT("slot 10 is on 0"), LRInput::FindCommand(LRInput::SlotCommand(9))->DefaultPrimary == EKeys::Zero);
+
+	// Rebinding takes the key off whatever had it.
+	ULRUserSettings* Settings = NewObject<ULRUserSettings>();
+	TestTrue(TEXT("defaults until changed"), Settings->GetKey(LRInput::Names::OrbitLeft, 0) == EKeys::Q);
+	Settings->SetKey(LRInput::SlotCommand(0), 0, EKeys::Q);
+	TestTrue(TEXT("slot 1 on Q"), Settings->GetKey(LRInput::SlotCommand(0), 0) == EKeys::Q);
+	TestFalse(TEXT("so orbit left lost it"), Settings->GetKey(LRInput::Names::OrbitLeft, 0).IsValid());
+	Settings->SetKey(LRInput::Names::Home, 1, EKeys::Invalid);
+	TestTrue(TEXT("clearing one key keeps the other"), Settings->GetKey(LRInput::Names::Home, 0) == EKeys::H
+		&& !Settings->GetKey(LRInput::Names::Home, 1).IsValid());
+	Settings->ResetKeys();
+	TestTrue(TEXT("reset brings the defaults back"), Settings->GetKey(LRInput::Names::OrbitLeft, 0) == EKeys::Q
+		&& Settings->GetKey(LRInput::SlotCommand(0), 0) == EKeys::One);
+	return true;
+}
 
 #endif // WITH_DEV_AUTOMATION_TESTS

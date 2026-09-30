@@ -526,6 +526,41 @@ maths inline.
 - **It tells the story.** Quantum ripples from inflation become the seeds of galaxies, and
   each epoch's structures become the fine detail of the next.
 
+## The command card and the menu (implemented)
+
+**The command card.** The Actions panel (top left) works like StarCraft's command card: a
+vertical list of ten **slots**, each with a fixed hotkey (1-9, 0 by default, rebindable). The
+key belongs to the slot, not to an action: what a slot does depends on what's selected.
+- **The main page** lists what the selected cell allows, from the top, always in the same
+  order: Perturb (an empty cell or a ripple), Build... (an empty cell or an irradiator),
+  Open (a cache, or an irradiator), Dismantle (anything but a structure). Slots that don't
+  apply right now (cooldown, not enough matter) are shown but disabled.
+- **The Build page.** Build... turns the card into a page of the unlocked recipes, on the
+  same keys, with Back in the last slot (Esc also backs out). Building something, or
+  selecting another cell, goes back to the main page. (More than nine recipes will need
+  paging.)
+- **Around it.** Under the card, a strip for the build layer (- Layer, Z, Layer +, Home).
+  The Grid panel's list of everything placed is gone; the selected cell, the cursor and an
+  irradiator's progress are in Info, which sits at the bottom right above the log, with the
+  Universe panel above it.
+- **Next.** The same idea for the rest of the UI: hotkeys bound to slots in each panel, so
+  the key stays put while what it does follows the context.
+
+**The menu.** Esc (F10 in the editor, where Esc stops Play; or MENU on the status bar) opens
+it and pauses the game. Esc first backs out of whatever else is open: the Build page, help,
+the outside panel.
+- **Resume, New Game** (confirmed), **Save** (a new named save, or over an existing one),
+  **Load** (the autosave first, then the newest), **Settings**, **Quit** (it autosaves on the
+  way out).
+- **Settings.** Every keyboard command, two keys each: click one, press the new key (Esc
+  cancels, Backspace clears). A key does one thing, so binding it takes it off anything
+  else. Mouse controls are fixed. Also free-look speed, invert look, pan speed, UI scale and
+  graphics quality. Changes apply at once and are saved.
+- **Where it's kept.** `ULRUserSettings` (a `USaveGame`, `Settings.sav`) holds the key
+  overrides and the rest; graphics quality is the engine's `UGameUserSettings`. The commands
+  and their defaults are in `Game/LRInputCommands.h`, and the player controller rebuilds its
+  Enhanced Input mappings from them whenever the settings change.
+
 ## Matter lives in the pocket universe (implemented)
 
 There is no player inventory: the operator can't reach into the pocket universe, so there is
@@ -549,7 +584,8 @@ nowhere outside it for a stockpile to live. Everything is contained in the pocke
 - **Conveyors deliver, they don't extend reach** (planned). Once gravity conveyors unlock, the
   radius stays the same; conveyors carry matter into a build site's reach automatically.
 - **Readability.** The Universe panel shows each material's total and how much is within
-  reach of the selected cell. The Info panel lists a hovered cell's matter.
+  reach of the selected cell. The Info panel lists the matter in the hovered cell (or the
+  selected one).
 
 ## The grid (implemented)
 

@@ -5,6 +5,9 @@
 #include "Engine/LocalPlayer.h"
 #include "Game/LRCameraPawn.h"
 #include "Game/LRGameSubsystem.h"
+#include "Game/LRHud.h"
+#include "Game/LRInputCommands.h"
+#include "Game/LRUserSettings.h"
 #include "InputAction.h"
 #include "InputActionValue.h"
 #include "InputMappingContext.h"
@@ -23,11 +26,32 @@ void ALRPlayerController::BeginPlay()
 	InputMode.SetHideCursorDuringCapture(false);
 	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 	SetInputMode(InputMode);
+
+	if (ULRGameSubsystem* Sub = ULRGameSubsystem::Get(this))
+	{
+		Sub->OnSettingsChanged.AddDynamic(this, &ALRPlayerController::HandleSettingsChanged);
+	}
+	ApplyCameraSettings();
 }
 
-UInputAction* ALRPlayerController::MakeAction(const TCHAR* Name, bool bAxis)
+void ALRPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	UInputAction* Action = NewObject<UInputAction>(this, Name);
+	if (ULRGameSubsystem* Sub = ULRGameSubsystem::Get(this))
+	{
+		Sub->OnSettingsChanged.RemoveDynamic(this, &ALRPlayerController::HandleSettingsChanged);
+	}
+	Super::EndPlay(EndPlayReason);
+}
+
+void ALRPlayerController::OnPossess(APawn* InPawn)
+{
+	Super::OnPossess(InPawn);
+	ApplyCameraSettings();
+}
+
+UInputAction* ALRPlayerController::MakeAction(const FString& Name, bool bAxis)
+{
+	UInputAction* Action = NewObject<UInputAction>(this, FName(*Name));
 	if (bAxis)
 	{
 		Action->ValueType = EInputActionValueType::Axis1D;
@@ -40,70 +64,39 @@ void ALRPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
 
-	// Code-built equivalents of IA_* / IMC_* assets.
-	UInputAction* PanLeftAction = MakeAction(TEXT("IA_PanLeft"));
-	UInputAction* PanRightAction = MakeAction(TEXT("IA_PanRight"));
-	UInputAction* PanForwardAction = MakeAction(TEXT("IA_PanForward"));
-	UInputAction* PanBackAction = MakeAction(TEXT("IA_PanBack"));
-	UInputAction* LayerUpAction = MakeAction(TEXT("IA_LayerUp"));
-	UInputAction* LayerDownAction = MakeAction(TEXT("IA_LayerDown"));
-	UInputAction* OrbitLeftAction = MakeAction(TEXT("IA_OrbitLeft"));
-	UInputAction* OrbitRightAction = MakeAction(TEXT("IA_OrbitRight"));
-	UInputAction* ZoomAction = MakeAction(TEXT("IA_Zoom"), /*bAxis*/ true);
-	UInputAction* HomeAction = MakeAction(TEXT("IA_Home"));
-	UInputAction* ResetViewAction = MakeAction(TEXT("IA_ResetView"));
-	UInputAction* FreeLookAction = MakeAction(TEXT("IA_FreeLook"));
-	UInputAction* LookAction = MakeAction(TEXT("IA_Look"));
+	// Code-built equivalents of IA_* / IMC_* assets: the fixed mouse controls, then one action
+	// per rebindable command (LRInput::GetCommands()).
+	ZoomAction = MakeAction(TEXT("IA_Zoom"), /*bAxis*/ true);
+	FreeLookAction = MakeAction(TEXT("IA_FreeLook"));
+	LookAction = MakeAction(TEXT("IA_Look"));
 	LookAction->ValueType = EInputActionValueType::Axis2D;
-	UInputAction* SelectAction = MakeAction(TEXT("IA_Select"));
-	UInputAction* OutsideAction = MakeAction(TEXT("IA_ToggleOutside"));
+	SelectAction = MakeAction(TEXT("IA_Select"));
 
-	MappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Default"));
-	MappingContext->MapKey(PanLeftAction, EKeys::A);
-	MappingContext->MapKey(PanLeftAction, EKeys::Left);
-	MappingContext->MapKey(PanRightAction, EKeys::D);
-	MappingContext->MapKey(PanRightAction, EKeys::Right);
-	MappingContext->MapKey(PanForwardAction, EKeys::W);
-	MappingContext->MapKey(PanForwardAction, EKeys::Up);
-	MappingContext->MapKey(PanBackAction, EKeys::S);
-	MappingContext->MapKey(PanBackAction, EKeys::Down);
-	MappingContext->MapKey(LayerUpAction, EKeys::PageUp);
-	MappingContext->MapKey(LayerUpAction, EKeys::RightBracket);
-	MappingContext->MapKey(LayerDownAction, EKeys::PageDown);
-	MappingContext->MapKey(LayerDownAction, EKeys::LeftBracket);
-	MappingContext->MapKey(OrbitLeftAction, EKeys::Q);
-	MappingContext->MapKey(OrbitRightAction, EKeys::E);
-	MappingContext->MapKey(ZoomAction, EKeys::MouseWheelAxis);
-	MappingContext->MapKey(HomeAction, EKeys::H);
-	MappingContext->MapKey(HomeAction, EKeys::Home);
-	MappingContext->MapKey(ResetViewAction, EKeys::R);
-	MappingContext->MapKey(FreeLookAction, EKeys::RightMouseButton);
-	MappingContext->MapKey(LookAction, EKeys::Mouse2D);
-	MappingContext->MapKey(SelectAction, EKeys::LeftMouseButton);
-	MappingContext->MapKey(OutsideAction, EKeys::F);
-	MappingContext->MapKey(OutsideAction, EKeys::Tab);
-
-	if (UEnhancedInputComponent* Input = Cast<UEnhancedInputComponent>(InputComponent))
+	UEnhancedInputComponent* Input = Cast<UEnhancedInputComponent>(InputComponent);
+	if (Input)
 	{
-		// Triggered fires every frame while a key is held; Started fires once per press.
-		Input->BindAction(PanLeftAction, ETriggerEvent::Triggered, this, &ALRPlayerController::PanLeft);
-		Input->BindAction(PanRightAction, ETriggerEvent::Triggered, this, &ALRPlayerController::PanRight);
-		Input->BindAction(PanForwardAction, ETriggerEvent::Triggered, this, &ALRPlayerController::PanForward);
-		Input->BindAction(PanBackAction, ETriggerEvent::Triggered, this, &ALRPlayerController::PanBack);
-		Input->BindAction(LayerUpAction, ETriggerEvent::Started, this, &ALRPlayerController::LayerUp);
-		Input->BindAction(LayerDownAction, ETriggerEvent::Started, this, &ALRPlayerController::LayerDown);
-		Input->BindAction(OrbitLeftAction, ETriggerEvent::Triggered, this, &ALRPlayerController::OrbitLeft);
-		Input->BindAction(OrbitRightAction, ETriggerEvent::Triggered, this, &ALRPlayerController::OrbitRight);
 		Input->BindAction(ZoomAction, ETriggerEvent::Triggered, this, &ALRPlayerController::Zoom);
-		Input->BindAction(HomeAction, ETriggerEvent::Started, this, &ALRPlayerController::Home);
-		Input->BindAction(ResetViewAction, ETriggerEvent::Started, this, &ALRPlayerController::ResetView);
 		Input->BindAction(FreeLookAction, ETriggerEvent::Started, this, &ALRPlayerController::FreeLookStart);
 		Input->BindAction(FreeLookAction, ETriggerEvent::Completed, this, &ALRPlayerController::FreeLookEnd);
 		Input->BindAction(LookAction, ETriggerEvent::Triggered, this, &ALRPlayerController::Look);
 		// Clicks on HUD buttons are consumed by Slate and never reach this.
 		Input->BindAction(SelectAction, ETriggerEvent::Started, this, &ALRPlayerController::SelectHovered);
-		Input->BindAction(OutsideAction, ETriggerEvent::Started, this, &ALRPlayerController::ToggleOutside);
 	}
+	for (const LRInput::FCommand& Command : LRInput::GetCommands())
+	{
+		UInputAction* Action = MakeAction(FString::Printf(TEXT("IA_%s"), *Command.Name.ToString()));
+		CommandActions.Add(Command.Name, Action);
+		if (Input)
+		{
+			// Triggered fires every frame while a key is held; Started fires once per press.
+			const FName Name = Command.Name;
+			Input->BindActionValueLambda(Action, Command.bHold ? ETriggerEvent::Triggered : ETriggerEvent::Started,
+				[this, Name](const FInputActionValue&) { RunCommand(Name); });
+		}
+	}
+
+	MappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Default"));
+	ApplyKeyBindings();
 
 	// SetupInputComponent runs once this controller has its LocalPlayer, so the
 	// Enhanced Input subsystem is available here.
@@ -116,9 +109,126 @@ void ALRPlayerController::SetupInputComponent()
 	}
 }
 
+void ALRPlayerController::ApplyKeyBindings()
+{
+	if (!MappingContext)
+	{
+		return;
+	}
+	MappingContext->UnmapAll();
+	MappingContext->MapKey(ZoomAction, EKeys::MouseWheelAxis);
+	MappingContext->MapKey(FreeLookAction, EKeys::RightMouseButton);
+	MappingContext->MapKey(LookAction, EKeys::Mouse2D);
+	MappingContext->MapKey(SelectAction, EKeys::LeftMouseButton);
+
+	const ULRGameSubsystem* Sub = ULRGameSubsystem::Get(this);
+	const ULRUserSettings* Settings = Sub ? Sub->GetUserSettings() : nullptr;
+	for (const LRInput::FCommand& Command : LRInput::GetCommands())
+	{
+		const TObjectPtr<UInputAction>* Action = CommandActions.Find(Command.Name);
+		if (!Action)
+		{
+			continue;
+		}
+		FKey Primary = Command.DefaultPrimary;
+		FKey Secondary = Command.DefaultSecondary;
+		if (Settings)
+		{
+			Settings->GetKeys(Command.Name, Primary, Secondary);
+		}
+		for (const FKey& Key : { Primary, Secondary })
+		{
+			if (Key.IsValid())
+			{
+				MappingContext->MapKey(*Action, Key);
+			}
+		}
+	}
+
+	if (ULocalPlayer* LocalPlayer = GetLocalPlayer())
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
+		{
+			InputSubsystem->RequestRebuildControlMappings();
+		}
+	}
+}
+
+void ALRPlayerController::ApplyCameraSettings()
+{
+	const ULRGameSubsystem* Sub = ULRGameSubsystem::Get(this);
+	const ULRUserSettings* Settings = Sub ? Sub->GetUserSettings() : nullptr;
+	ALRCameraPawn* CameraPawn = GetCameraPawn();
+	if (!Settings || !CameraPawn)
+	{
+		return;
+	}
+	CameraPawn->PanSpeedScale = Settings->PanSpeed;
+	CameraPawn->LookSensitivityScale = Settings->LookSensitivity;
+	CameraPawn->bInvertLook = Settings->bInvertLook;
+}
+
+void ALRPlayerController::HandleSettingsChanged()
+{
+	ApplyKeyBindings();
+	ApplyCameraSettings();
+}
+
 ALRCameraPawn* ALRPlayerController::GetCameraPawn() const
 {
 	return Cast<ALRCameraPawn>(GetPawn());
+}
+
+ALRHud* ALRPlayerController::GetLRHud() const
+{
+	return Cast<ALRHud>(GetHUD());
+}
+
+bool ALRPlayerController::IsMenuOpen() const
+{
+	const ALRHud* Hud = GetLRHud();
+	return Hud && Hud->IsMenuOpen();
+}
+
+void ALRPlayerController::RunCommand(FName Command)
+{
+	namespace Names = LRInput::Names;
+	ALRHud* Hud = GetLRHud();
+	if (Command == Names::Menu)
+	{
+		if (Hud)
+		{
+			Hud->HandleMenuKey();
+		}
+		return;
+	}
+	if (IsMenuOpen())
+	{
+		return;
+	}
+
+	if (Command == Names::PanForward)         { PanForward(); }
+	else if (Command == Names::PanBack)       { PanBack(); }
+	else if (Command == Names::PanLeft)       { PanLeft(); }
+	else if (Command == Names::PanRight)      { PanRight(); }
+	else if (Command == Names::OrbitLeft)     { OrbitLeft(); }
+	else if (Command == Names::OrbitRight)    { OrbitRight(); }
+	else if (Command == Names::ResetView)     { ResetView(); }
+	else if (Command == Names::LayerUp)       { LayerUp(); }
+	else if (Command == Names::LayerDown)     { LayerDown(); }
+	else if (Command == Names::Home)          { Home(); }
+	else if (Command == Names::ToggleOutside) { ToggleOutside(); }
+	else if (Hud)
+	{
+		for (int32 Slot = 0; Slot < LRInput::CardSlotCount; ++Slot)
+		{
+			if (Command == LRInput::SlotCommand(Slot))
+			{
+				Hud->ActivateCardSlot(Slot);
+				return;
+			}
+		}
+	}
 }
 
 void ALRPlayerController::ToggleOutside()
@@ -171,6 +281,10 @@ void ALRPlayerController::OrbitRight()
 
 void ALRPlayerController::Zoom(const FInputActionValue& Value)
 {
+	if (IsMenuOpen())
+	{
+		return;
+	}
 	if (ALRCameraPawn* CameraPawn = GetCameraPawn()) { CameraPawn->AddZoomInput(Value.Get<float>()); }
 }
 
@@ -189,6 +303,10 @@ void ALRPlayerController::ResetView()
 
 void ALRPlayerController::FreeLookStart()
 {
+	if (IsMenuOpen())
+	{
+		return;
+	}
 	// Hide the cursor while dragging and put it back where it was afterwards.
 	bFreeLook = true;
 	float CursorX = 0.f;
@@ -202,6 +320,10 @@ void ALRPlayerController::FreeLookStart()
 
 void ALRPlayerController::FreeLookEnd()
 {
+	if (!bFreeLook)
+	{
+		return;
+	}
 	bFreeLook = false;
 	bShowMouseCursor = true;
 	SetMouseLocation(FMath::RoundToInt(FreeLookCursorPosition.X), FMath::RoundToInt(FreeLookCursorPosition.Y));
@@ -221,6 +343,10 @@ void ALRPlayerController::Look(const FInputActionValue& Value)
 
 void ALRPlayerController::SelectHovered()
 {
+	if (IsMenuOpen())
+	{
+		return;
+	}
 	ULRGameSubsystem* Subsystem = ULRGameSubsystem::Get(this);
 	FIntVector Hovered;
 	if (Subsystem && Subsystem->GetHoveredCell(Hovered))

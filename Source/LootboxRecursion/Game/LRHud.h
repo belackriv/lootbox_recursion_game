@@ -11,7 +11,8 @@ class UMaterialInterface;
 
 /**
  * Owns the Slate HUD widget: adds it to the viewport on BeginPlay, removes it on EndPlay,
- * and feeds it action results for the message log.
+ * feeds it action results for the message log, and passes it the keys the player controller
+ * routes to the UI (the command card's slots, the menu key).
  *
  * The GameMode's HUDClass makes the engine spawn one of these per local player.
  */
@@ -21,6 +22,13 @@ class LOOTBOXRECURSION_API ALRHud : public AHUD
 	GENERATED_BODY()
 
 public:
+	/** The Esc menu is open (the game is paused). */
+	bool IsMenuOpen() const;
+	/** The menu key: back out of whatever is open (help, the Build card), else open or close the menu. */
+	void HandleMenuKey();
+	/** A command card slot's key (0-based). */
+	void ActivateCardSlot(int32 Slot);
+
 	/**
 	 * Material hook (see LRMaterialHooks and docs/MATERIALS.md) for the TV static over the 3D
 	 * view and the chamber camera while the instruments are down. Used if the asset exists.
@@ -34,9 +42,6 @@ protected:
 
 	UFUNCTION()
 	void HandleActionCompleted(const FLRActionResult& Result);
-
-	UFUNCTION()
-	void HandleWorldChanged();
 
 private:
 	TSharedPtr<SLRGameHud> HudWidget;
