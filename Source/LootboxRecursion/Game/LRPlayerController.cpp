@@ -13,6 +13,7 @@
 #include "InputAction.h"
 #include "InputActionValue.h"
 #include "InputMappingContext.h"
+#include "LootboxRecursion.h"
 #include "UserSettings/EnhancedInputUserSettings.h"
 
 ALRPlayerController::ALRPlayerController()
@@ -35,6 +36,7 @@ void ALRPlayerController::BeginPlay()
 		Sub->OnSettingsChanged.AddDynamic(this, &ALRPlayerController::HandleSettingsChanged);
 	}
 	ApplyCameraSettings();
+	RegisterForRebinding();
 }
 
 void ALRPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -103,19 +105,40 @@ void ALRPlayerController::SetupInputComponent()
 	MapDefaultKeys();
 
 	// SetupInputComponent runs once this controller has its LocalPlayer, so the Enhanced Input
-	// subsystem is available here. Registering the context with the user settings makes its
-	// player-mappable keys rebindable (and applies any the player saved).
+	// subsystem is available here.
 	if (ULocalPlayer* LocalPlayer = GetLocalPlayer())
 	{
 		if (UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
 		{
-			if (UEnhancedInputUserSettings* KeySettings = InputSubsystem->GetUserSettings())
-			{
-				KeySettings->RegisterInputMappingContext(MappingContext);
-			}
 			InputSubsystem->AddMappingContext(MappingContext, 0);
 		}
 	}
+	RegisterForRebinding();
+}
+
+void ALRPlayerController::RegisterForRebinding()
+{
+	if (bRegisteredForRebinding || !MappingContext)
+	{
+		return;
+	}
+	ULocalPlayer* LocalPlayer = GetLocalPlayer();
+	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LocalPlayer ? LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>() : nullptr;
+	UEnhancedInputUserSettings* KeySettings = InputSubsystem ? InputSubsystem->GetUserSettings() : nullptr;
+	if (!KeySettings)
+	{
+		return; // not created yet: try again later
+	}
+	bRegisteredForRebinding = true;
+	KeySettings->RegisterInputMappingContext(MappingContext);
+	InputSubsystem->RequestRebuildControlMappings(); // apply any keys the player saved
+	UE_LOG(LogLootbox, Log, TEXT("Key rebinding: registered %s with Enhanced Input's user settings"), *MappingContext->GetName());
+}
+
+void ALRPlayerController::PlayerTick(float DeltaTime)
+{
+	Super::PlayerTick(DeltaTime);
+	RegisterForRebinding();
 }
 
 void ALRPlayerController::MapDefaultKeys()

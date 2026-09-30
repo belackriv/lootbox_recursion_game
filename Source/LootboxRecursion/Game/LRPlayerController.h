@@ -64,6 +64,7 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void OnPossess(APawn* InPawn) override;
+	virtual void PlayerTick(float DeltaTime) override;
 	virtual void SetupInputComponent() override;
 
 private:
@@ -74,6 +75,12 @@ private:
 
 	/** Map the default keys (and the fixed mouse controls); the player's own keys come from Enhanced Input's user settings. */
 	void MapDefaultKeys();
+	/**
+	 * Register the mapping context with Enhanced Input's user settings, which makes its keys
+	 * rebindable and applies the player's saved ones. The settings may not exist yet when input
+	 * is set up, so this is retried (BeginPlay, then every tick) until it works.
+	 */
+	void RegisterForRebinding();
 	/** Hand the camera settings to the camera pawn. */
 	void ApplyCameraSettings();
 	UFUNCTION()
@@ -99,6 +106,7 @@ private:
 	void ToggleOutside();
 
 	bool bFreeLook = false;
+	bool bRegisteredForRebinding = false;
 	FVector2D FreeLookCursorPosition = FVector2D::ZeroVector;
 
 	UInputAction* MakeAction(const FString& Name, bool bAxis = false);

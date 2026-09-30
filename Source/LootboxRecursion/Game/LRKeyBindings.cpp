@@ -6,6 +6,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "GameplayTagContainer.h"
 #include "InputAction.h"
+#include "LootboxRecursion.h"
 #include "PlayerMappableKeySettings.h"
 #include "UObject/UnrealType.h"
 #include "UserSettings/EnhancedInputUserSettings.h"
@@ -41,6 +42,10 @@ namespace LRKeyBindings
 		{
 			Property->SetObjectPropertyValue_InContainer(Action, KeySettings);
 		}
+		else
+		{
+			UE_LOG(LogLootbox, Warning, TEXT("Key rebinding: UInputAction has no PlayerMappableKeySettings property; %s can't be rebound"), *Command.Name.ToString());
+		}
 	}
 
 	UEnhancedInputUserSettings* GetUserSettings(const UObject* WorldContext)
@@ -60,8 +65,11 @@ namespace LRKeyBindings
 			FMapPlayerKeyArgs Args;
 			Args.MappingName = Command;
 			Args.Slot = KeySlotFor(Index);
-			const FPlayerKeyMapping* Mapping = Profile->FindKeyMapping(Args);
-			return Mapping ? Mapping->GetCurrentKey() : EKeys::Invalid;
+			if (const FPlayerKeyMapping* Mapping = Profile->FindKeyMapping(Args))
+			{
+				return Mapping->GetCurrentKey();
+			}
+			// No entry for it (the mapping context isn't registered yet): the defaults apply.
 		}
 		const LRInput::FCommand* Def = LRInput::FindCommand(Command);
 		return Def ? (Index == 0 ? Def->DefaultPrimary : Def->DefaultSecondary) : EKeys::Invalid;
