@@ -224,7 +224,11 @@ The outside panel shows the host itself, not only numbers:
 - **A camera into the chamber** (built as a placeholder), labelled CAM 1. The outside panel
   takes 80% of the viewport's height (and at most 90% of its width); the dial and the
   chamber view keep their size, and the camera fills the space under them at 4:3 (at least
-  320 × 240). On a viewport too small for that, the whole panel scales down. For now it's black, and shows static while the instruments
+  320 × 240). On a viewport too small for that, the whole panel scales down.
+  Until the 3D scene exists it shows a cheap painted feed (`SLRChamberCamera`, a choppy 12 fps,
+  like an animated GIF): a slowly turning wireframe cage that reddens near the wall, the
+  singularity glowing in its Hawking colour (sized by its 1 g sphere), injector beams
+  streaming in (or violet and out while venting), scanlines, a blinking REC and a timestamp. For now it's black, and shows static while the instruments
   are down. Later it becomes an elaborate 3D scene of the chamber:
   - the containment field, flaring as the 1 g sphere nears the wall;
   - the injectors, firing the neutronium beam through the graviton lens;

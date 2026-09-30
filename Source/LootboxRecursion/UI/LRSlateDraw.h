@@ -6,9 +6,11 @@
 #include "Layout/Geometry.h"
 #include "Rendering/DrawElements.h"
 #include "Rendering/SlateRenderer.h"
+#include "Simulation/LRPhysics.h"
 
 /**
- * Small drawing helpers shared by the HUD's painted widgets (SLRFeedDial, SLRChamberView).
+ * Small drawing helpers shared by the HUD's painted widgets (SLRFeedDial, SLRChamberView,
+ * SLRChamberCamera).
  * Kept in one named namespace because unity builds merge .cpp files, so per-file helpers in
  * anonymous namespaces with the same name collide.
  */
@@ -40,5 +42,19 @@ namespace LRSlateDraw
 			Points.Add(Centre + FVector2f(FMath::Cos(Angle), FMath::Sin(Angle)) * Radius);
 		}
 		FSlateDrawElement::MakeLines(Out, Layer, Geometry.ToPaintGeometry(), Points, ESlateDrawEffect::None, Color, true, Thickness);
+	}
+
+	/** A filled disc: a circle outline as thick as the disc's radius. */
+	inline void Disc(FSlateWindowElementList& Out, int32 Layer, const FGeometry& Geometry, const FVector2f& Centre, float Radius,
+		const FLinearColor& Color)
+	{
+		Circle(Out, Layer, Geometry, Centre, Radius * 0.5f, Color, Radius);
+	}
+
+	/** Blue-white for a small, hot host; amber as it grows and cools (log of the Hawking temperature). */
+	inline FLinearColor HawkingGlow(double Mass)
+	{
+		const double Hot = FMath::Clamp((FMath::LogX(10.0, FMath::Max(LRPhysics::HawkingTemperature(Mass), 1.0)) - 15.5) / (17.2 - 15.5), 0.0, 1.0);
+		return FMath::Lerp(FLinearColor(1.f, 0.62f, 0.25f), FLinearColor(0.72f, 0.86f, 1.f), static_cast<float>(Hot));
 	}
 }

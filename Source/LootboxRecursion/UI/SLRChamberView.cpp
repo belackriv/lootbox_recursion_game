@@ -6,16 +6,6 @@
 #include "UI/LRHudStyle.h"
 #include "UI/LRSlateDraw.h"
 
-namespace
-{
-	/** Blue-white for a small, hot host; amber as it grows and cools (log of the Hawking temperature). */
-	FLinearColor GlowFor(double Mass)
-	{
-		const double Hot = FMath::Clamp((FMath::LogX(10.0, FMath::Max(LRPhysics::HawkingTemperature(Mass), 1.0)) - 15.5) / (17.2 - 15.5), 0.0, 1.0);
-		return FMath::Lerp(FLinearColor(1.f, 0.62f, 0.25f), FLinearColor(0.72f, 0.86f, 1.f), static_cast<float>(Hot));
-	}
-}
-
 void SLRChamberView::Construct(const FArguments& InArgs)
 {
 	Subsystem = InArgs._Subsystem;
@@ -88,7 +78,7 @@ int32 SLRChamberView::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedG
 	}
 
 	// The 1 g sphere: a glow brightening toward its shell, with a crisp edge.
-	const FLinearColor BubbleColor = GlowFor(Mass);
+	const FLinearColor BubbleColor = LRSlateDraw::HawkingGlow(Mass);
 	constexpr int32 Rings = 12;
 	for (int32 Ring = 0; Ring < Rings; ++Ring)
 	{

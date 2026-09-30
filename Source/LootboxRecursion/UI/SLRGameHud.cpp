@@ -5,6 +5,7 @@
 #include "Simulation/LRPhysics.h"
 #include "Simulation/LRSimulation.h"
 #include "UI/LRHudStyle.h"
+#include "UI/SLRChamberCamera.h"
 #include "UI/SLRChamberView.h"
 #include "UI/SLRFeedDial.h"
 #include "UI/SLRStaticNoise.h"
@@ -2294,6 +2295,10 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 				.Padding(FMargin(4.f))
 				[
 					SNew(SOverlay)
+					+ SOverlay::Slot()
+					[
+						SNew(SLRChamberCamera).Subsystem(Subsystem)
+					]
 					+ SOverlay::Slot()
 					[
 						// Specks the same size on screen however big the camera is.
