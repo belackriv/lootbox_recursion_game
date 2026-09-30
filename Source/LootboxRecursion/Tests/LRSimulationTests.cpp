@@ -1270,6 +1270,12 @@ bool FLRHostSafetyTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the charge was dumped (and has only begun to rebuild)"), Sim.GetStoredCharge() < 100.0);
 	TestTrue(TEXT("the dial keeps its setting"), Sim.GetInjectorTarget() == 50.0);
 
+	// The instruments are down until the charge is back: no action works.
+	TestTrue(TEXT("instruments down"), Sim.AreInstrumentsDown() && Sim.GetActionStatus(LRTest::Seed).bInstrumentsDown);
+	TestFalse(TEXT("so Perturb isn't enabled"), Sim.GetActionStatus(LRTest::Seed).bEnabled);
+	const FLRActionResult Blind = Sim.RequestAction(LRTest::AtCell(LRTest::Seed, FIntVector(0, 0, 0)));
+	TestTrue(TEXT("and it's refused"), !Blind.bSuccess && Blind.Reason == FName(TEXT("instruments_down")));
+
 	const double Tripped = Sim.GetHostMass();
 	Sim.Advance(2.0);
 	TestTrue(TEXT("nothing is fed while the charge rebuilds"), Sim.GetHostMass() == Tripped && Sim.IsRecharging());
@@ -1279,6 +1285,8 @@ bool FLRHostSafetyTest::RunTest(const FString& Parameters)
 	Sim.Advance(2.5);
 	TestFalse(TEXT("recharged"), Sim.IsRecharging());
 	TestTrue(TEXT("announced"), Log.Contains(TEXT("recharged")));
+	TestFalse(TEXT("the instruments are back"), Sim.AreInstrumentsDown());
+	TestTrue(TEXT("and Perturb works again"), Sim.GetActionStatus(LRTest::Seed).bEnabled);
 	Sim.Advance(10.0);
 	TestFalse(TEXT("and stays ready"), Sim.IsRecharging());
 
@@ -1306,6 +1314,7 @@ bool FLRHostIgniteTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("no longer frozen"), Sim.IsFrozen());
 	TestTrue(TEXT("the new host is the stored charge"), Sim.GetHostMass() == 400.0);
 	TestTrue(TEXT("the charge rebuilds before feeding resumes"), Sim.IsRecharging() && Sim.GetStoredCharge() == 0.0);
+	TestTrue(TEXT("and the instruments are down meanwhile"), Sim.AreInstrumentsDown());
 
 	// Unfed, the small new host evaporates fast (400 kg lasts 64 s), and can be ignited again.
 	Sim.Advance(70.0);

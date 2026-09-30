@@ -8,6 +8,7 @@ class FLRSimulation;
 class SScrollBox;
 class SVerticalBox;
 class ULRGameSubsystem;
+class UMaterialInterface;
 struct FLRActionStatus;
 struct FLRLootBoxInstance;
 struct FLRPlacedEntity;
@@ -28,12 +29,19 @@ struct FLRPlacedEntity;
  * That's the inside view. The outside panel (the facility's injectors: the feed dial, the host
  * in its chamber, the stored charge and Ignite) drops down from the top when the status bar's
  * OUTSIDE button or F / Tab is pressed (docs/DESIGN.md, "Two views").
+ *
+ * While the instruments are down (the stored charge is rebuilding), TV static covers the 3D
+ * view and the chamber camera, and every action is disabled.
  */
 class LOOTBOXRECURSION_API SLRGameHud : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SLRGameHud) {}
+	SLATE_BEGIN_ARGS(SLRGameHud)
+		: _StaticMaterial(nullptr)
+		{}
 		SLATE_ARGUMENT(TWeakObjectPtr<ULRGameSubsystem>, Subsystem)
+		/** The M_Static hook, or nullptr (the owner keeps it alive). */
+		SLATE_ARGUMENT(UMaterialInterface*, StaticMaterial)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
@@ -64,6 +72,8 @@ private:
 	TSharedRef<SWidget> BuildLogPanel();
 	/** The outside view: the facility's injector controls. */
 	TSharedRef<SWidget> BuildOutsidePanel();
+	/** TV static over the 3D view while the instruments are down, with a banner saying why. */
+	TSharedRef<SWidget> BuildInstrumentStatic();
 	/** The controls, opened with the status bar's (?) button. */
 	TSharedRef<SWidget> BuildHelpDialog();
 	/** Something outside needs the player: the host is shrinking, gone, near the cap, or the charge is rebuilding. */
@@ -132,6 +142,9 @@ private:
 	TSharedPtr<SWidget> OutsidePanel;
 	float OutsideDrop = 0.f;
 	bool bHelpOpen = false;
+	/** How strong the static is (0 = none), fading towards whether the instruments are down. */
+	float StaticLevel = 0.f;
+	UMaterialInterface* StaticMaterial = nullptr;
 
 	/** Log history kept for scrolling back; the panel shows LogVisibleLines of it at a time. */
 	static constexpr int32 MaxLogLines = 200;

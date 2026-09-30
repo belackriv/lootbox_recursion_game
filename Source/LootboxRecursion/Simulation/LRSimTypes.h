@@ -270,6 +270,10 @@ struct LOOTBOXRECURSION_API FLRActionStatus
 	UPROPERTY(BlueprintReadOnly, Category = "LR")
 	bool bCasting = false;
 
+	/** The instruments are down (FLRSimulation::AreInstrumentsDown), so no action works. */
+	UPROPERTY(BlueprintReadOnly, Category = "LR")
+	bool bInstrumentsDown = false;
+
 	/** 0..1 while casting. */
 	UPROPERTY(BlueprintReadOnly, Category = "LR")
 	float CastProgress = 0.f;

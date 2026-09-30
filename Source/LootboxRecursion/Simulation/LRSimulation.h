@@ -139,6 +139,13 @@ public:
 	double GetStoredCharge() const { return StoredCharge; }
 	/** The safeties tripped (or Ignite fired) and the stored charge is rebuilding: no feeding until it's full. */
 	bool IsRecharging() const { return bRecharging; }
+	/**
+	 * The instruments that observe and manipulate the pocket universe don't work: every action
+	 * (Perturb, Build, Open, Dismantle) is refused. They run off the stored charge, so they're
+	 * down while it rebuilds: after the host reaches the chamber wall (the safeties trip), and
+	 * after Ignite.
+	 */
+	bool AreInstrumentsDown() const;
 	/** The host is gone and the stored charge is full. */
 	bool CanIgnite() const;
 	/** The kick-start: fire the whole stored charge at the singularity to make a new host. */

@@ -36,11 +36,13 @@ All paths are under `/Game/Materials/` (the `Content/Materials` folder).
 | `M_Star` | Stars | Opaque, Unlit | Used with Instanced Static Meshes | Color |
 | `M_BlackHole` | The black hole image | Translucent, Unlit | | Texture, Color |
 | `M_Plasma` | The primordial plasma veil (fades out at recombination) | Translucent, Unlit, **Two Sided** | | Color, Opacity |
+| `M_Static` | TV static over the 3D view and the chamber camera while the instruments are down | Translucent, **User Interface** domain | | Texture, Amount, Color, Opacity |
 
 What `Amount` means:
 - **Ripple:** its amplitude, as a fraction of the most it can reach.
 - **Irradiator:** its cache's stacks, as a fraction of the cap (1 once observed).
 - **Matter disc:** how full the cell is (0 is a small puff, 1 is the largest disc).
+- **Static:** how strong it is (it fades in and out as the instruments go down and come back).
 
 The sky is seen from inside a sphere, which is why `M_SkyBackdrop` and `M_Plasma` must be Two
 Sided.
@@ -112,6 +114,16 @@ editor; the settings named come from its Details panel.
 3. Optional: multiply Opacity by a slow, large-scale noise, so the plasma looks like churning
    fog rather than a flat wash.
 
+**M_Static** (drawn by the Slate HUD, so it's a UI material). Its path is on `LRHud`, not an
+actor in the level.
+1. Set Material Domain to User Interface and Blend Mode to Translucent.
+2. Sample `Texture` (a Texture Sample Parameter 2D, sampler Clamp): it's fresh grey noise 30
+   times a second. Use its RGB for Final Color, or tint it.
+3. Opacity = the Vertex Color's alpha: Slate passes the strength there, with a small flicker.
+   `Amount` is the strength alone, for effects that should grow with it.
+4. Room to add what the plain noise can't: scanlines, a vignette, chromatic fringes, a slow
+   vertical roll.
+
 **M_SkyBackdrop:**
 1. Unlit, with Two Sided ticked. `Color` goes into Emissive Color.
 2. It's a good place for a faint nebula texture later.
@@ -119,4 +131,4 @@ editor; the settings named come from its Details panel.
 ## What stays engine-only for now
 
 - Entity labels, which use the engine's text material.
-- The Slate HUD, which isn't drawn with materials.
+- The Slate HUD, which isn't drawn with materials, apart from the static (`M_Static`).

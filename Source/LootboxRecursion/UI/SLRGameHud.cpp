@@ -7,6 +7,7 @@
 #include "UI/LRHudStyle.h"
 #include "UI/SLRChamberView.h"
 #include "UI/SLRFeedDial.h"
+#include "UI/SLRStaticNoise.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -71,6 +72,7 @@ namespace
 void SLRGameHud::Construct(const FArguments& InArgs)
 {
 	Subsystem = InArgs._Subsystem;
+	StaticMaterial = InArgs._StaticMaterial;
 	SetVisibility(EVisibility::SelfHitTestInvisible);
 
 	// SelfHitTestInvisible: the container itself lets clicks through to the 3D world,
@@ -79,6 +81,11 @@ void SLRGameHud::Construct(const FArguments& InArgs)
 	[
 		SNew(SOverlay)
 		.Visibility(EVisibility::SelfHitTestInvisible)
+		// Under the panels: static over the 3D view while the instruments are down.
+		+ SOverlay::Slot()
+		[
+			BuildInstrumentStatic()
+		]
 		+ SOverlay::Slot()
 		.Padding(FMargin(8.f))
 		[
@@ -192,6 +199,46 @@ void SLRGameHud::Tick(const FGeometry& AllottedGeometry, const double InCurrentT
 	const ULRGameSubsystem* Sub = GetSubsystem();
 	const float Goal = (Sub && Sub->IsOutsideViewOpen()) ? 1.f : 0.f;
 	OutsideDrop = FMath::FInterpConstantTo(OutsideDrop, Goal, InDeltaTime, 4.f); // a quarter of a second
+	const FLRSimulation* Sim = GetSimulation();
+	const float StaticGoal = (Sim && Sim->AreInstrumentsDown()) ? 1.f : 0.f;
+	StaticLevel = FMath::FInterpConstantTo(StaticLevel, StaticGoal, InDeltaTime, 3.f); // a third of a second
+}
+
+TSharedRef<SWidget> SLRGameHud::BuildInstrumentStatic()
+{
+	const FLRHudStyle& Style = FLRHudStyle::Get();
+	return SNew(SOverlay)
+		.Visibility(EVisibility::HitTestInvisible)
+		+ SOverlay::Slot()
+		[
+			SNew(SLRStaticNoise)
+			.Resolution(FIntPoint(480, 270))
+			.Material(StaticMaterial)
+			.Intensity_Lambda([this]() { return StaticLevel * 0.9f; })
+		]
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Center)
+		[
+			SNew(SBorder)
+			.Visibility_Lambda([this]() { return StaticLevel > 0.5f ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+			.BorderImage(&Style.WhiteBrush)
+			.BorderBackgroundColor(FLinearColor(0.f, 0.f, 0.f, 0.8f))
+			.Padding(FMargin(18.f, 10.f))
+			[
+				SNew(STextBlock)
+				.Font(Style.HeadingFont)
+				.ColorAndOpacity(Style.Red)
+				.Justification(ETextJustify::Center)
+				.Text_Lambda([this]()
+				{
+					const FLRSimulation* Sim = GetSimulation();
+					const double Full = Sim ? Sim->GetData().Host.ChargeCapacity : 0.0;
+					const double Percent = (Sim && Full > 0.0) ? 100.0 * Sim->GetStoredCharge() / Full : 0.0;
+					return AsText(FString::Printf(TEXT("INSTRUMENTS DOWN\nThey come back when the stored charge is full (%.0f%%)"), Percent));
+				})
+			]
+		];
 }
 
 TSharedRef<SWidget> SLRGameHud::MakePanel(const FText& Title, const TSharedRef<SWidget>& Content,
@@ -344,6 +391,10 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 					if (Sim->GetHostMass() < Sim->GetTippingMass())
 					{
 						Trend += TEXT("  BELOW THE POINT OF NO RETURN");
+					}
+					if (Sim->AreInstrumentsDown())
+					{
+						Trend += TEXT("  INSTRUMENTS DOWN");
 					}
 					return AsText(FString::Printf(TEXT("Host %s  %s  %s"), *FLRSimulation::FormatMass(Sim->GetHostMass()),
 						*FormatSignedRate(Net), *Trend));
@@ -1837,9 +1888,9 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			];
 	};
 
-	// The instruments (the dial, the chamber) sit in dark screens set into the light console,
-	// all the same size.
-	auto Screen = [&Style](const TSharedRef<SWidget>& Instrument) -> TSharedRef<SWidget>
+	// The instruments (the dial, the chamber, the camera) sit in dark screens set into the light
+	// console. The dial and the chamber are the same size.
+	auto Screen = [&Style](const TSharedRef<SWidget>& Instrument, float Width = 250.f, float Height = 240.f) -> TSharedRef<SWidget>
 	{
 		return SNew(SBorder)
 			.BorderImage(&Style.WhiteBrush)
@@ -1852,8 +1903,8 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 				.Padding(FMargin(4.f))
 				[
 					SNew(SBox)
-					.WidthOverride(250.f)
-					.HeightOverride(240.f)
+					.WidthOverride(Width)
+					.HeightOverride(Height)
 					[
 						Instrument
 					]
@@ -2029,7 +2080,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			]
 		];
 
-	// Right of that: the host in its chamber, to scale.
+	// Next to the dial: the host in its chamber, to scale.
 	TSharedRef<SWidget> Chamber = SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
 		.AutoHeight()
@@ -2130,14 +2181,65 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 				.Font(Style.SmallFont)
 				.ColorAndOpacity(Style.ConsoleTextDim)
 				.AutoWrapText(true)
-				.Text(LOCTEXT("InjectorLore", "Neutronium injectors: neutral matter the host's glow barely pushes, focused by a graviton lens. The safeties dump the beam when the 1 g sphere reaches the chamber wall."))
+				.Text(LOCTEXT("InjectorLore", "Neutronium injectors: neutral matter the host's glow barely pushes, focused by a graviton lens. The safeties dump the beam when the 1 g sphere reaches the chamber wall, and the instruments inside go dark until the charge is back."))
 			]
 		];
 
+	// Under the dial and the chamber: a camera looking into the chamber. For now it's a dark
+	// screen (later, a 3D view of the containment field, the injectors and the singularity),
+	// and it shows static while the instruments are down.
+	TSharedRef<SWidget> Camera = Screen(
+		SNew(SOverlay)
+		+ SOverlay::Slot()
+		[
+			SNew(SLRStaticNoise)
+			.Resolution(FIntPoint(200, 56))
+			.Material(StaticMaterial)
+			.Intensity_Lambda([this]() { return StaticLevel; })
+		]
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Left)
+		.VAlign(VAlign_Top)
+		.Padding(FMargin(6.f, 4.f))
+		[
+			SNew(STextBlock)
+			.Font(Style.SmallFont)
+			.ColorAndOpacity(Style.TextDim)
+			.Text(LOCTEXT("CameraLabel", "CAM 1  CONTAINMENT CHAMBER"))
+		]
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Center)
+		[
+			SNew(STextBlock)
+			.Font(Style.HeadingFont)
+			.ColorAndOpacity(Style.Red)
+			.Visibility_Lambda([this]() { return StaticLevel > 0.5f ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+			.Text(LOCTEXT("CameraNoSignal", "NO SIGNAL"))
+		],
+		/*Width*/ 524.f, /*Height*/ 150.f);
+
+	TSharedRef<SWidget> Instruments = SNew(SVerticalBox)
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 12.f, 0.f))[DialColumn]
+			+ SHorizontalBox::Slot().AutoWidth()
+			[
+				SNew(SBox).WidthOverride(262.f)[Chamber] // the screen's width, so the camera below spans both
+			]
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(FMargin(0.f, 8.f, 0.f, 0.f))
+		[
+			Camera
+		];
+
 	TSharedRef<SWidget> Body = SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 12.f, 0.f))[DialColumn]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 12.f, 0.f))[Instruments]
 		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 12.f, 0.f))[Numbers]
-		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 12.f, 0.f))[Chamber]
 		+ SHorizontalBox::Slot().AutoWidth()[Ring];
 
 	return MakePanel(LOCTEXT("OutsideTitle", "OUTSIDE: THE FACILITY'S INJECTORS"), Body,

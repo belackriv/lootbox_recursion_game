@@ -221,6 +221,46 @@ The outside panel shows the host itself, not only numbers:
   hottest and brightest when it's small and in danger (3.5×10¹⁶ K and 3×10¹⁹ W at the start).
 - **Size is readable at a glance.** How close the bubble is to the wall shows how close the
   trip is, with no arithmetic.
+- **A camera into the chamber** (built as a placeholder). A wide dark screen under the dial and
+  the chamber view, labelled CAM 1. For now it's black, and shows static while the instruments
+  are down. Later it becomes a 3D view of the containment field, the injectors and the
+  singularity.
+
+### The instruments go down (built)
+
+Playtesting found that growing too big cost nothing: at the cap the host has three days of
+unfed life, so a trip only paused the injectors. Now reaching the wall hurts.
+
+- **The fiction.** The scientists observe and manipulate the pocket universe through
+  instruments that run off the stored charge. When the host's gravity well reaches the
+  containment barrier, the safeties trip, the magnets quench, and the charge is dumped. The
+  instruments stop working correctly until the charge is full again.
+- **The rule.** The instruments are down whenever the stored charge is rebuilding: after a
+  trip (200 s at the start), and after Ignite. Meanwhile every inside action (Perturb, Build,
+  Open, Dismantle) is refused. The universe itself keeps running: ripples gather and
+  irradiators irradiate.
+- **What you see.** Old-school TV static over the 3D view (and NO SIGNAL on the chamber camera),
+  with a banner saying the instruments are down and how full the charge is. The status bar
+  says INSTRUMENTS DOWN. The outside controls keep working, so you can dial back.
+- **The static** is drawn by `SLRStaticNoise`: grey noise redrawn 30 times a second, each row
+  a little brighter or darker, with a brighter band rolling down. It has a material hook,
+  `M_Static` (docs/MATERIALS.md).
+
+### Venting mass (proposal, not built)
+
+A way to shed mass on purpose, faster than evaporation. At the cap the host evaporates only
+18 kg/s, so shedding even 300 t takes over 4 hours; players will want a faster way down.
+
+- **The fiction (to settle).** Stimulated Hawking emission: the facility drives the horizon
+  so it radiates far more than it would on its own. All that extra radiation floods the
+  instruments, so they're down while venting, as after a trip.
+- **A possible rule.**
+  - A VENT toggle on the outside panel multiplies evaporation (100×, say) while it's on.
+    At the cap that's 1.8 t/s, so 300 t goes in under 3 minutes.
+  - The injectors are off while venting, and the instruments are down.
+  - It can't run below the point of no return, or it stops itself there.
+- **Why it's interesting.** It trades time without instruments for size, so it's a choice
+  rather than a free undo. Later it could feed something (the radiation as a resource).
 
 ### Losing the host, and the kick-start
 
@@ -331,7 +371,8 @@ The game has two UIs, one for each side of the horizon.
   - the host's mass and net rate next to the dial.
 
 **How it looks.** The outside is the inverse of the inside: a light grey console with dark
-text, with its instruments (the dial, the chamber) set in dark screens.
+text, with its instruments (the dial and the chamber side by side, the same size, and the
+chamber camera under both) set in dark screens.
 
 **How you open it.** The outside panel drops down from the top of the screen when you press a
 button on the top status bar, or a hotkey (Tab, say; any free key will do). The same button or

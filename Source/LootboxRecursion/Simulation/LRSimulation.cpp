@@ -27,6 +27,7 @@ namespace
 	const FName ReasonNoHost(TEXT("no_host"));
 	const FName ReasonRecharging(TEXT("recharging"));
 	const FName ReasonHostAlive(TEXT("host_alive"));
+	const FName ReasonInstrumentsDown(TEXT("instruments_down"));
 
 	const FName IrradiateEvent(TEXT("irradiate"));
 	const FName UnlockEvent(TEXT("unlock"));
@@ -55,6 +56,7 @@ FString FLRSimulation::DescribeReason(FName Reason)
 	if (Reason == ReasonNoHost) { return TEXT("there is no host black hole"); }
 	if (Reason == ReasonRecharging) { return TEXT("the stored charge is still recharging"); }
 	if (Reason == ReasonHostAlive) { return TEXT("the host is still there, feed it with the dial"); }
+	if (Reason == ReasonInstrumentsDown) { return TEXT("the instruments are down until the stored charge is full again"); }
 	return Reason.ToString();
 }
 
@@ -300,7 +302,7 @@ void FLRSimulation::AdvanceHost(double DeltaSeconds)
 		if (bRecharging && StoredCharge >= Host.ChargeCapacity)
 		{
 			bRecharging = false;
-			Messages.Add(TEXT("Charge restored: the injectors are ready and ramp back up to the dial."));
+			Messages.Add(TEXT("Stored charge recharged: the instruments are back online, and the injectors ramp back up to the dial."));
 		}
 
 		UpdateAutoTarget();
@@ -340,7 +342,7 @@ void FLRSimulation::AdvanceHost(double DeltaSeconds)
 			Injector = FLRInjectorState();
 			StoredCharge = 0.0;
 			bRecharging = true;
-			Messages.Add(FString::Printf(TEXT("SAFETIES TRIPPED: the host's gravity well reached the chamber wall at %s. The beam was dumped, and feeding is locked out while the charge rebuilds. Dial back before the cap."),
+			Messages.Add(FString::Printf(TEXT("SAFETIES TRIPPED: the host's gravity well reached the chamber wall at %s. The beam was dumped, and until the charge rebuilds, feeding is locked out and the instruments are down (no Perturb, Build, Open or Dismantle). Dial back before the cap."),
 				*FormatMass(HostMass)));
 		}
 	}
@@ -469,6 +471,11 @@ double FLRSimulation::GetTimeToEvaporation() const
 	return (Balance * Artanh - HostMass) / Intake;
 }
 
+bool FLRSimulation::AreInstrumentsDown() const
+{
+	return Data.Host.IsDefined() && bRecharging;
+}
+
 bool FLRSimulation::CanIgnite() const
 {
 	return Data.Host.IsDefined() && HostMass <= 0.0 && Data.Host.ChargeCapacity > 0.0
@@ -507,7 +514,7 @@ FLRActionResult FLRSimulation::Ignite()
 	FLRActionResult Result;
 	Result.Action = LRNames::Ignite;
 	Result.bSuccess = true;
-	Result.Message = FString::Printf(TEXT("Ignited: the stored charge (%s) collapsed into a new horizon. The pocket universe stirs again. Open the feed dial as soon as the charge is back."),
+	Result.Message = FString::Printf(TEXT("Ignited: the stored charge (%s) collapsed into a new horizon. The pocket universe stirs again, but the instruments stay down until the charge is back. Then open the feed dial."),
 		*FormatMass(HostMass));
 	OnWorldChanged.Broadcast();
 	Complete(Result);
@@ -1062,7 +1069,8 @@ FLRActionStatus FLRSimulation::GetActionStatus(FName ActionName) const
 		}
 	}
 
-	Status.bEnabled = Status.bRevealed && Status.bRequirementsMet && !Status.bOnCooldown && !Status.bCasting;
+	Status.bInstrumentsDown = AreInstrumentsDown();
+	Status.bEnabled = Status.bRevealed && Status.bRequirementsMet && !Status.bOnCooldown && !Status.bCasting && !Status.bInstrumentsDown;
 	return Status;
 }
 
@@ -1115,6 +1123,7 @@ FLRActionResult FLRSimulation::RequestAction(const FLRActionRequest& Request)
 	const FLRActionStatus Status = GetActionStatus(Request.Action);
 	FName Reason;
 	if (!Status.bRevealed)             { Reason = ReasonNotRevealed; }
+	else if (Status.bInstrumentsDown)  { Reason = ReasonInstrumentsDown; }
 	else if (Status.bCasting)          { Reason = ReasonCasting; }
 	else if (Status.bOnCooldown)       { Reason = ReasonOnCooldown; }
 	else if (!Status.bRequirementsMet) { Reason = ReasonRequirements; }

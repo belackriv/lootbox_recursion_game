@@ -3,6 +3,8 @@
 #include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
 #include "Game/LRGameSubsystem.h"
+#include "Materials/MaterialInterface.h"
+#include "Rendering/LRMaterialHooks.h"
 #include "UI/SLRGameHud.h"
 
 void ALRHud::BeginPlay()
@@ -16,7 +18,8 @@ void ALRHud::BeginPlay()
 		return;
 	}
 
-	SAssignNew(HudWidget, SLRGameHud).Subsystem(Subsystem);
+	StaticHook = LRMaterialHooks::LoadOptional(StaticMaterialPath);
+	SAssignNew(HudWidget, SLRGameHud).Subsystem(Subsystem).StaticMaterial(StaticHook.Get());
 	Viewport->AddViewportWidgetContent(HudWidget.ToSharedRef());
 
 	Subsystem->OnActionCompleted.AddDynamic(this, &ALRHud::HandleActionCompleted);
