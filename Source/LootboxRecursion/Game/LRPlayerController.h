@@ -12,8 +12,10 @@ struct FInputActionValue;
  * Mouse-driven "god mode" controller: cursor visible, click events on (so world tiles can be
  * clicked), camera controls forwarded to ALRCameraPawn, and a few console cheats.
  *
- * The keyboard commands and their default keys are in LRInput::GetCommands(); the player can
- * rebind them (Esc menu > Settings), and the mappings are rebuilt whenever the settings change.
+ * The keyboard commands and their default keys are in LRInput::GetCommands(). Each one's
+ * action is player mappable, and the mapping context is registered with Enhanced Input's user
+ * settings, so the player can rebind them (Esc menu > Settings) and the engine keeps and
+ * applies their keys (see LRKeyBindings).
  * By default:
  *   WASD / arrows (hold)      pan across the build layer
  *   Q/E (hold)                orbit
@@ -69,8 +71,8 @@ private:
 	/** The Esc menu is open: the game ignores everything but the menu key. */
 	bool IsMenuOpen() const;
 
-	/** Rebuild the key mappings from the player's bindings (and the fixed mouse controls). */
-	void ApplyKeyBindings();
+	/** Map the default keys (and the fixed mouse controls); the player's own keys come from Enhanced Input's user settings. */
+	void MapDefaultKeys();
 	/** Hand the camera settings to the camera pawn. */
 	void ApplyCameraSettings();
 	UFUNCTION()

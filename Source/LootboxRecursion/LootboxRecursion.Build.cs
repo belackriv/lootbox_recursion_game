@@ -20,6 +20,7 @@ public class LootboxRecursion : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
+			"GameplayTags", // Enhanced Input's rebinding API reports failures as gameplay tags
 			"RHI",
 			"RenderCore",
 			"Slate",

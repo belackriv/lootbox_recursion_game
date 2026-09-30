@@ -9,7 +9,9 @@
 
 #include "Data/LRGameData.h"
 #include "Game/LRInputCommands.h"
-#include "Game/LRUserSettings.h"
+#include "Game/LRKeyBindings.h"
+#include "InputAction.h"
+#include "PlayerMappableKeySettings.h"
 #include "Cosmos/LRBlackHoleRenderer.h"
 #include "Misc/Paths.h"
 #include "Simulation/LRHexGrid.h"
@@ -1633,7 +1635,7 @@ bool FLRBlackHoleRenderTest::RunTest(const FString& Parameters)
 
 #undef LR_TEST_FLAGS
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRInputBindingsTest, "LootboxRecursion.Input.DefaultKeysAndRebinding", LR_TEST_FLAGS)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRInputBindingsTest, "LootboxRecursion.Input.DefaultKeysAndMappableActions", LR_TEST_FLAGS)
 bool FLRInputBindingsTest::RunTest(const FString& Parameters)
 {
 	// Out of the box, no key does two things.
@@ -1660,18 +1662,12 @@ bool FLRInputBindingsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("slot 1 is on 1"), LRInput::FindCommand(LRInput::SlotCommand(0))->DefaultPrimary == EKeys::One);
 	TestTrue(TEXT("slot 10 is on 0"), LRInput::FindCommand(LRInput::SlotCommand(9))->DefaultPrimary == EKeys::Zero);
 
-	// Rebinding takes the key off whatever had it.
-	ULRUserSettings* Settings = NewObject<ULRUserSettings>();
-	TestTrue(TEXT("defaults until changed"), Settings->GetKey(LRInput::Names::OrbitLeft, 0) == EKeys::Q);
-	Settings->SetKey(LRInput::SlotCommand(0), 0, EKeys::Q);
-	TestTrue(TEXT("slot 1 on Q"), Settings->GetKey(LRInput::SlotCommand(0), 0) == EKeys::Q);
-	TestFalse(TEXT("so orbit left lost it"), Settings->GetKey(LRInput::Names::OrbitLeft, 0).IsValid());
-	Settings->SetKey(LRInput::Names::Home, 1, EKeys::Invalid);
-	TestTrue(TEXT("clearing one key keeps the other"), Settings->GetKey(LRInput::Names::Home, 0) == EKeys::H
-		&& !Settings->GetKey(LRInput::Names::Home, 1).IsValid());
-	Settings->ResetKeys();
-	TestTrue(TEXT("reset brings the defaults back"), Settings->GetKey(LRInput::Names::OrbitLeft, 0) == EKeys::Q
-		&& Settings->GetKey(LRInput::SlotCommand(0), 0) == EKeys::One);
+	// Code-built actions are made player mappable under their command's name (the engine's
+	// rebinding keys off that name; rebinding itself needs a local player, so play-test it).
+	UInputAction* Action = NewObject<UInputAction>();
+	LRKeyBindings::MakePlayerMappable(Action, *LRInput::FindCommand(LRInput::Names::Home));
+	const UPlayerMappableKeySettings* KeySettings = Action->GetPlayerMappableKeySettings();
+	TestTrue(TEXT("player mappable as Home"), KeySettings && KeySettings->Name == LRInput::Names::Home);
 	return true;
 }
 

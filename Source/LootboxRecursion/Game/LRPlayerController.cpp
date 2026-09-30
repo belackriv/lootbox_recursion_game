@@ -7,10 +7,12 @@
 #include "Game/LRGameSubsystem.h"
 #include "Game/LRHud.h"
 #include "Game/LRInputCommands.h"
+#include "Game/LRKeyBindings.h"
 #include "Game/LRUserSettings.h"
 #include "InputAction.h"
 #include "InputActionValue.h"
 #include "InputMappingContext.h"
+#include "UserSettings/EnhancedInputUserSettings.h"
 
 ALRPlayerController::ALRPlayerController()
 {
@@ -85,6 +87,7 @@ void ALRPlayerController::SetupInputComponent()
 	for (const LRInput::FCommand& Command : LRInput::GetCommands())
 	{
 		UInputAction* Action = MakeAction(FString::Printf(TEXT("IA_%s"), *Command.Name.ToString()));
+		LRKeyBindings::MakePlayerMappable(Action, Command);
 		CommandActions.Add(Command.Name, Action);
 		if (Input)
 		{
@@ -96,33 +99,33 @@ void ALRPlayerController::SetupInputComponent()
 	}
 
 	MappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Default"));
-	ApplyKeyBindings();
+	MapDefaultKeys();
 
-	// SetupInputComponent runs once this controller has its LocalPlayer, so the
-	// Enhanced Input subsystem is available here.
+	// SetupInputComponent runs once this controller has its LocalPlayer, so the Enhanced Input
+	// subsystem is available here. Registering the context with the user settings makes its
+	// player-mappable keys rebindable (and applies any the player saved).
 	if (ULocalPlayer* LocalPlayer = GetLocalPlayer())
 	{
 		if (UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
 		{
+			if (UEnhancedInputUserSettings* KeySettings = InputSubsystem->GetUserSettings())
+			{
+				KeySettings->RegisterInputMappingContext(MappingContext);
+			}
 			InputSubsystem->AddMappingContext(MappingContext, 0);
 		}
 	}
 }
 
-void ALRPlayerController::ApplyKeyBindings()
+void ALRPlayerController::MapDefaultKeys()
 {
-	if (!MappingContext)
-	{
-		return;
-	}
-	MappingContext->UnmapAll();
 	MappingContext->MapKey(ZoomAction, EKeys::MouseWheelAxis);
 	MappingContext->MapKey(FreeLookAction, EKeys::RightMouseButton);
 	MappingContext->MapKey(LookAction, EKeys::Mouse2D);
 	MappingContext->MapKey(SelectAction, EKeys::LeftMouseButton);
 
-	const ULRGameSubsystem* Sub = ULRGameSubsystem::Get(this);
-	const ULRUserSettings* Settings = Sub ? Sub->GetUserSettings() : nullptr;
+	// Primary first, then secondary: the order sets their slots (First, Second) in the
+	// player's key settings.
 	for (const LRInput::FCommand& Command : LRInput::GetCommands())
 	{
 		const TObjectPtr<UInputAction>* Action = CommandActions.Find(Command.Name);
@@ -130,26 +133,12 @@ void ALRPlayerController::ApplyKeyBindings()
 		{
 			continue;
 		}
-		FKey Primary = Command.DefaultPrimary;
-		FKey Secondary = Command.DefaultSecondary;
-		if (Settings)
-		{
-			Settings->GetKeys(Command.Name, Primary, Secondary);
-		}
-		for (const FKey& Key : { Primary, Secondary })
+		for (const FKey& Key : { Command.DefaultPrimary, Command.DefaultSecondary })
 		{
 			if (Key.IsValid())
 			{
 				MappingContext->MapKey(*Action, Key);
 			}
-		}
-	}
-
-	if (ULocalPlayer* LocalPlayer = GetLocalPlayer())
-	{
-		if (UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
-		{
-			InputSubsystem->RequestRebuildControlMappings();
 		}
 	}
 }
@@ -170,8 +159,7 @@ void ALRPlayerController::ApplyCameraSettings()
 
 void ALRPlayerController::HandleSettingsChanged()
 {
-	ApplyKeyBindings();
-	ApplyCameraSettings();
+	ApplyCameraSettings(); // key changes are applied by Enhanced Input itself
 }
 
 ALRCameraPawn* ALRPlayerController::GetCameraPawn() const

@@ -62,11 +62,10 @@ See [DESIGN.md](DESIGN.md#irradiation-implemented-v1).
 - [x] Esc (F10 in the editor, or MENU) opens a pause menu: Resume, New Game, Save, Load,
       Settings, Quit.
 - [x] Save slots: named saves beside the autosave, listed in a save index.
-- [x] Settings: key rebinding (our own bindings over code-built Enhanced Input mappings,
-      rebuilt on change), free-look speed, invert look, pan speed, UI scale, graphics
-      quality.
-- [x] Settings persist per user (`ULRUserSettings`, a `USaveGame`; graphics in
-      `UGameUserSettings`).
+- [x] Settings: key rebinding (Enhanced Input user settings: the code-built actions are
+      player mappable), free-look speed, invert look, pan speed, UI scale, graphics quality.
+- [x] Settings persist per user: keys in Enhanced Input's own save, graphics in
+      `UGameUserSettings`, the rest in `ULRUserSettings` (a `USaveGame`).
 - [x] The command card (DESIGN.md, "The command card"): the Actions panel is ten slots on
       keys 1-0, filled with what the selected cell allows, with a Build page of recipes. The
       Grid panel's entity list is gone; Universe and Info moved to the bottom right.

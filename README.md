@@ -109,8 +109,9 @@ and as the epochs advance (see *The pocket universe* and *Tech tree* in
 [docs/DESIGN.md](docs/DESIGN.md)); the log announces each unlock and each new epoch.
 
 The game autosaves every 30s and on exit to `Saved/SaveGames/LootboxRecursion.sav`, and you can
-make named saves from the menu (`Save_1.sav`...; `SaveIndex.sav` lists them). Settings live in
-`Settings.sav` (graphics quality in the engine's `GameUserSettings.ini`). New Game (menu) or
+make named saves from the menu (`Save_1.sav`...; `SaveIndex.sav` lists them). Key bindings are
+kept by Enhanced Input's user settings (their own save), graphics quality in the engine's
+`GameUserSettings.ini`, and the rest of the settings in `Settings.sav`. New Game (menu) or
 `LRReset` starts over. The keys above are the defaults: all the keyboard ones can be rebound.
 
 ---

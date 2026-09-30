@@ -16,7 +16,8 @@ class ULRUserSettings;
  * - Save: a new named save, or over an existing one. Load: any save, the autosave first.
  * - Settings: rebind every keyboard command (two keys each; click, then press a key; Esc
  *   cancels, Backspace clears), camera speeds and invert look, UI scale, graphics quality.
- *   Changes apply at once and are saved (ULRUserSettings; graphics in UGameUserSettings).
+ *   Changes apply at once and are saved: keys in Enhanced Input's user settings
+ *   (LRKeyBindings), graphics in UGameUserSettings, the rest in ULRUserSettings.
  *
  * It takes keyboard focus while open, so key presses reach it (for rebinding) rather than
  * the game.

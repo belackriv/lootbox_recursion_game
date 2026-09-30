@@ -556,10 +556,14 @@ the outside panel.
   cancels, Backspace clears). A key does one thing, so binding it takes it off anything
   else. Mouse controls are fixed. Also free-look speed, invert look, pan speed, UI scale and
   graphics quality. Changes apply at once and are saved.
-- **Where it's kept.** `ULRUserSettings` (a `USaveGame`, `Settings.sav`) holds the key
-  overrides and the rest; graphics quality is the engine's `UGameUserSettings`. The commands
-  and their defaults are in `Game/LRInputCommands.h`, and the player controller rebuilds its
-  Enhanced Input mappings from them whenever the settings change.
+- **Where it's kept.** Keys use the engine's rebinding: Enhanced Input's user settings
+  (enabled in `DefaultInput.ini`) store each player's keys in their own save and apply them.
+  The commands and their defaults are in `Game/LRInputCommands.h`; the player controller
+  makes each command's action player mappable under the command's name and registers the
+  mapping context, and `LRKeyBindings` wraps the engine calls (plus our one-key-one-command
+  rule). Graphics quality is the engine's `UGameUserSettings`; the camera and UI settings
+  are `ULRUserSettings` (a `USaveGame`, `Settings.sav`). This also leaves the door open to
+  gamepad keys and key profiles later.
 
 ## Matter lives in the pocket universe (implemented)
 

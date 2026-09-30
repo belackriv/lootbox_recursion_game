@@ -3,6 +3,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Game/LRGameSubsystem.h"
 #include "Game/LRInputCommands.h"
+#include "Game/LRKeyBindings.h"
 #include "Game/LRUserSettings.h"
 #include "Simulation/LRPhysics.h"
 #include "Simulation/LRSimulation.h"
@@ -1021,15 +1022,8 @@ void SLRGameHud::ActivateCardSlot(int32 Slot)
 FText SLRGameHud::GetKeyLabel(FName Command) const
 {
 	const ULRGameSubsystem* Sub = GetSubsystem();
-	const ULRUserSettings* Settings = Sub ? Sub->GetUserSettings() : nullptr;
-	if (!Settings)
-	{
-		return FText::GetEmpty();
-	}
-	FKey Primary;
-	FKey Secondary;
-	Settings->GetKeys(Command, Primary, Secondary);
-	const FKey Shown = Primary.IsValid() ? Primary : Secondary;
+	const FKey Primary = LRKeyBindings::GetKey(Sub, Command, 0);
+	const FKey Shown = Primary.IsValid() ? Primary : LRKeyBindings::GetKey(Sub, Command, 1);
 	return Shown.IsValid() ? Shown.GetDisplayName(/*bLongDisplayName*/ false) : FText::GetEmpty();
 }
 

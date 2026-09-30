@@ -5,6 +5,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Game/LRGameSubsystem.h"
 #include "Game/LRInputCommands.h"
+#include "Game/LRKeyBindings.h"
 #include "Game/LRUserSettings.h"
 #include "GameFramework/GameUserSettings.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -119,19 +120,18 @@ FReply SLRGameMenu::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKe
 			CaptureCommand = NAME_None;
 			return FReply::Handled();
 		}
-		if (ULRUserSettings* Settings = GetSettings())
+		if (!LRKeyBindings::SetKey(Subsystem.Get(), CaptureCommand, CaptureIndex, Key == EKeys::BackSpace ? EKeys::Invalid : Key))
 		{
-			Settings->SetKey(CaptureCommand, CaptureIndex, Key == EKeys::BackSpace ? EKeys::Invalid : Key);
-			SettingsChanged(/*bSave*/ true);
+			Notice = TEXT("That key couldn't be bound.");
 		}
 		CaptureCommand = NAME_None;
 		return FReply::Handled();
 	}
 
 	// The menu's own keys: Esc, or whatever the menu command is bound to.
-	const ULRUserSettings* Settings = GetSettings();
+	const ULRGameSubsystem* Sub = Subsystem.Get();
 	const bool bMenuKey = Key == EKeys::Escape
-		|| (Settings && (Settings->GetKey(LRInput::Names::Menu, 0) == Key || Settings->GetKey(LRInput::Names::Menu, 1) == Key));
+		|| LRKeyBindings::GetKey(Sub, LRInput::Names::Menu, 0) == Key || LRKeyBindings::GetKey(Sub, LRInput::Names::Menu, 1) == Key;
 	if (bMenuKey)
 	{
 		Back();
@@ -488,8 +488,7 @@ TSharedRef<SWidget> SLRGameMenu::MakeKeyButton(FName Command, int32 Index)
 					{
 						return LOCTEXT("PressAKey", "press a key...");
 					}
-					const ULRUserSettings* Settings = GetSettings();
-					const FKey Key = Settings ? Settings->GetKey(Command, Index) : EKeys::Invalid;
+					const FKey Key = LRKeyBindings::GetKey(Subsystem.Get(), Command, Index);
 					return Key.IsValid() ? Key.GetDisplayName(/*bLongDisplayName*/ false) : LOCTEXT("Unbound", "-");
 				})
 				.ColorAndOpacity_Lambda([this, Command, Index]() -> FSlateColor
@@ -590,11 +589,7 @@ TSharedRef<SWidget> SLRGameMenu::BuildSettingsPage()
 	}
 	Row(MakeMenuButton(LOCTEXT("ResetKeys", "Reset keys to defaults"), [this]()
 	{
-		if (ULRUserSettings* Settings = GetSettings())
-		{
-			Settings->ResetKeys();
-			SettingsChanged(/*bSave*/ true);
-		}
+		LRKeyBindings::ResetToDefaults(Subsystem.Get());
 	}), 8.f);
 
 	// Camera.
