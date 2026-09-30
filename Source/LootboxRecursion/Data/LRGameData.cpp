@@ -147,6 +147,10 @@ void FLRGameData::AddFrom(const FLRDataFile& File)
 	{
 		GlobalCooldown = File.GlobalCooldown;
 	}
+	if (File.CancelRefund >= 0.f)
+	{
+		CancelRefund = File.CancelRefund;
+	}
 }
 
 TArray<FString> FLRGameData::Validate() const
@@ -383,6 +387,10 @@ TArray<FString> FLRGameData::Validate() const
 	if (ReachRadius < 0)
 	{
 		Errors.Add(TEXT("reachRadius must be >= 0"));
+	}
+	if (CancelRefund > 1.f)
+	{
+		Errors.Add(TEXT("cancelRefund must be between 0 and 1"));
 	}
 
 	if (Host.StartMass < 0.0)

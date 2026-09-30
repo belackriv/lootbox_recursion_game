@@ -407,18 +407,40 @@ bool FLRJobPaysUpFrontTest::RunTest(const FString& Parameters)
 		&& Job->Paid.Matter[0].Cell == Cell && Job->Paid.Matter[0].Count == 4
 		&& Job->Paid.Matter[1].Cell == Next && Job->Paid.Matter[1].Count == 6);
 
-	// Cancelled (or failed), it's refunded exactly where it came from.
+	// Cancelled, 75% comes back (7 of the 10, rounded down), shared in proportion: 3 and 4.
 	LRTest::FMessageLog Log(Sim);
 	TestTrue(TEXT("cancel"), Sim.CancelJob(Cell).bSuccess && !Sim.IsCellBusy(Cell));
-	TestTrue(TEXT("each cell gets its own share back"), Sim.GetMatter(Cell, LRTest::Carbon) == 4 && Sim.GetMatter(Next, LRTest::Carbon) == 6);
+	TestTrue(TEXT("each cell gets its share of 75% back"), Sim.GetMatter(Cell, LRTest::Carbon) == 3 && Sim.GetMatter(Next, LRTest::Carbon) == 4);
 	TestTrue(TEXT("and the log says so"), Log.Contains(TEXT("Refunded")));
 
+	// A full refund (what a failed job gets) puts back exactly what each cell gave.
+	FLRGameData Full = Data;
+	Full.CancelRefund = 1.f;
+	FLRSimulation Whole(Full, 1);
+	Whole.GiveMatter(Cell, LRTest::Carbon, 4);
+	Whole.GiveMatter(Next, LRTest::Carbon, 6);
+	TestTrue(TEXT("start"), Whole.RequestAction(Build).bSuccess);
+	Whole.CancelJob(Cell);
+	TestTrue(TEXT("each cell gets all of its share back"), Whole.GetMatter(Cell, LRTest::Carbon) == 4 && Whole.GetMatter(Next, LRTest::Carbon) == 6);
+
 	// Run to the end, it's built and the matter stays spent.
-	Sim.Advance(1.0); // past the global cooldown
-	TestTrue(TEXT("start again"), Sim.RequestAction(Build).bSuccess);
-	Sim.Advance(5.1);
-	TestTrue(TEXT("built"), Sim.FindPlaced(Cell) && Sim.FindPlaced(Cell)->Item == LRTest::Irradiator && !Sim.IsCellBusy(Cell));
-	TestTrue(TEXT("paid once"), Sim.GetMatter(Cell, LRTest::Carbon) == 0 && Sim.GetMatter(Next, LRTest::Carbon) == 0);
+	Whole.Advance(1.0); // past the global cooldown
+	TestTrue(TEXT("start again"), Whole.RequestAction(Build).bSuccess);
+	Whole.Advance(5.1);
+	TestTrue(TEXT("built"), Whole.FindPlaced(Cell) && Whole.FindPlaced(Cell)->Item == LRTest::Irradiator && !Whole.IsCellBusy(Cell));
+	TestTrue(TEXT("paid once"), Whole.GetMatter(Cell, LRTest::Carbon) == 0 && Whole.GetMatter(Next, LRTest::Carbon) == 0);
+
+	// A seed pays in host mass up front; a cancel gives 75% of it back.
+	FLRGameData Cosmos = LRTest::MakeStableCosmosData(); // 1,000 kg, a seed costs 100
+	for (FLRActionDef& Action : Cosmos.Actions)
+	{
+		Action.CastTime = Action.Name == LRTest::Seed ? 3.f : Action.CastTime;
+	}
+	FLRSimulation Seeded(Cosmos, 1);
+	TestTrue(TEXT("seed job"), Seeded.RequestAction(LRTest::AtCell(LRTest::Seed, Cell)).bSuccess);
+	TestTrue(TEXT("the host paid at once"), FMath::IsNearlyEqual(Seeded.GetHostMass(), 900.0, 1e-9));
+	Seeded.CancelJob(Cell);
+	TestTrue(TEXT("and got 75 kg back"), FMath::IsNearlyEqual(Seeded.GetHostMass(), 975.0, 1e-9));
 
 	// A second job can't spend matter the first already took.
 	FLRSimulation Two(Data, 1);

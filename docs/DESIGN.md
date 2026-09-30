@@ -566,9 +566,12 @@ presses; that's all that holds the player back.
   of the cells in reach (nearest first) and a seed's mass out of the host, so two jobs can't
   spend the same matter. What it took, and from which cell, is kept with the job as a **cost
   transaction** (`FLRCostTransaction`, saved with it). If the job fails when it ends (it's
-  checked again then) or is cancelled (`CancelJob`), the transaction is refunded: each cell
-  gets back exactly its own share, and the host its mass if it's still there. The
-  transaction is discarded when the job ends; later these could go to a ledger.
+  checked again then), the transaction is refunded **in full**: each cell gets back exactly
+  its own share, and the host its mass if it's still there. If the player **cancels** it
+  (`CancelJob`; no button for it yet), they get **75%** back (`cancelRefund` in
+  `actions.json`): each material's refund is rounded down to whole units and shared between
+  the cells in proportion to what each gave, so the shares add up exactly. The transaction
+  is discarded when the job ends; later these could go to a ledger.
 - **Kept in saves**, and they carry on while the instruments are down: the universe keeps
   running.
 - An action can still have its own `cooldown` on top (optional, none do now).

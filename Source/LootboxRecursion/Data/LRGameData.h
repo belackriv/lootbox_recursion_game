@@ -582,6 +582,10 @@ struct LOOTBOXRECURSION_API FLRDataFile
 	/** actions.json: the pause after any action starts, shared by all of them (s). -1 = not set in this file. */
 	UPROPERTY()
 	float GlobalCooldown = -1.f;
+
+	/** actions.json: how much of a job's cost a cancel refunds (0 to 1). -1 = not set in this file. */
+	UPROPERTY()
+	float CancelRefund = -1.f;
 };
 
 /** All definitions, indexed for lookup. Plain C++ (no reflection needed). */
@@ -598,6 +602,8 @@ struct LOOTBOXRECURSION_API FLRGameData
 	int32 ReachRadius = 0;
 	/** After any action starts, no action can start for this long (s): against double presses. */
 	float GlobalCooldown = 0.f;
+	/** A cancelled job gets this much of its cost back (a failed one gets it all back). */
+	float CancelRefund = 0.75f;
 
 	const FLRItemDef* FindItem(FName Id) const { return Items.Find(Id); }
 	const FLRLootTableDef* FindLootTable(FName Id) const { return LootTables.Find(Id); }

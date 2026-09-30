@@ -61,7 +61,10 @@ public:
 	const TMap<FIntVector, FLRCellJob>& GetJobs() const { return Jobs; }
 	/** Something is under way in the cell: nothing else can be done there until it ends. */
 	bool IsCellBusy(const FIntVector& Cell) const { return Jobs.Contains(Cell); }
-	/** Stop the job in a cell, refunding what it paid, exactly where it came from. */
+	/**
+	 * The player stops the job in a cell: it gets Data.CancelRefund (75%) of what it paid back,
+	 * each cell its share. (A job that fails gets all of it back.)
+	 */
 	FLRActionResult CancelJob(const FIntVector& Cell);
 
 	FLRActionStatus GetActionStatus(FName ActionName) const;
@@ -267,8 +270,13 @@ private:
 	 * recorded), or a seed's host mass. False (nothing taken) if it can't be paid.
 	 */
 	bool PayForJob(const FLRActionRequest& Request, FLRCostTransaction& OutPaid);
-	/** Put back what a transaction took, cell by cell (and the host's share, if it's still there). */
-	void Refund(const FLRCostTransaction& Paid);
+	/**
+	 * Put back Fraction of what a transaction took, cell by cell (and the host's share, if it's
+	 * still there). Matter comes in whole units, so each material's refund is rounded down and
+	 * shared out in proportion to what each cell gave (the shares add up exactly). Returns what
+	 * was actually put back.
+	 */
+	FLRCostTransaction RefundTransaction(const FLRCostTransaction& Paid, float Fraction = 1.f);
 	/** " Refunded 30 C, 20 Fe." for the log, or empty. */
 	FString DescribeRefund(const FLRCostTransaction& Paid) const;
 	FLRActionResult ExecuteLootAction(const FLRActionRequest& Request, const FLRActionDef& Def);

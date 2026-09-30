@@ -28,6 +28,7 @@ def main() -> int:
     items, recipes, tables, actions, radiation, epochs = {}, [], {}, [], [], []
     host = dict(HOST_DEFAULTS)
     reach_radius = 0
+    cancel_refund = 0.75
 
     files = sorted(DATA_DIR.glob("*.json"))
     if not files:
@@ -56,6 +57,8 @@ def main() -> int:
                 epochs[existing] = epoch
         if doc.get("reachRadius", -1) >= 0:
             reach_radius = doc["reachRadius"]
+        if doc.get("cancelRefund", -1) >= 0:
+            cancel_refund = doc["cancelRefund"]
         file_host = doc.get("host")
         if file_host and file_host.get("startMass", 0) > 0:
             host = {**HOST_DEFAULTS, **file_host}
@@ -208,6 +211,8 @@ def main() -> int:
 
     if reach_radius < 0:
         errors.append("reachRadius must be >= 0")
+    if cancel_refund > 1:
+        errors.append("cancelRefund must be between 0 and 1")
 
     if host["startMass"] < 0:
         errors.append("host: startMass must be >= 0")

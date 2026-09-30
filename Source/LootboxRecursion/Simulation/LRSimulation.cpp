@@ -293,9 +293,9 @@ void FLRSimulation::Advance(double DeltaSeconds)
 		FLRActionResult Result = Execute(Job.Request, /*bPrepaid*/ true);
 		if (!Result.bSuccess && !Job.Paid.IsEmpty())
 		{
-			// It paid when it started: put everything back where it came from.
-			Refund(Job.Paid);
-			Result.Message += DescribeRefund(Job.Paid);
+			// It paid when it started, and it failed through no choice of the player's: put
+			// everything back where it came from.
+			Result.Message += DescribeRefund(RefundTransaction(Job.Paid));
 		}
 		Complete(Result);
 	}
@@ -1782,18 +1782,78 @@ bool FLRSimulation::PayForJob(const FLRActionRequest& Request, FLRCostTransactio
 	return true; // nothing to pay (Open, a loot roll...)
 }
 
-void FLRSimulation::Refund(const FLRCostTransaction& Paid)
+FLRCostTransaction FLRSimulation::RefundTransaction(const FLRCostTransaction& Paid, float Fraction)
 {
+	const double Share = FMath::Clamp(static_cast<double>(Fraction), 0.0, 1.0);
+	FLRCostTransaction Refunded;
+
+	// Each material on its own: round its total refund down, then share it out between the
+	// cells it came from in proportion to what each gave (largest remainders get the odd units,
+	// nearest cell first on a tie), so the shares add up exactly and no cell gets more than it gave.
+	TArray<FName> Items;
 	for (const FLRMatterDraw& Draw : Paid.Matter)
 	{
-		AddMatter(Draw.Cell, Draw.Item, Draw.Count);
+		Items.AddUnique(Draw.Item);
 	}
+	for (const FName Item : Items)
+	{
+		TArray<const FLRMatterDraw*> Draws;
+		int32 Total = 0;
+		for (const FLRMatterDraw& Draw : Paid.Matter)
+		{
+			if (Draw.Item == Item && Draw.Count > 0)
+			{
+				Draws.Add(&Draw);
+				Total += Draw.Count;
+			}
+		}
+		const int32 Target = FMath::FloorToInt32(Total * Share + 1e-9);
+		if (Total <= 0 || Target <= 0)
+		{
+			continue;
+		}
+		TArray<int32> Counts;
+		TArray<double> Remainders;
+		int32 Given = 0;
+		for (const FLRMatterDraw* Draw : Draws)
+		{
+			const double Exact = static_cast<double>(Draw->Count) * Target / Total;
+			const int32 Base = FMath::FloorToInt32(Exact + 1e-9);
+			Counts.Add(Base);
+			Remainders.Add(Exact - Base);
+			Given += Base;
+		}
+		for (int32 Leftover = Target - Given; Leftover > 0; --Leftover)
+		{
+			int32 Best = 0;
+			for (int32 Index = 1; Index < Remainders.Num(); ++Index)
+			{
+				Best = Remainders[Index] > Remainders[Best] ? Index : Best;
+			}
+			++Counts[Best];
+			Remainders[Best] = -1.0;
+		}
+		for (int32 Index = 0; Index < Draws.Num(); ++Index)
+		{
+			if (Counts[Index] > 0)
+			{
+				AddMatter(Draws[Index]->Cell, Item, Counts[Index]);
+				FLRMatterDraw& Back = Refunded.Matter.AddDefaulted_GetRef();
+				Back.Cell = Draws[Index]->Cell;
+				Back.Item = Item;
+				Back.Count = Counts[Index];
+			}
+		}
+	}
+
 	// A host that has evaporated meanwhile can't take its share back.
 	if (Paid.HostMass > 0.0 && HostMass > 0.0)
 	{
-		HostMass += Paid.HostMass;
+		Refunded.HostMass = Paid.HostMass * Share;
+		HostMass += Refunded.HostMass;
 	}
 	OnMatterChanged.Broadcast();
+	return Refunded;
 }
 
 FString FLRSimulation::DescribeRefund(const FLRCostTransaction& Paid) const
@@ -1824,14 +1884,14 @@ FLRActionResult FLRSimulation::CancelJob(const FIntVector& Cell)
 		Nothing.Message = FString::Printf(TEXT("Nothing is under way in %s"), *DescribeCell(Cell));
 		return Nothing;
 	}
-	Refund(Job.Paid);
+	const FLRCostTransaction Refunded = RefundTransaction(Job.Paid, Data.CancelRefund);
 	const FLRActionDef* Def = Data.FindAction(Job.Request.Action);
 	FLRActionResult Result;
 	Result.Action = Job.Request.Action;
 	Result.bSuccess = true;
 	Result.bStarted = true; // not a completed action: no stats
 	Result.Message = FString::Printf(TEXT("Cancelled %s in %s.%s"), Def ? *Def->Label.ToLower() : *Job.Request.Action.ToString(),
-		*DescribeCell(Cell), *DescribeRefund(Job.Paid));
+		*DescribeCell(Cell), *DescribeRefund(Refunded));
 	Complete(Result);
 	return Result;
 }
