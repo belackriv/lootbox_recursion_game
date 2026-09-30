@@ -222,9 +222,47 @@ struct LOOTBOXRECURSION_API FLRActionState
 	double CooldownUntil = 0.0;
 };
 
+/** Matter taken from one cell (part of a cost), so it can go back to that cell. */
+USTRUCT(BlueprintType)
+struct LOOTBOXRECURSION_API FLRMatterDraw
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FIntVector Cell = FIntVector::ZeroValue;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FName Item;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	int32 Count = 0;
+};
+
 /**
- * An action taking time in its cell (an action with a castTime): it's carried out when it ends,
- * and the cell is busy until then. Other cells aren't affected. Rails: the queued
+ * What a job paid when it started, and exactly where it came from: each cell's share of the
+ * matter (a cost is drawn from every cell in reach, nearest first) and the host's mass. A
+ * refund puts back exactly that, cell by cell. Kept with the job (and saved with it), and
+ * discarded when the job ends. (Later these could go to a ledger.)
+ */
+USTRUCT(BlueprintType)
+struct LOOTBOXRECURSION_API FLRCostTransaction
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	TArray<FLRMatterDraw> Matter;
+
+	/** Taken from the host black hole, kg. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	double HostMass = 0.0;
+
+	bool IsEmpty() const { return Matter.IsEmpty() && HostMass <= 0.0; }
+};
+
+/**
+ * An action taking time in its cell (an action with a castTime): it pays when it starts, it's
+ * carried out when it ends, and the cell is busy until then. Other cells aren't affected. If it
+ * fails at the end (or is cancelled), what it paid is refunded. Rails: the queued
  * PerformPlayerActionJob.
  */
 USTRUCT(BlueprintType)
@@ -240,6 +278,10 @@ struct LOOTBOXRECURSION_API FLRCellJob
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	double EndsAt = 0.0;
+
+	/** What it paid to start, and where from (for a refund). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	FLRCostTransaction Paid;
 
 	/** 0..1 at time Now. */
 	float GetProgress(double Now) const

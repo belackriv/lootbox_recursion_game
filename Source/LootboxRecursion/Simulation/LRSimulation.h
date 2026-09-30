@@ -61,6 +61,8 @@ public:
 	const TMap<FIntVector, FLRCellJob>& GetJobs() const { return Jobs; }
 	/** Something is under way in the cell: nothing else can be done there until it ends. */
 	bool IsCellBusy(const FIntVector& Cell) const { return Jobs.Contains(Cell); }
+	/** Stop the job in a cell, refunding what it paid, exactly where it came from. */
+	FLRActionResult CancelJob(const FIntVector& Cell);
 
 	FLRActionStatus GetActionStatus(FName ActionName) const;
 
@@ -78,9 +80,10 @@ public:
 
 	/**
 	 * Why a recipe can't be built at Cell right now (NAME_None if it can): unknown or locked
-	 * recipe, the cell can't take the output, or not enough matter within reach.
+	 * recipe, the cell can't take the output, or not enough matter within reach (unless
+	 * bCheckCost is false: a job that already paid).
 	 */
-	FName ValidateBuild(FName RecipeId, const FIntVector& Cell) const;
+	FName ValidateBuild(FName RecipeId, const FIntVector& Cell, bool bCheckCost = true) const;
 	/** A failure reason as a short phrase for the log and tooltips ("not enough matter within reach"). */
 	static FString DescribeReason(FName Reason);
 	/** A few words for a refusal, for tight spots like the command card ("busy", "host too small"). */
@@ -257,14 +260,25 @@ private:
 		bool bCommitted = false;
 	};
 
-	FLRActionResult Execute(const FLRActionRequest& Request);
+	/** Carry out an action. bPrepaid: a job that paid when it started, so don't charge again. */
+	FLRActionResult Execute(const FLRActionRequest& Request, bool bPrepaid = false);
+	/**
+	 * A job's cost, taken when it starts: a recipe's matter from the cells in reach (each draw
+	 * recorded), or a seed's host mass. False (nothing taken) if it can't be paid.
+	 */
+	bool PayForJob(const FLRActionRequest& Request, FLRCostTransaction& OutPaid);
+	/** Put back what a transaction took, cell by cell (and the host's share, if it's still there). */
+	void Refund(const FLRCostTransaction& Paid);
+	/** " Refunded 30 C, 20 Fe." for the log, or empty. */
+	FString DescribeRefund(const FLRCostTransaction& Paid) const;
 	FLRActionResult ExecuteLootAction(const FLRActionRequest& Request, const FLRActionDef& Def);
-	FLRActionResult ExecuteCraft(const FLRActionRequest& Request);
+	FLRActionResult ExecuteCraft(const FLRActionRequest& Request, bool bPrepaid);
 	FLRActionResult ExecuteUse(const FLRActionRequest& Request);
 	FLRActionResult ExecuteDismantle(const FLRActionRequest& Request);
 	/** Seeding actions (Def.Places set, e.g. perturb): create or deepen an overdensity. */
-	FLRActionResult ExecuteSeed(const FLRActionRequest& Request, const FLRActionDef& Def);
-	FName ValidateSeed(const FLRActionRequest& Request, const FLRActionDef& Def) const;
+	FLRActionResult ExecuteSeed(const FLRActionRequest& Request, const FLRActionDef& Def, bool bPrepaid);
+	/** bCheckCost false: the host already paid (a job), so don't check it can. */
+	FName ValidateSeed(const FLRActionRequest& Request, const FLRActionDef& Def, bool bCheckCost = true) const;
 
 	/** Irradiation: advance every loaded irradiator and apply exposures that completed. */
 	void AdvanceIrradiation(double DeltaSeconds);
@@ -293,7 +307,8 @@ private:
 	// ---- Matter and entity primitives -----------------------------------------------------
 	void AddMatter(const FIntVector& Cell, FName Item, int32 Count);
 	/** Take Cost from cells within reach of Cell, the cell itself first, then ring by ring. All or nothing. */
-	bool RemoveMatterInReach(const FIntVector& Cell, const TArray<FLRItemAmount>& Cost);
+	/** Take Cost from the cells within reach, nearest first; each draw is added to OutDraws if given. */
+	bool RemoveMatterInReach(const FIntVector& Cell, const TArray<FLRItemAmount>& Cost, TArray<FLRMatterDraw>* OutDraws = nullptr);
 	/** Put rolled or built items into the universe at Cell: materials into its matter, caches as new caches. Returns caches lost for lack of room. */
 	int32 Spill(const FIntVector& Cell, const TArray<FLRItemAmount>& Amounts);
 	/**

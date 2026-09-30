@@ -383,6 +383,54 @@ bool FLRSimLootActionTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRJobPaysUpFrontTest, "LootboxRecursion.Simulation.JobsPayUpFrontAndRefundExactly", LR_TEST_FLAGS)
+bool FLRJobPaysUpFrontTest::RunTest(const FString& Parameters)
+{
+	// Building takes 5 s here. An irradiator costs 10 carbon: 4 in the cell, 6 next door.
+	FLRGameData Data = LRTest::MakeData();
+	for (FLRActionDef& Action : Data.Actions)
+	{
+		Action.CastTime = Action.Name == LRNames::Craft ? 5.f : Action.CastTime;
+	}
+	FLRSimulation Sim(Data, 1);
+	const FIntVector Cell(0, 0, 0);
+	const FIntVector Next(1, 0, 0);
+	Sim.GiveMatter(Cell, LRTest::Carbon, 4);
+	Sim.GiveMatter(Next, LRTest::Carbon, 6);
+	FLRActionRequest Build = LRTest::AtCell(LRNames::Craft, Cell);
+	Build.Choice = LRTest::Irradiator;
+
+	TestTrue(TEXT("the job starts"), Sim.RequestAction(Build).bSuccess && Sim.IsCellBusy(Cell));
+	TestTrue(TEXT("and pays at once, from both cells"), Sim.GetMatter(Cell, LRTest::Carbon) == 0 && Sim.GetMatter(Next, LRTest::Carbon) == 0);
+	const FLRCellJob* Job = Sim.FindJob(Cell);
+	TestTrue(TEXT("the transaction records each cell's share"), Job && Job->Paid.Matter.Num() == 2
+		&& Job->Paid.Matter[0].Cell == Cell && Job->Paid.Matter[0].Count == 4
+		&& Job->Paid.Matter[1].Cell == Next && Job->Paid.Matter[1].Count == 6);
+
+	// Cancelled (or failed), it's refunded exactly where it came from.
+	LRTest::FMessageLog Log(Sim);
+	TestTrue(TEXT("cancel"), Sim.CancelJob(Cell).bSuccess && !Sim.IsCellBusy(Cell));
+	TestTrue(TEXT("each cell gets its own share back"), Sim.GetMatter(Cell, LRTest::Carbon) == 4 && Sim.GetMatter(Next, LRTest::Carbon) == 6);
+	TestTrue(TEXT("and the log says so"), Log.Contains(TEXT("Refunded")));
+
+	// Run to the end, it's built and the matter stays spent.
+	Sim.Advance(1.0); // past the global cooldown
+	TestTrue(TEXT("start again"), Sim.RequestAction(Build).bSuccess);
+	Sim.Advance(5.1);
+	TestTrue(TEXT("built"), Sim.FindPlaced(Cell) && Sim.FindPlaced(Cell)->Item == LRTest::Irradiator && !Sim.IsCellBusy(Cell));
+	TestTrue(TEXT("paid once"), Sim.GetMatter(Cell, LRTest::Carbon) == 0 && Sim.GetMatter(Next, LRTest::Carbon) == 0);
+
+	// A second job can't spend matter the first already took.
+	FLRSimulation Two(Data, 1);
+	Two.GiveMatter(Cell, LRTest::Carbon, 10);
+	FLRActionRequest Other = LRTest::AtCell(LRNames::Craft, Next);
+	Other.Choice = LRTest::Irradiator;
+	TestTrue(TEXT("first job"), Two.RequestAction(Build).bSuccess);
+	Two.Advance(1.0);
+	TestFalse(TEXT("the second finds the matter gone"), Two.RequestAction(Other).bSuccess);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRMatterCellsTest, "LootboxRecursion.Matter.CellsHoldMatter", LR_TEST_FLAGS)
 bool FLRMatterCellsTest::RunTest(const FString& Parameters)
 {

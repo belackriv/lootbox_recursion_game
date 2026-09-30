@@ -562,9 +562,13 @@ presses; that's all that holds the player back.
 - **Seen on the cell.** A job traces its cell's hex outline in amber, from one corner round
   to the same corner as it runs (drawn with the grid beam hook). The card shows it too: the
   selected cell's job fills its slot's bar, and the card's heading says what's under way.
-- **Checked twice.** A job is checked when it starts and again when it ends, and the cost is
-  paid at the end. If something else used the matter meanwhile, it fails then, and the log
-  says why. (Reserving the cost at the start would stop that; not needed yet.)
+- **Paid up front, refunded exactly.** A job pays when it starts: a recipe's matter comes out
+  of the cells in reach (nearest first) and a seed's mass out of the host, so two jobs can't
+  spend the same matter. What it took, and from which cell, is kept with the job as a **cost
+  transaction** (`FLRCostTransaction`, saved with it). If the job fails when it ends (it's
+  checked again then) or is cancelled (`CancelJob`), the transaction is refunded: each cell
+  gets back exactly its own share, and the host its mass if it's still there. The
+  transaction is discarded when the job ends; later these could go to a ledger.
 - **Kept in saves**, and they carry on while the instruments are down: the universe keeps
   running.
 - An action can still have its own `cooldown` on top (optional, none do now).

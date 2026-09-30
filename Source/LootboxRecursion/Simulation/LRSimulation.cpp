@@ -290,7 +290,14 @@ void FLRSimulation::Advance(double DeltaSeconds)
 	for (const FLRCellJob& Job : Due)
 	{
 		Jobs.Remove(Job.Request.Cell); // the cell is free again before the action runs
-		Complete(Execute(Job.Request));
+		FLRActionResult Result = Execute(Job.Request, /*bPrepaid*/ true);
+		if (!Result.bSuccess && !Job.Paid.IsEmpty())
+		{
+			// It paid when it started: put everything back where it came from.
+			Refund(Job.Paid);
+			Result.Message += DescribeRefund(Job.Paid);
+		}
+		Complete(Result);
 	}
 
 	AdvanceHost(DeltaSeconds);
@@ -964,7 +971,7 @@ bool FLRSimulation::CanAffordAt(const FIntVector& Cell, const TArray<FLRItemAmou
 	return true;
 }
 
-FName FLRSimulation::ValidateBuild(FName RecipeId, const FIntVector& Cell) const
+FName FLRSimulation::ValidateBuild(FName RecipeId, const FIntVector& Cell, bool bCheckCost) const
 {
 	const FLRRecipeDef* Recipe = Data.FindRecipe(RecipeId);
 	if (!Recipe) { return ReasonUnknownRecipe; }
@@ -993,7 +1000,7 @@ FName FLRSimulation::ValidateBuild(FName RecipeId, const FIntVector& Cell) const
 	{
 		return ReasonOccupied;
 	}
-	return CanAffordAt(Cell, Recipe->Cost) ? NAME_None : ReasonInsufficientMaterials;
+	return (!bCheckCost || CanAffordAt(Cell, Recipe->Cost)) ? NAME_None : ReasonInsufficientMaterials;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1245,6 +1252,17 @@ FLRActionResult FLRSimulation::RequestAction(const FLRActionRequest& Request)
 		return Result;
 	}
 
+	// A job pays when it starts (and gets it back if it fails). An instant action pays as it runs.
+	const bool bJob = Def->CastTime > 0.f && Request.bHasCell;
+	FLRCostTransaction Paid;
+	if (bJob && !PayForJob(Request, Paid))
+	{
+		FLRActionResult Result = MakeFailure(Request.Action, ReasonInsufficientMaterials,
+			FString::Printf(TEXT("Can't %s: %s"), *Def->Label.ToLower(), *DescribeReason(ReasonInsufficientMaterials)));
+		Complete(Result);
+		return Result;
+	}
+
 	GlobalCooldownUntil = Now + Data.GlobalCooldown;
 	if (Def->Cooldown > 0.f)
 	{
@@ -1253,7 +1271,7 @@ FLRActionResult FLRSimulation::RequestAction(const FLRActionRequest& Request)
 		State.CooldownUntil = Now + Def->Cooldown;
 	}
 
-	if (Def->CastTime <= 0.f || !Request.bHasCell)
+	if (!bJob)
 	{
 		// Rails: PerformPlayerActionJob.perform_now
 		FLRActionResult Result = Execute(Request);
@@ -1267,6 +1285,11 @@ FLRActionResult FLRSimulation::RequestAction(const FLRActionRequest& Request)
 	Job.Request = Request;
 	Job.StartedAt = Now;
 	Job.EndsAt = Now + Def->CastTime;
+	Job.Paid = Paid;
+	if (!Paid.Matter.IsEmpty())
+	{
+		OnMatterChanged.Broadcast(); // the cost left its cells now
+	}
 
 	FLRActionResult Result;
 	Result.Action = Request.Action;
@@ -1318,7 +1341,7 @@ FName FLRSimulation::ValidateRequest(const FLRActionRequest& Request) const
 	return NAME_None;
 }
 
-FLRActionResult FLRSimulation::Execute(const FLRActionRequest& Request)
+FLRActionResult FLRSimulation::Execute(const FLRActionRequest& Request, bool bPrepaid)
 {
 	// Rails: PerformPlayerActionJob -> user.send(action_name, action_data)
 	const FLRActionDef* Def = Data.FindAction(Request.Action);
@@ -1326,10 +1349,10 @@ FLRActionResult FLRSimulation::Execute(const FLRActionRequest& Request)
 	{
 		return MakeFailure(Request.Action, ReasonUnknownAction, TEXT("Unknown action"));
 	}
-	if (Request.Action == LRNames::Craft)     { return ExecuteCraft(Request); }
+	if (Request.Action == LRNames::Craft)     { return ExecuteCraft(Request, bPrepaid); }
 	if (Request.Action == LRNames::Use)       { return ExecuteUse(Request); }
 	if (Request.Action == LRNames::Dismantle) { return ExecuteDismantle(Request); }
-	if (!Def->Places.IsNone())                { return ExecuteSeed(Request, *Def); }
+	if (!Def->Places.IsNone())                { return ExecuteSeed(Request, *Def, bPrepaid); }
 	if (!Def->LootTable.IsNone())             { return ExecuteLootAction(Request, *Def); }
 
 	return MakeFailure(Request.Action, ReasonUnknownAction,
@@ -1368,12 +1391,12 @@ FLRActionResult FLRSimulation::ExecuteLootAction(const FLRActionRequest& Request
 	return Result;
 }
 
-FLRActionResult FLRSimulation::ExecuteCraft(const FLRActionRequest& Request)
+FLRActionResult FLRSimulation::ExecuteCraft(const FLRActionRequest& Request, bool bPrepaid)
 {
 	// Rails: Entity.craft_item. Build at the cell, paying from the matter within reach of it.
 	const FLRRecipeDef* Recipe = Data.FindRecipe(Request.Choice);
 	const FString Label = Recipe ? Recipe->Label : Request.Choice.ToString();
-	const FName Invalid = Request.bHasCell ? ValidateBuild(Request.Choice, Request.Cell) : ReasonNoCell;
+	const FName Invalid = Request.bHasCell ? ValidateBuild(Request.Choice, Request.Cell, /*bCheckCost*/ !bPrepaid) : ReasonNoCell;
 	if (!Invalid.IsNone())
 	{
 		return MakeFailure(Request.Action, Invalid, FString::Printf(TEXT("Can't build %s: %s"), *Label, *DescribeReason(Invalid)));
@@ -1383,7 +1406,7 @@ FLRActionResult FLRSimulation::ExecuteCraft(const FLRActionRequest& Request)
 	const int32 OutputCount = FMath::Max(1, Recipe->OutputCount);
 
 	FTransaction Txn(*this);
-	if (!RemoveMatterInReach(Request.Cell, Recipe->Cost))
+	if (!bPrepaid && !RemoveMatterInReach(Request.Cell, Recipe->Cost))
 	{
 		return MakeFailure(Request.Action, ReasonInsufficientMaterials,
 			FString::Printf(TEXT("Can't build %s: %s"), *Label, *DescribeReason(ReasonInsufficientMaterials)));
@@ -1537,7 +1560,7 @@ FLRActionResult FLRSimulation::ExecuteDismantle(const FLRActionRequest& Request)
 	return Result;
 }
 
-FName FLRSimulation::ValidateSeed(const FLRActionRequest& Request, const FLRActionDef& Def) const
+FName FLRSimulation::ValidateSeed(const FLRActionRequest& Request, const FLRActionDef& Def, bool bCheckCost) const
 {
 	const FLRItemDef* StructureDef = Data.FindItem(Def.Places);
 	if (!StructureDef || !StructureDef->IsOverdensity()) { return ReasonUnknownAction; }
@@ -1550,14 +1573,14 @@ FName FLRSimulation::ValidateSeed(const FLRActionRequest& Request, const FLRActi
 	}
 	// Every ripple's energy comes out of the host, and a perturbation never finishes it off.
 	const double Cost = Data.Host.GetPerturbCost(/*bSeedsNew*/ Existing == nullptr);
-	if (Data.Host.IsDefined() && HostMass <= Cost) { return ReasonHorizonWeak; }
+	if (bCheckCost && Data.Host.IsDefined() && HostMass <= Cost) { return ReasonHorizonWeak; }
 	return NAME_None;
 }
 
-FLRActionResult FLRSimulation::ExecuteSeed(const FLRActionRequest& Request, const FLRActionDef& Def)
+FLRActionResult FLRSimulation::ExecuteSeed(const FLRActionRequest& Request, const FLRActionDef& Def, bool bPrepaid)
 {
-	// Re-check: the cell or the host may have changed during the cast.
-	const FName Invalid = ValidateSeed(Request, Def);
+	// Re-check: the cell may have changed during the job (and the host, if it hasn't paid yet).
+	const FName Invalid = ValidateSeed(Request, Def, /*bCheckCost*/ !bPrepaid);
 	if (!Invalid.IsNone())
 	{
 		return MakeFailure(Request.Action, Invalid, FString::Printf(TEXT("Can't %s: %s"), *Def.Label.ToLower(), *DescribeReason(Invalid)));
@@ -1583,7 +1606,7 @@ FLRActionResult FLRSimulation::ExecuteSeed(const FLRActionRequest& Request, cons
 		Placed.Add(Entity.Cell, Entity);
 		Result.Message = FString::Printf(TEXT("%s seeded at %s (amplitude 1)"), *StructureName, *DescribeCell(Request.Cell));
 	}
-	if (Data.Host.IsDefined())
+	if (Data.Host.IsDefined() && !bPrepaid)
 	{
 		HostMass = FMath::Max(0.0, HostMass - Cost);
 	}
@@ -1733,7 +1756,87 @@ void FLRSimulation::AddMatter(const FIntVector& Cell, FName Item, int32 Count)
 	CellMatter.Add(Item, Count);
 }
 
-bool FLRSimulation::RemoveMatterInReach(const FIntVector& Cell, const TArray<FLRItemAmount>& Cost)
+bool FLRSimulation::PayForJob(const FLRActionRequest& Request, FLRCostTransaction& OutPaid)
+{
+	OutPaid = FLRCostTransaction();
+	const FLRActionDef* Def = Data.FindAction(Request.Action);
+	if (!Def || !Request.bHasCell)
+	{
+		return false;
+	}
+	if (Request.Action == LRNames::Craft)
+	{
+		const FLRRecipeDef* Recipe = Data.FindRecipe(Request.Choice);
+		return Recipe && RemoveMatterInReach(Request.Cell, Recipe->Cost, &OutPaid.Matter);
+	}
+	if (!Def->Places.IsNone() && Data.Host.IsDefined())
+	{
+		const double Cost = Data.Host.GetPerturbCost(/*bSeedsNew*/ !Placed.Contains(Request.Cell));
+		if (HostMass <= Cost)
+		{
+			return false;
+		}
+		HostMass -= Cost;
+		OutPaid.HostMass = Cost;
+	}
+	return true; // nothing to pay (Open, a loot roll...)
+}
+
+void FLRSimulation::Refund(const FLRCostTransaction& Paid)
+{
+	for (const FLRMatterDraw& Draw : Paid.Matter)
+	{
+		AddMatter(Draw.Cell, Draw.Item, Draw.Count);
+	}
+	// A host that has evaporated meanwhile can't take its share back.
+	if (Paid.HostMass > 0.0 && HostMass > 0.0)
+	{
+		HostMass += Paid.HostMass;
+	}
+	OnMatterChanged.Broadcast();
+}
+
+FString FLRSimulation::DescribeRefund(const FLRCostTransaction& Paid) const
+{
+	TArray<FString> Parts;
+	if (!Paid.Matter.IsEmpty())
+	{
+		TArray<FLRItemAmount> Amounts;
+		for (const FLRMatterDraw& Draw : Paid.Matter)
+		{
+			Amounts.Emplace(Draw.Item, Draw.Count);
+		}
+		Parts.Add(DescribeAmounts(MergeAmounts(Amounts)));
+	}
+	if (Paid.HostMass > 0.0)
+	{
+		Parts.Add(FString::Printf(TEXT("%s to the host"), *FormatMass(Paid.HostMass)));
+	}
+	return Parts.IsEmpty() ? FString() : FString::Printf(TEXT(" Refunded %s."), *FString::Join(Parts, TEXT(", ")));
+}
+
+FLRActionResult FLRSimulation::CancelJob(const FIntVector& Cell)
+{
+	FLRCellJob Job;
+	if (!Jobs.RemoveAndCopyValue(Cell, Job))
+	{
+		FLRActionResult Nothing;
+		Nothing.Message = FString::Printf(TEXT("Nothing is under way in %s"), *DescribeCell(Cell));
+		return Nothing;
+	}
+	Refund(Job.Paid);
+	const FLRActionDef* Def = Data.FindAction(Job.Request.Action);
+	FLRActionResult Result;
+	Result.Action = Job.Request.Action;
+	Result.bSuccess = true;
+	Result.bStarted = true; // not a completed action: no stats
+	Result.Message = FString::Printf(TEXT("Cancelled %s in %s.%s"), Def ? *Def->Label.ToLower() : *Job.Request.Action.ToString(),
+		*DescribeCell(Cell), *DescribeRefund(Job.Paid));
+	Complete(Result);
+	return Result;
+}
+
+bool FLRSimulation::RemoveMatterInReach(const FIntVector& Cell, const TArray<FLRItemAmount>& Cost, TArray<FLRMatterDraw>* OutDraws)
 {
 	if (!CanAffordAt(Cell, Cost))
 	{
@@ -1756,6 +1859,13 @@ bool FLRSimulation::RemoveMatterInReach(const FIntVector& Cell, const TArray<FLR
 			{
 				CellMatter->Add(Amount.Item, -Take);
 				Remaining -= Take;
+				if (OutDraws)
+				{
+					FLRMatterDraw& Draw = OutDraws->AddDefaulted_GetRef();
+					Draw.Cell = Near;
+					Draw.Item = Amount.Item;
+					Draw.Count = Take;
+				}
 				if (CellMatter->IsEmpty())
 				{
 					Matter.Remove(Near);
