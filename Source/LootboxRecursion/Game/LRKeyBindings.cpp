@@ -54,7 +54,7 @@ namespace LRKeyBindings
 	FKey GetKey(const UObject* WorldContext, FName Command, int32 Index)
 	{
 		const UEnhancedInputUserSettings* Settings = GetUserSettings(WorldContext);
-		const UEnhancedPlayerMappableKeyProfile* Profile = Settings ? Settings->GetCurrentKeyProfile() : nullptr;
+		const UEnhancedPlayerMappableKeyProfile* Profile = Settings ? Settings->GetActiveKeyProfile() : nullptr;
 		if (Profile)
 		{
 			FMapPlayerKeyArgs Args;

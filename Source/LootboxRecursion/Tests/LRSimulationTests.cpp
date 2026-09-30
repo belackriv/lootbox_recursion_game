@@ -1627,8 +1627,6 @@ bool FLRBlackHoleRenderTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-#undef LR_TEST_FLAGS
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRInputBindingsTest, "LootboxRecursion.Input.DefaultKeysAndMappableActions", LR_TEST_FLAGS)
 bool FLRInputBindingsTest::RunTest(const FString& Parameters)
 {
@@ -1664,5 +1662,7 @@ bool FLRInputBindingsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("player mappable as Home"), KeySettings && KeySettings->Name == LRInput::Names::Home);
 	return true;
 }
+
+#undef LR_TEST_FLAGS
 
 #endif // WITH_DEV_AUTOMATION_TESTS
