@@ -141,6 +141,25 @@ private:
 	/** The outside panel, and how far it has dropped down (0 = hidden, 1 = fully down). */
 	TSharedPtr<SWidget> OutsidePanel;
 	float OutsideDrop = 0.f;
+
+	/**
+	 * The outside panel's size follows the viewport (ViewSize, from Tick): this share of its
+	 * height, and at most this share of its width. The chamber camera fills the space left
+	 * under the dial and the chamber, at 4:3 (CameraSize, fitted in Tick from CameraArea).
+	 * Below the minimums the whole panel scales down instead.
+	 */
+	static constexpr float OutsideHeightShare = 0.8f;
+	static constexpr float OutsideMaxWidthShare = 0.9f;
+	static constexpr float OutsideMinHeight = 680.f;
+	static constexpr float OutsideMinWidth = 1000.f;
+	/** Roughly the readouts' and the stored charge's columns, with the gaps: the camera's width cap. */
+	static constexpr float OutsideSideColumnsWidth = 500.f;
+	static constexpr float CameraMinHeight = 240.f;
+	/** The camera screen's border and padding, both sides together. */
+	static constexpr float CameraChrome = 12.f;
+	FVector2f ViewSize = FVector2f(1920.f, 1080.f);
+	FVector2f CameraSize = FVector2f(640.f, 480.f);
+	TSharedPtr<SWidget> CameraArea;
 	bool bHelpOpen = false;
 	/** How strong the static is (0 = none), fading towards whether the instruments are down. */
 	float StaticLevel = 0.f;

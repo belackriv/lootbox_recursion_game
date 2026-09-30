@@ -169,7 +169,11 @@ void SLRGameHud::Construct(const FArguments& InArgs)
 		.VAlign(VAlign_Top)
 		.Padding(FMargin(8.f, 60.f, 8.f, 8.f))
 		[
+			// Most of the screen: OutsideHeightShare of its height, and at most OutsideMaxWidthShare
+			// of its width. The camera takes up the slack.
 			SAssignNew(OutsidePanel, SBox)
+			.HeightOverride_Lambda([this]() -> FOptionalSize { return FMath::Max(ViewSize.Y * OutsideHeightShare, OutsideMinHeight); })
+			.MaxDesiredWidth_Lambda([this]() -> FOptionalSize { return FMath::Max(ViewSize.X * OutsideMaxWidthShare, OutsideMinWidth); })
 			.Visibility_Lambda([this]() { return OutsideDrop > 0.001f ? EVisibility::Visible : EVisibility::Collapsed; })
 			.RenderTransform_Lambda([this]() -> TOptional<FSlateRenderTransform>
 			{
@@ -177,7 +181,7 @@ void SLRGameHud::Construct(const FArguments& InArgs)
 				return FSlateRenderTransform(FVector2f(0.f, -(1.f - EaseOut(OutsideDrop)) * (Height + 70.f)));
 			})
 			[
-				// With the 640 x 480 camera it's tall: on a small viewport, shrink it to fit.
+				// On a viewport too small for even the smallest camera, shrink the whole panel to fit.
 				SNew(SScaleBox)
 				.Stretch(EStretch::ScaleToFit)
 				.StretchDirection(EStretchDirection::DownOnly)
@@ -206,6 +210,17 @@ void SLRGameHud::Tick(const FGeometry& AllottedGeometry, const double InCurrentT
 	const ULRGameSubsystem* Sub = GetSubsystem();
 	const float Goal = (Sub && Sub->IsOutsideViewOpen()) ? 1.f : 0.f;
 	OutsideDrop = FMath::FInterpConstantTo(OutsideDrop, Goal, InDeltaTime, 4.f); // a quarter of a second
+	ViewSize = FVector2f(AllottedGeometry.GetLocalSize());
+
+	// Fit the 4:3 camera into the space under the dial and the chamber, no wider than the panel
+	// allows next to its other columns, and never below CameraMinHeight.
+	if (CameraArea.IsValid() && OutsideDrop > 0.f)
+	{
+		const float AreaHeight = CameraArea->GetTickSpaceGeometry().GetLocalSize().Y - CameraChrome;
+		const float MaxWidth = ViewSize.X * OutsideMaxWidthShare - OutsideSideColumnsWidth - CameraChrome;
+		const float Height = FMath::Max(FMath::Min(AreaHeight, MaxWidth * 0.75f), CameraMinHeight);
+		CameraSize = FVector2f(Height * 4.f / 3.f, Height);
+	}
 	const FLRSimulation* Sim = GetSimulation();
 	const float StaticGoal = (Sim && Sim->AreInstrumentsDown()) ? 1.f : 0.f;
 	StaticLevel = FMath::FInterpConstantTo(StaticLevel, StaticGoal, InDeltaTime, 3.f); // a third of a second
@@ -2260,39 +2275,69 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			]
 		];
 
-	// Under the dial and the chamber: a 640 x 480 camera looking into the chamber. For now it's a dark
-	// screen (later, a 3D view of the containment field, the injectors and the singularity),
-	// and it shows static while the instruments are down.
-	TSharedRef<SWidget> Camera = Screen(
-		SNew(SOverlay)
+	// Under the dial and the chamber: a 4:3 camera looking into the chamber, filling the space
+	// left there (Tick sizes it). For now it's a dark screen (later, a 3D view of the
+	// containment field, the injectors and the singularity), and it shows static while the
+	// instruments are down.
+	TSharedRef<SWidget> CameraScreen = SNew(SBox)
+		.WidthOverride_Lambda([this]() -> FOptionalSize { return CameraSize.X + CameraChrome; })
+		.HeightOverride_Lambda([this]() -> FOptionalSize { return CameraSize.Y + CameraChrome; })
+		[
+			SNew(SBorder)
+			.BorderImage(&Style.WhiteBrush)
+			.BorderBackgroundColor(Style.ConsoleScreenBorder)
+			.Padding(FMargin(2.f))
+			[
+				SNew(SBorder)
+				.BorderImage(&Style.WhiteBrush)
+				.BorderBackgroundColor(Style.ConsoleScreen)
+				.Padding(FMargin(4.f))
+				[
+					SNew(SOverlay)
+					+ SOverlay::Slot()
+					[
+						// Specks the same size on screen however big the camera is.
+						SNew(SLRStaticNoise)
+						.Resolution(FIntPoint(256, 192))
+						.PixelSize(2.5f)
+						.Material(StaticMaterial)
+						.Intensity_Lambda([this]() { return StaticLevel; })
+					]
+					+ SOverlay::Slot()
+					.HAlign(HAlign_Left)
+					.VAlign(VAlign_Top)
+					.Padding(FMargin(6.f, 4.f))
+					[
+						SNew(STextBlock)
+						.Font(Style.SmallFont)
+						.ColorAndOpacity(Style.TextDim)
+						.Text(LOCTEXT("CameraLabel", "CAM 1  CONTAINMENT CHAMBER"))
+					]
+					+ SOverlay::Slot()
+					.HAlign(HAlign_Center)
+					.VAlign(VAlign_Center)
+					[
+						SNew(STextBlock)
+						.Font(Style.HeadingFont)
+						.ColorAndOpacity(Style.Red)
+						.Visibility_Lambda([this]() { return StaticLevel > 0.5f ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+						.Text(LOCTEXT("CameraNoSignal", "NO SIGNAL"))
+					]
+				]
+			]
+		];
+	// The space the camera may use: Tick measures this and fits the camera into it.
+	TSharedRef<SWidget> Camera = SNew(SOverlay)
 		+ SOverlay::Slot()
 		[
-			SNew(SLRStaticNoise)
-			.Resolution(FIntPoint(256, 192))
-			.Material(StaticMaterial)
-			.Intensity_Lambda([this]() { return StaticLevel; })
-		]
-		+ SOverlay::Slot()
-		.HAlign(HAlign_Left)
-		.VAlign(VAlign_Top)
-		.Padding(FMargin(6.f, 4.f))
-		[
-			SNew(STextBlock)
-			.Font(Style.SmallFont)
-			.ColorAndOpacity(Style.TextDim)
-			.Text(LOCTEXT("CameraLabel", "CAM 1  CONTAINMENT CHAMBER"))
+			SAssignNew(CameraArea, SSpacer)
 		]
 		+ SOverlay::Slot()
 		.HAlign(HAlign_Center)
-		.VAlign(VAlign_Center)
+		.VAlign(VAlign_Top)
 		[
-			SNew(STextBlock)
-			.Font(Style.HeadingFont)
-			.ColorAndOpacity(Style.Red)
-			.Visibility_Lambda([this]() { return StaticLevel > 0.5f ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
-			.Text(LOCTEXT("CameraNoSignal", "NO SIGNAL"))
-		],
-		/*Width*/ 640.f, /*Height*/ 480.f); // classic 640 x 480
+			CameraScreen
+		];
 
 	TSharedRef<SWidget> Instruments = SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
@@ -2311,7 +2356,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			]
 		]
 		+ SVerticalBox::Slot()
-		.AutoHeight()
+		.FillHeight(1.f)
 		.Padding(FMargin(0.f, 8.f, 0.f, 0.f))
 		[
 			Camera
@@ -2330,7 +2375,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 				Sub->SetOutsideViewOpen(false);
 			}
 		}, /*bConsole*/ true),
-		/*bFillHeight*/ false, /*bConsole*/ true);
+		/*bFillHeight*/ true, /*bConsole*/ true);
 }
 
 #undef LOCTEXT_NAMESPACE

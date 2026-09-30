@@ -15,8 +15,8 @@ class UTexture2D;
  * redraws about 30 times a second, with a brighter band rolling down it. It draws nothing while
  * Intensity is 0, so it can sit over the viewport all the time.
  *
- * The noise is a small transient texture stretched over the widget (nearest filtering, so each
- * texel is a visible speck). If the M_Static hook exists it's drawn with that material instead,
+ * The noise is a small transient texture stretched or tiled over the widget (nearest filtering,
+ * so each texel is a visible speck). If the M_Static hook exists it's drawn with that material instead,
  * which gets the noise as Texture and the intensity as Amount (docs/MATERIALS.md).
  */
 class LOOTBOXRECURSION_API SLRStaticNoise : public SLeafWidget
@@ -25,12 +25,19 @@ public:
 	SLATE_BEGIN_ARGS(SLRStaticNoise)
 		: _Intensity(1.f)
 		, _Resolution(FIntPoint(320, 180))
+		, _PixelSize(0.f)
 		, _Material(nullptr)
 		{}
 		/** 0 = off, 1 = full static. */
 		SLATE_ATTRIBUTE(float, Intensity)
 		/** The noise texture's size in texels: fewer means coarser specks. */
 		SLATE_ARGUMENT(FIntPoint, Resolution)
+		/**
+		 * 0: stretch the texture over the widget (specks grow with it). Above 0: tile it with
+		 * each texel this many units across, so the specks stay the same size however big the
+		 * widget is (the noise redraws every frame, so the tiling doesn't show).
+		 */
+		SLATE_ARGUMENT(float, PixelSize)
 		/** The M_Static hook, or nullptr for the plain noise. */
 		SLATE_ARGUMENT(UMaterialInterface*, Material)
 	SLATE_END_ARGS()

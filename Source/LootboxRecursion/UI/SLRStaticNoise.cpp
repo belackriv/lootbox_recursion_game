@@ -21,8 +21,8 @@ void SLRStaticNoise::Construct(const FArguments& InArgs)
 	{
 		NewTexture->SRGB = true;
 		NewTexture->Filter = TF_Nearest;
-		NewTexture->AddressX = TA_Clamp;
-		NewTexture->AddressY = TA_Clamp;
+		NewTexture->AddressX = TA_Wrap; // for tiling
+		NewTexture->AddressY = TA_Wrap;
 		NewTexture->UpdateResource();
 		Texture.Reset(NewTexture);
 	}
@@ -37,9 +37,11 @@ void SLRStaticNoise::Construct(const FArguments& InArgs)
 		}
 	}
 	Brush.SetResourceObject(Resource);
-	Brush.ImageSize = FVector2f(static_cast<float>(Resolution.X), static_cast<float>(Resolution.Y));
+	const float PixelSize = InArgs._PixelSize;
+	const float Scale = PixelSize > 0.f ? PixelSize : 1.f;
+	Brush.ImageSize = FVector2f(Resolution.X * Scale, Resolution.Y * Scale);
 	Brush.DrawAs = ESlateBrushDrawType::Image;
-	Brush.Tiling = ESlateBrushTileType::NoTile;
+	Brush.Tiling = PixelSize > 0.f ? ESlateBrushTileType::Both : ESlateBrushTileType::NoTile;
 }
 
 FVector2D SLRStaticNoise::ComputeDesiredSize(float LayoutScaleMultiplier) const
