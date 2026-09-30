@@ -578,7 +578,7 @@ presses; that's all that holds the player back.
   running.
 - An action can still have its own `cooldown` on top (optional, none do now).
 
-**Room in the cells.** Entities are drawn smaller (`EntityScale` 0.45 of a cell, was 0.7): a
+**Room in the cells.** Entities are drawn smaller (`EntityScale` 0.225 of a cell, was 0.7, then 0.45): a
 cell holds a whole nebula, so its contents shouldn't crowd it.
 
 **The outside panel's keys.** While the outside panel is down, the slot keys (1-8) press its

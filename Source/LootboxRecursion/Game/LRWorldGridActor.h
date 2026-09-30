@@ -54,7 +54,7 @@ public:
 	 * crowd it.
 	 */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "World Grid")
-	float EntityScale = 0.45f;
+	float EntityScale = 0.225f;
 
 	/** Size of the gas discs of matter relative to their cell. 1 = the original sizes. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "World Grid")
