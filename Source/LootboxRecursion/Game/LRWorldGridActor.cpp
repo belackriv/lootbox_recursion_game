@@ -39,6 +39,10 @@ namespace
 	constexpr float LineWidth = 0.02f;
 	constexpr float HoverWidth = 0.04f;
 	constexpr float SelectionWidth = 0.05f;
+	/** A cell's job: a trace around its outline, filling as the job runs. */
+	constexpr float JobTraceWidth = 0.06f;
+	/** Lifted a little off the layer, so it draws over the grid lines. */
+	constexpr float JobTraceLift = 1.5f;
 
 	/** Fraction of the patch radius where the fade-out starts. */
 	constexpr float FadeStart = 0.45f;
@@ -134,6 +138,7 @@ void ALRWorldGridActor::BeginPlay()
 	HoverOutline->SetVisibility(false);
 	SelectionOutline = CreateBeamLayer(Glow(SelectedColor, 3.f));
 	SelectionOutline->SetVisibility(false);
+	JobTraces = CreateBeamLayer(Glow(SelectedColor, 5.f));
 	RebuildLines();
 
 	UMaterialInstanceDynamic* HoverMat = nullptr;
@@ -176,7 +181,40 @@ void ALRWorldGridActor::Tick(float DeltaSeconds)
 	}
 	UpdateHover();
 	UpdateMarkers();
+	UpdateJobTraces();
 	FaceLabelsToCamera();
+}
+
+void ALRWorldGridActor::UpdateJobTraces()
+{
+	const ULRGameSubsystem* Subsystem = ULRGameSubsystem::Get(this);
+	const FLRSimulation* Simulation = Subsystem ? Subsystem->GetSimulation() : nullptr;
+	if (!JobTraces || !Simulation)
+	{
+		return;
+	}
+	// Each job traces its cell's outline from one corner round to the same corner as it runs:
+	// whole edges for the sixths it has done, and part of the next.
+	const float Thickness = JobTraceWidth * (CellSize / 100.f) * LineWidthScale;
+	TArray<FTransform> Beams;
+	for (const TPair<FIntVector, FLRCellJob>& Pair : Simulation->GetJobs())
+	{
+		const FVector Centre = CellToLocal(Pair.Key) + FVector(0.f, 0.f, JobTraceLift);
+		const float Sixths = Pair.Value.GetProgress(Simulation->GetNow()) * 6.f;
+		for (int32 Edge = 0; Edge < 6 && Edge < Sixths; ++Edge)
+		{
+			const float Part = FMath::Min(Sixths - Edge, 1.f);
+			const FVector From = Centre + FLRHexGrid::Corner(Edge, CellSize);
+			const FVector To = FMath::Lerp(From, Centre + FLRHexGrid::Corner(Edge + 1, CellSize), Part);
+			const float Length = static_cast<float>((To - From).Size()) / 100.f + Thickness; // the engine cube is 100cm
+			Beams.Add(FTransform((To - From).Rotation(), 0.5 * (From + To), FVector(Length, Thickness, Thickness)));
+		}
+	}
+	JobTraces->ClearInstances();
+	if (!Beams.IsEmpty())
+	{
+		JobTraces->AddInstances(Beams, /*bShouldReturnIndices*/ false);
+	}
 }
 
 // ---- Construction helpers -------------------------------------------------------------

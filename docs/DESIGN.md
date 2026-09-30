@@ -14,7 +14,8 @@ there is no player character and the camera is a free "god view". What you *can*
 
 - **Perturb** the vacuum: stretch a quantum fluctuation across a grid cell, seeding a ripple
   (an overdensity) there. Ripples gather matter on their own and send it through the horizon
-  link. The link has limited bandwidth, which is what the cast time and cooldown represent.
+  link. Instructions go through the link at once, but the work takes time inside: an action
+  with a cast time is a job in its cell (see *Actions take time in their cells*).
 - **Feed** the host black hole, which is slowly evaporating.
 - **Compress** matter into **Quantum Caches** (the Rails "loot boxes"; code and data ids
   still say `loot_box`). A cache's contents are in superposition: nothing is decided until
@@ -535,18 +536,41 @@ vertical list of ten **slots**, each with a fixed hotkey (1-9, 0 by default, reb
 key belongs to the slot, not to an action: what a slot does depends on what's selected.
 - **The main page** lists what the selected cell allows, from the top, always in the same
   order: Perturb (an empty cell or a ripple), Build... (an empty cell or an irradiator),
-  Open (a cache, or an irradiator), Dismantle (anything but a structure). Slots that don't
-  apply right now (cooldown, not enough matter) are shown but disabled.
+  Open (a cache, or an irradiator), Dismantle (anything but a structure). A slot that can't be
+  done right now is disabled and says why on its right, in red, in a word or two ("busy",
+  "host too small", "occupied"; a recipe shows its cost, red when there isn't enough matter
+  in reach). Hovering it gives the full reason in Info. The reasons are the simulation's own
+  (`FLRSimulation::CheckRequest`), so the card never disagrees with what would happen.
 - **The Build page.** Build... turns the card into a page of the unlocked recipes, on the
   same keys, with Back in the last slot (Esc also backs out). Building something, or
   selecting another cell, goes back to the main page. (More than nine recipes will need
   paging.)
 - **Around it.** Under the card, a strip for the build layer (- Layer, Z, Layer +, Home).
   The Grid panel's list of everything placed is gone; the selected cell, the cursor and an
-  irradiator's progress are in Info, which sits at the bottom right above the log, with the
-  Universe panel above it.
+  irradiator's progress are in Info, which sits at the bottom right above the log. The
+  Universe panel is top right (Info changes size, so the Universe panel stays put above it).
 - **Next.** The same idea for the rest of the UI: hotkeys bound to slots in each panel, so
   the key stays put while what it does follows the context.
+
+**Actions take time in their cells.** There are no per-action cooldowns. After any action
+starts, a short global cooldown (`globalCooldown` in `actions.json`, 0.25 s) stops double
+presses; that's all that holds the player back.
+- **Jobs.** An action with a `castTime` (Perturb 3 s, Build 5 s, Open 5 s) is a **job in its
+  cell**: it's carried out when its time is up, and that cell is busy until then (anything
+  else there is refused as "busy"), but every other cell is free, so you can start jobs in
+  several cells at once. Dismantle is instant.
+- **Seen on the cell.** A job traces its cell's hex outline in amber, from one corner round
+  to the same corner as it runs (drawn with the grid beam hook). The card shows it too: the
+  selected cell's job fills its slot's bar, and the card's heading says what's under way.
+- **Checked twice.** A job is checked when it starts and again when it ends, and the cost is
+  paid at the end. If something else used the matter meanwhile, it fails then, and the log
+  says why. (Reserving the cost at the start would stop that; not needed yet.)
+- **Kept in saves**, and they carry on while the instruments are down: the universe keeps
+  running.
+- An action can still have its own `cooldown` on top (optional, none do now).
+
+**Room in the cells.** Entities are drawn smaller (`EntityScale` 0.45 of a cell, was 0.7): a
+cell holds a whole nebula, so its contents shouldn't crowd it.
 
 **The outside panel's keys.** While the outside panel is down, the slot keys (1-8) press its
 buttons instead, in order: Off, Hold, Limit, Max, Auto Hold, Auto Limit, VENT, IGNITE (each

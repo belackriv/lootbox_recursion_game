@@ -68,7 +68,9 @@ See [DESIGN.md](DESIGN.md#irradiation-implemented-v1).
       `UGameUserSettings`, the rest in `ULRUserSettings` (a `USaveGame`).
 - [x] The command card (DESIGN.md, "The command card"): the Actions panel is ten slots on
       keys 1-0, filled with what the selected cell allows, with a Build page of recipes. The
-      Grid panel's entity list is gone; Universe and Info moved to the bottom right.
+      Grid panel's entity list is gone; Universe is top right, Info bottom right.
+- [x] Actions take time in their cells: jobs with a trace on the cell, a 0.25 s global
+      cooldown instead of per-action cooldowns, and red reasons on disabled card slots.
 - [ ] Hotkeys for the rest of the UI (the outside panel's buttons and dial, the log...),
       through the same slot idea.
 - [ ] More than nine recipes on the Build page (paging).

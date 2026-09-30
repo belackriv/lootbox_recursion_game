@@ -48,9 +48,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Grid")
 	float CellSize = 100.f;
 
-	/** Size of entities (ripples, caches, irradiators and what's inside them) relative to their cell. 1 = the original sizes. */
+	/**
+	 * Size of entities (ripples, caches, irradiators and what's inside them) relative to their
+	 * cell. 1 = the original sizes. Small: a cell holds a whole nebula, so its contents shouldn't
+	 * crowd it.
+	 */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "World Grid")
-	float EntityScale = 0.7f;
+	float EntityScale = 0.45f;
 
 	/** Size of the gas discs of matter relative to their cell. 1 = the original sizes. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "World Grid")
@@ -111,6 +115,8 @@ private:
 	void MoveTiles(const FIntVector& Anchor);
 	void UpdateHover();
 	void UpdateMarkers();
+	/** Draw each cell's job as a trace filling its outline (Simulation jobs, see FLRCellJob). */
+	void UpdateJobTraces();
 	void RebuildEntities();
 	/** Create, update or remove the gas disc of every cell whose matter changed. */
 	void UpdateMatter();
@@ -175,6 +181,10 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UInstancedStaticMeshComponent> SelectionOutline;
+
+	/** Jobs under way: amber traces around their cells' outlines, drawn with the grid beam hook. */
+	UPROPERTY()
+	TObjectPtr<UInstancedStaticMeshComponent> JobTraces;
 
 	/** Deployed entity visuals; EntityCells[i] is the cell of EntityMeshes[i] / EntityLabels[i]. */
 	UPROPERTY()

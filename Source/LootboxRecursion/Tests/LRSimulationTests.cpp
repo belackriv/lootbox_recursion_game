@@ -331,29 +331,55 @@ namespace LRTest
 	};
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimLootActionTest, "LootboxRecursion.Simulation.LootActionCastAndCooldown", LR_TEST_FLAGS)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimLootActionTest, "LootboxRecursion.Simulation.ActionsAreJobsInTheirCells", LR_TEST_FLAGS)
 bool FLRSimLootActionTest::RunTest(const FString& Parameters)
 {
-	FLRSimulation Sim(LRTest::MakeData(), 42);
+	// Gather takes 5 s in its cell. Only the short global cooldown holds the player back.
+	FLRGameData Data = LRTest::MakeData();
+	Data.GlobalCooldown = 0.25f;
+	for (FLRActionDef& Action : Data.Actions)
+	{
+		Action.Cooldown = Action.Name == LRTest::Gather ? 0.f : Action.Cooldown;
+	}
+	FLRSimulation Sim(Data, 42);
 	const FIntVector Cell(2, -1, 0);
+	const FIntVector Other(3, -1, 0);
 
 	TestFalse(TEXT("needs a cell"), Sim.RequestAction(FLRActionRequest::Make(LRTest::Gather)).bSuccess);
 	TestFalse(TEXT("a refused request doesn't start the cooldown"), Sim.GetActionStatus(LRTest::Gather).bOnCooldown);
 
 	const FLRActionResult Started = Sim.RequestAction(LRTest::AtCell(LRTest::Gather, Cell));
 	TestTrue(TEXT("request accepted"), Started.bSuccess && Started.bStarted);
-	TestTrue(TEXT("status shows casting"), Sim.GetActionStatus(LRTest::Gather).bCasting);
-	TestFalse(TEXT("second request rejected while casting"), Sim.RequestAction(LRTest::AtCell(LRTest::Gather, Cell)).bSuccess);
+	TestTrue(TEXT("a job in the cell"), Sim.IsCellBusy(Cell) && Sim.FindJob(Cell) && Sim.FindJob(Cell)->Request.Action == LRTest::Gather);
+	TestTrue(TEXT("the global cooldown holds everything briefly"),
+		Sim.GetActionStatus(LRTest::Gather).bOnCooldown && !Sim.RequestAction(LRTest::AtCell(LRTest::Gather, Other)).bSuccess);
 
-	Sim.Advance(4.9);
-	TestEqual(TEXT("no carbon before the cast completes"), Sim.GetMatter(Cell, LRTest::Carbon), 0);
+	Sim.Advance(0.3);
+	const FLRActionResult Busy = Sim.RequestAction(LRTest::AtCell(LRTest::Gather, Cell));
+	TestTrue(TEXT("but the busy cell stays busy"), !Busy.bSuccess && Busy.Reason == FName(TEXT("cell_busy")));
+	TestTrue(TEXT("another cell can start its own job"), Sim.RequestAction(LRTest::AtCell(LRTest::Gather, Other)).bSuccess && Sim.IsCellBusy(Other));
+	TestTrue(TEXT("progress"), FMath::IsNearlyEqual(Sim.FindJob(Cell)->GetProgress(Sim.GetNow()), 0.3f / 5.f, 1e-3f));
+
+	Sim.Advance(4.6); // t = 4.9
+	TestEqual(TEXT("no carbon before the job ends"), Sim.GetMatter(Cell, LRTest::Carbon), 0);
 
 	bool bCompleted = false;
 	Sim.OnActionCompleted.AddLambda([&bCompleted](const FLRActionResult& Result) { bCompleted = Result.bSuccess; });
 	Sim.Advance(0.2);
 	TestTrue(TEXT("completion broadcast"), bCompleted);
 	TestEqual(TEXT("carbon lands in the cell"), Sim.GetMatter(Cell, LRTest::Carbon), 30);
-	TestFalse(TEXT("cooldown over (cooldown == cast time)"), Sim.GetActionStatus(LRTest::Gather).bOnCooldown);
+	TestFalse(TEXT("the cell is free again"), Sim.IsCellBusy(Cell));
+	TestTrue(TEXT("the other job runs on"), Sim.IsCellBusy(Other));
+	Sim.Advance(0.3);
+	TestEqual(TEXT("and ends in its own time"), Sim.GetMatter(Other, LRTest::Carbon), 30);
+
+	// An action can still have its own cooldown on top (the fixture's Gather: 5 s).
+	FLRSimulation Slow(LRTest::MakeData(), 1);
+	TestTrue(TEXT("start"), Slow.RequestAction(LRTest::AtCell(LRTest::Gather, Cell)).bSuccess);
+	Slow.Advance(1.0);
+	TestFalse(TEXT("its own cooldown"), Slow.RequestAction(LRTest::AtCell(LRTest::Gather, Other)).bSuccess);
+	Slow.Advance(4.1);
+	TestTrue(TEXT("then free"), Slow.RequestAction(LRTest::AtCell(LRTest::Gather, Other)).bSuccess);
 	return true;
 }
 
@@ -554,7 +580,7 @@ bool FLRSimSaveLoadTest::RunTest(const FString& Parameters)
 	const FIntVector Cell(12, -1, 3);
 	LRTest::BuildIrradiator(Sim, Cell);
 	Sim.GiveMatter(Cell, LRTest::Iron, 7);
-	Sim.RequestAction(LRTest::AtCell(LRTest::Gather, Cell)); // mid-cast when saved
+	Sim.RequestAction(LRTest::AtCell(LRTest::Gather, Cell)); // a job under way when saved
 	Sim.Advance(2.0);
 
 	const FLRSaveData Save = Sim.Save();
@@ -562,10 +588,10 @@ bool FLRSimSaveLoadTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("load"), Loaded.Load(Save));
 	TestNotNull(TEXT("entity restored"), Loaded.FindPlaced(Cell));
 	TestEqual(TEXT("matter restored"), Loaded.GetMatter(Cell, LRTest::Iron), 7);
-	TestTrue(TEXT("cast restored"), Loaded.GetActionStatus(LRTest::Gather).bCasting);
+	TestTrue(TEXT("job restored"), Loaded.IsCellBusy(Cell));
 
 	Loaded.Advance(3.0);
-	TestEqual(TEXT("pending cast completes after load"), Loaded.GetMatter(Cell, LRTest::Carbon), 30);
+	TestEqual(TEXT("the job completes after load"), Loaded.GetMatter(Cell, LRTest::Carbon), 30);
 
 	FLRSaveData Newer = Save;
 	Newer.Version = FLRSimulation::SaveVersion + 1;

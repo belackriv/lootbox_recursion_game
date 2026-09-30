@@ -143,6 +143,10 @@ void FLRGameData::AddFrom(const FLRDataFile& File)
 	{
 		ReachRadius = File.ReachRadius;
 	}
+	if (File.GlobalCooldown >= 0.f)
+	{
+		GlobalCooldown = File.GlobalCooldown;
+	}
 }
 
 TArray<FString> FLRGameData::Validate() const

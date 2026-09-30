@@ -209,7 +209,7 @@ struct LOOTBOXRECURSION_API FLRActionRequest
 	}
 };
 
-/** Rails: PlayerActionState (on_cooldown_until) + the queued PerformPlayerActionJob. */
+/** An action's own cooldown (optional; most actions only share the global one). Rails: PlayerActionState. */
 USTRUCT(BlueprintType)
 struct LOOTBOXRECURSION_API FLRActionState
 {
@@ -220,18 +220,33 @@ struct LOOTBOXRECURSION_API FLRActionState
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	double CooldownUntil = 0.0;
+};
+
+/**
+ * An action taking time in its cell (an action with a castTime): it's carried out when it ends,
+ * and the cell is busy until then. Other cells aren't affected. Rails: the queued
+ * PerformPlayerActionJob.
+ */
+USTRUCT(BlueprintType)
+struct LOOTBOXRECURSION_API FLRCellJob
+{
+	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	bool bCasting = false;
+	FLRActionRequest Request;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	double CastStartedAt = 0.0;
+	double StartedAt = 0.0;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	double CastEndsAt = 0.0;
+	double EndsAt = 0.0;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	FLRActionRequest PendingRequest;
+	/** 0..1 at time Now. */
+	float GetProgress(double Now) const
+	{
+		const double Duration = FMath::Max(EndsAt - StartedAt, UE_DOUBLE_SMALL_NUMBER);
+		return static_cast<float>(FMath::Clamp((Now - StartedAt) / Duration, 0.0, 1.0));
+	}
 };
 
 /** Computed view of an action for UI. Rails: PlayerAction#to_jbuilder after #update. */
@@ -264,21 +279,15 @@ struct LOOTBOXRECURSION_API FLRActionStatus
 	UPROPERTY(BlueprintReadOnly, Category = "LR")
 	float Cooldown = 0.f;
 
+	/** How long the action takes in its cell (0: instant). */
 	UPROPERTY(BlueprintReadOnly, Category = "LR")
 	float CastTime = 0.f;
-
-	UPROPERTY(BlueprintReadOnly, Category = "LR")
-	bool bCasting = false;
 
 	/** The instruments are down (FLRSimulation::AreInstrumentsDown), so no action works. */
 	UPROPERTY(BlueprintReadOnly, Category = "LR")
 	bool bInstrumentsDown = false;
 
-	/** 0..1 while casting. */
-	UPROPERTY(BlueprintReadOnly, Category = "LR")
-	float CastProgress = 0.f;
-
-	/** Revealed, requirements met, not casting and not on cooldown. */
+	/** Revealed, requirements met, the instruments up and not on cooldown. (Whether a given cell is free is per request.) */
 	UPROPERTY(BlueprintReadOnly, Category = "LR")
 	bool bEnabled = false;
 };
@@ -344,6 +353,10 @@ struct LOOTBOXRECURSION_API FLRSaveData
 
 	UPROPERTY()
 	TArray<FLRActionState> Actions;
+
+	/** Actions under way in their cells. */
+	UPROPERTY()
+	TArray<FLRCellJob> Jobs;
 
 	/** Tech tree: unlocked keys ("recipe:<id>", "action:<name>"). */
 	UPROPERTY()

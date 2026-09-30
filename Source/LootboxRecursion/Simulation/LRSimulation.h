@@ -23,8 +23,8 @@
 class LOOTBOXRECURSION_API FLRSimulation
 {
 public:
-	/** 2: 3D grid, wood -> carbon. 3: irradiator contents. 4: unlocks + stats. 5: epochs, host, primordial materials. 6: matter in cells, no inventory. 7: irradiator ids renamed (nebula, corona). 8: source ids renamed (emitters). 9: host mass in kg, feed dial and storage ring. 10: the storage ring renamed (stored charge). */
-	static constexpr int32 SaveVersion = 10;
+	/** 2: 3D grid, wood -> carbon. 3: irradiator contents. 4: unlocks + stats. 5: epochs, host, primordial materials. 6: matter in cells, no inventory. 7: irradiator ids renamed (nebula, corona). 8: source ids renamed (emitters). 9: host mass in kg, feed dial and storage ring. 10: the storage ring renamed (stored charge). 11: casts became jobs in cells. */
+	static constexpr int32 SaveVersion = 11;
 	/** Oldest save that still loads (newer fields just start empty). 10 renamed the stored charge's fields, so older saves start fresh. */
 	static constexpr int32 MinCompatibleSaveVersion = 10;
 	/** The host and injectors advance in steps of at most this many seconds (feeding and evaporation are coupled). */
@@ -55,6 +55,13 @@ public:
 	const FLRLootBoxInstance* FindLootBox(int32 InstanceId) const { return LootBoxes.Find(InstanceId); }
 	/** The cache in a cell: a cache entity, or the one in an irradiator's chamber. Null if none. */
 	const FLRLootBoxInstance* FindCacheAt(const FIntVector& Cell) const;
+	/** The job under way in a cell (an action with a castTime), or null. */
+	const FLRCellJob* FindJob(const FIntVector& Cell) const { return Jobs.Find(Cell); }
+	/** Every job under way, by cell. */
+	const TMap<FIntVector, FLRCellJob>& GetJobs() const { return Jobs; }
+	/** Something is under way in the cell: nothing else can be done there until it ends. */
+	bool IsCellBusy(const FIntVector& Cell) const { return Jobs.Contains(Cell); }
+
 	FLRActionStatus GetActionStatus(FName ActionName) const;
 
 	// ---- Matter -----------------------------------------------------------------------
@@ -76,6 +83,10 @@ public:
 	FName ValidateBuild(FName RecipeId, const FIntVector& Cell) const;
 	/** A failure reason as a short phrase for the log and tooltips ("not enough matter within reach"). */
 	static FString DescribeReason(FName Reason);
+	/** A few words for a refusal, for tight spots like the command card ("busy", "host too small"). */
+	static FString DescribeReasonShort(FName Reason);
+	/** Why RequestAction would refuse this request right now (NAME_None if it would go ahead), without doing anything. */
+	FName CheckRequest(const FLRActionRequest& Request) const;
 
 	// ---- Tech tree / stats --------------------------------------------------------------
 	/** A recipe with no reveal requirements is always unlocked; otherwise once they've been met. */
@@ -313,7 +324,10 @@ private:
 	TMap<FIntVector, FLRCellMatter> Matter;    // by grid cell; cells with no matter are absent
 	TMap<int32, FLRLootBoxInstance> LootBoxes; // by instance id
 	TMap<FIntVector, FLRPlacedEntity> Placed;  // by grid cell
-	TMap<FName, FLRActionState> ActionStates;  // by action name
+	TMap<FName, FLRActionState> ActionStates;  // by action name (only actions with their own cooldown)
+	TMap<FIntVector, FLRCellJob> Jobs;         // by cell: actions under way there
+	/** No action can start before this (Data.GlobalCooldown after the last one started). Not saved. */
+	double GlobalCooldownUntil = 0.0;
 	int32 EpochIndex = 0;
 	double EpochStartedAt = 0.0;
 	double CosmicTime = 0.0;

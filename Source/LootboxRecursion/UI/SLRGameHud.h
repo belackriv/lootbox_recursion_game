@@ -11,6 +11,7 @@ class SVerticalBox;
 class ULRGameSubsystem;
 class UMaterialInterface;
 struct FLRActionStatus;
+struct FLRCellJob;
 struct FLRLootBoxInstance;
 struct FLRPlacedEntity;
 
@@ -25,8 +26,8 @@ struct FLRPlacedEntity;
  * Layout: the Actions panel top left is a command card (docs/DESIGN.md, "The command card"):
  * ten slots with fixed keys (1-0 by default), filled with what the selected cell allows, and a
  * Build page of recipes; the build layer strip sits under it. The 3D grid shows in the middle;
- * the Universe (matter totals) and Info panels sit at the bottom right, above the Log across
- * the bottom. There is no inventory: everything the player makes lives in grid cells, so
+ * the Universe (matter totals) is top right, and Info bottom right, above the Log across the
+ * bottom. There is no inventory: everything the player makes lives in grid cells, so
  * actions work on the selected cell.
  *
  * That's the inside view. The outside panel (the facility's injectors: the feed dial, the host
@@ -128,8 +129,12 @@ private:
 	TArray<FCardEntry> GetCardEntries() const;
 	FCardEntry GetCardEntry(int32 Slot) const;
 	bool IsCardEntryEnabled(const FCardEntry& Entry) const;
+	/** What stops an entry in the selected cell (the simulation's reason), or NAME_None. The global cooldown doesn't count. */
+	FName GetCardEntryBlocker(const FCardEntry& Entry) const;
+	/** "Building Quantum Cache", "Perturb": what a cell's job is doing. */
+	FString DescribeJob(const FLRCellJob& Job) const;
 	FText GetCardEntryLabel(const FCardEntry& Entry) const;
-	/** Small text on the right of a slot: a recipe's cost. */
+	/** Small text on the right of a slot: why it can't be done (red), or a recipe's cost. */
 	FText GetCardEntryDetail(const FCardEntry& Entry) const;
 	void RunCardEntry(const FCardEntry& Entry);
 	/** The key bound to a command, for labels ("1"), or empty. */
@@ -168,12 +173,6 @@ private:
 	const FLRPlacedEntity* GetSelectedIrradiator() const;
 	TOptional<float> GetSelectedExposureFraction() const;
 	FString DescribeIrradiator(const FLRPlacedEntity& Irradiator) const;
-	/** Perturb can seed or deepen a ripple in the selected cell. */
-	bool CanPerturbSelectedCell() const;
-	/** The selected cell holds a cache (or an irradiator with one) to open. */
-	bool CanOpenSelectedCell() const;
-	/** The selected cell holds something Dismantle can take apart (not a structure). */
-	bool CanDismantleSelectedCell() const;
 	FString DescribeOverdensity(const FLRPlacedEntity& Overdensity) const;
 	FString DescribeCache(const FLRLootBoxInstance& Cache) const;
 	/** The matter in a cell, one material per line ("" if none). */

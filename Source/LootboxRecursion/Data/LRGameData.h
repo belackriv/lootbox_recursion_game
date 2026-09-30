@@ -578,6 +578,10 @@ struct LOOTBOXRECURSION_API FLRDataFile
 	/** universe.json: how many cells away building can draw matter from. -1 = not set in this file. */
 	UPROPERTY()
 	int32 ReachRadius = -1;
+
+	/** actions.json: the pause after any action starts, shared by all of them (s). -1 = not set in this file. */
+	UPROPERTY()
+	float GlobalCooldown = -1.f;
 };
 
 /** All definitions, indexed for lookup. Plain C++ (no reflection needed). */
@@ -592,6 +596,8 @@ struct LOOTBOXRECURSION_API FLRGameData
 	FLRHostDef Host;
 	/** Building at a cell pays from matter in cells up to this many steps away (0 = the cell itself). */
 	int32 ReachRadius = 0;
+	/** After any action starts, no action can start for this long (s): against double presses. */
+	float GlobalCooldown = 0.f;
 
 	const FLRItemDef* FindItem(FName Id) const { return Items.Find(Id); }
 	const FLRLootTableDef* FindLootTable(FName Id) const { return LootTables.Find(Id); }

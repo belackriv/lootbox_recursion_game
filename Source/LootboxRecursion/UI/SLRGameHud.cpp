@@ -136,7 +136,8 @@ void SLRGameHud::Construct(const FArguments& InArgs)
 					.Visibility(EVisibility::SelfHitTestInvisible)
 				]
 
-				// Bottom right, just above the log: the Universe (matter), then Info.
+				// Right: the Universe (matter) at the top, and Info at the bottom, just above the log
+				// (Info changes size with what it describes, so it grows upwards from there).
 				+ SHorizontalBox::Slot()
 				.AutoWidth()
 				[
@@ -147,15 +148,15 @@ void SLRGameHud::Construct(const FArguments& InArgs)
 						SNew(SVerticalBox)
 						.Visibility(EVisibility::SelfHitTestInvisible)
 						+ SVerticalBox::Slot()
+						.AutoHeight()
+						[
+							BuildUniversePanel()
+						]
+						+ SVerticalBox::Slot()
 						.FillHeight(1.f)
 						[
 							SNew(SSpacer)
 							.Visibility(EVisibility::SelfHitTestInvisible)
-						]
-						+ SVerticalBox::Slot()
-						.AutoHeight()
-						[
-							BuildUniversePanel()
 						]
 						+ SVerticalBox::Slot()
 						.AutoHeight()
@@ -675,8 +676,13 @@ TSharedRef<SWidget> SLRGameHud::BuildActionsPanel()
 				return LOCTEXT("CardNoSelection", "Click a cell to see what you can do there.");
 			}
 			const FLRPlacedEntity* Entity = Sim->FindPlaced(Cell);
-			return AsText(FString::Printf(TEXT("%s%s  %s"), bBuildPage ? TEXT("Build in ") : TEXT(""), *FLRSimulation::DescribeCell(Cell),
-				Entity ? *Sim->GetData().GetDisplayName(Entity->Item) : TEXT("(empty)")));
+			FString Text = FString::Printf(TEXT("%s%s  %s"), bBuildPage ? TEXT("Build in ") : TEXT(""), *FLRSimulation::DescribeCell(Cell),
+				Entity ? *Sim->GetData().GetDisplayName(Entity->Item) : TEXT("(empty)"));
+			if (const FLRCellJob* Job = Sim->FindJob(Cell))
+			{
+				Text += FString::Printf(TEXT("\n%s under way: %.0f%%"), *DescribeJob(*Job), 100.f * Job->GetProgress(Sim->GetNow()));
+			}
+			return AsText(Text);
 		})
 	];
 
@@ -741,11 +747,22 @@ TSharedRef<SWidget> SLRGameHud::MakeCardSlot(int32 Slot)
 	const FLRHudStyle& Style = FLRHudStyle::Get();
 	const FName Command = LRInput::SlotCommand(Slot);
 
-	// Cast progress fills orange; cooldown drains dim (for the slot's action, or Build for a recipe).
+	// The bar under a slot: the selected cell's job fills orange if it's this slot's; otherwise a
+	// cooldown drains dim (for the slot's action, or Build for a recipe).
 	auto ActionOf = [this, Slot]()
 	{
 		const FCardEntry Entry = GetCardEntry(Slot);
 		return Entry.Kind == ECardKind::Action ? Entry.Name : (Entry.Kind == ECardKind::Recipe ? LRNames::Craft : FName());
+	};
+	auto JobOf = [this, Slot]() -> const FLRCellJob*
+	{
+		const FLRSimulation* Sim = GetSimulation();
+		FIntVector Cell;
+		const FLRCellJob* Job = (Sim && GetSelected(Cell)) ? Sim->FindJob(Cell) : nullptr;
+		const FCardEntry Entry = GetCardEntry(Slot);
+		const bool bThisSlot = Job && ((Entry.Kind == ECardKind::Action && Job->Request.Action == Entry.Name)
+			|| (Entry.Kind == ECardKind::Recipe && Job->Request.Action == LRNames::Craft && Job->Request.Choice == Entry.Name));
+		return bThisSlot ? Job : nullptr;
 	};
 
 	return SNew(SHorizontalBox)
@@ -819,13 +836,9 @@ TSharedRef<SWidget> SLRGameHud::MakeCardSlot(int32 Slot)
 						.Text_Lambda([this, Slot]() { return GetCardEntryDetail(GetCardEntry(Slot)); })
 						.ColorAndOpacity_Lambda([this, Slot]() -> FSlateColor
 						{
-							// A recipe's cost turns red when there isn't enough matter in reach.
+							// Red when something stops it: not enough matter (the cost), busy, occupied...
 							const FLRHudStyle& S = FLRHudStyle::Get();
-							const FCardEntry Entry = GetCardEntry(Slot);
-							const FLRSimulation* Sim = GetSimulation();
-							const FLRRecipeDef* Recipe = (Sim && Entry.Kind == ECardKind::Recipe) ? Sim->GetData().FindRecipe(Entry.Name) : nullptr;
-							FIntVector Cell;
-							return (Recipe && GetSelected(Cell) && !Sim->CanAffordAt(Cell, Recipe->Cost)) ? S.Red : S.TextDim;
+							return GetCardEntryBlocker(GetCardEntry(Slot)).IsNone() ? S.TextDim : S.Red;
 						})
 					]
 				]
@@ -839,25 +852,24 @@ TSharedRef<SWidget> SLRGameHud::MakeCardSlot(int32 Slot)
 				[
 					SNew(SProgressBar)
 					.Style(&Style.ProgressStyle)
-					.Percent_Lambda([this, ActionOf]() -> TOptional<float>
+					.Percent_Lambda([this, ActionOf, JobOf]() -> TOptional<float>
 					{
+						if (const FLRCellJob* Job = JobOf())
+						{
+							return Job->GetProgress(GetSimulation()->GetNow());
+						}
 						const FName ActionName = ActionOf();
 						if (ActionName.IsNone())
 						{
 							return 0.f;
 						}
 						const FLRActionStatus Status = GetStatus(ActionName);
-						if (Status.bCasting)
-						{
-							return Status.CastProgress;
-						}
 						return (Status.bOnCooldown && Status.Cooldown > 0.f) ? Status.CooldownRemaining / Status.Cooldown : 0.f;
 					})
-					.FillColorAndOpacity_Lambda([this, ActionOf]() -> FSlateColor
+					.FillColorAndOpacity_Lambda([JobOf]() -> FSlateColor
 					{
 						const FLRHudStyle& S = FLRHudStyle::Get();
-						const FName ActionName = ActionOf();
-						return (!ActionName.IsNone() && GetStatus(ActionName).bCasting) ? S.Orange : S.TextDark;
+						return JobOf() ? S.Orange : S.TextDark;
 					})
 				]
 			]
@@ -920,26 +932,51 @@ SLRGameHud::FCardEntry SLRGameHud::GetCardEntry(int32 Slot) const
 	return Entries.IsValidIndex(Slot) ? Entries[Slot] : FCardEntry();
 }
 
+FName SLRGameHud::GetCardEntryBlocker(const FCardEntry& Entry) const
+{
+	const FLRSimulation* Sim = GetSimulation();
+	FIntVector Cell;
+	if (!Sim || !GetSelected(Cell))
+	{
+		return NAME_None;
+	}
+	// The same checks the simulation makes when the request arrives.
+	FLRActionRequest Request;
+	Request.Cell = Cell;
+	Request.bHasCell = true;
+	switch (Entry.Kind)
+	{
+	case ECardKind::Action:
+		Request.Action = Entry.Name;
+		break;
+	case ECardKind::Recipe:
+		Request.Action = LRNames::Craft;
+		Request.Choice = Entry.Name;
+		break;
+	case ECardKind::BuildPage:
+		return Sim->IsCellBusy(Cell) ? FName(TEXT("cell_busy")) : NAME_None;
+	default:
+		return NAME_None;
+	}
+	const FName Reason = Sim->CheckRequest(Request);
+	return Reason == FName(TEXT("on_cooldown")) ? NAME_None : Reason; // a moment's pause isn't a blocker
+}
+
 bool SLRGameHud::IsCardEntryEnabled(const FCardEntry& Entry) const
 {
 	switch (Entry.Kind)
 	{
 	case ECardKind::Action:
-	{
-		const bool bFits = Entry.Name == LRNames::Perturb ? CanPerturbSelectedCell()
-			: Entry.Name == LRNames::Use ? CanOpenSelectedCell()
-			: Entry.Name == LRNames::Dismantle ? CanDismantleSelectedCell()
-			: true;
-		return bFits && GetStatus(Entry.Name).bEnabled;
-	}
-	case ECardKind::BuildPage:
-		return GetStatus(LRNames::Craft).bRevealed;
 	case ECardKind::Recipe:
 	{
 		const FLRSimulation* Sim = GetSimulation();
 		FIntVector Cell;
-		return Sim && GetStatus(LRNames::Craft).bEnabled && GetSelected(Cell) && Sim->ValidateBuild(Entry.Name, Cell).IsNone();
+		// Nothing stops it, and it isn't in the short global cooldown.
+		return Sim && GetSelected(Cell) && GetCardEntryBlocker(Entry).IsNone()
+			&& !GetStatus(Entry.Kind == ECardKind::Action ? Entry.Name : LRNames::Craft).bOnCooldown;
 	}
+	case ECardKind::BuildPage:
+		return GetStatus(LRNames::Craft).bRevealed && GetCardEntryBlocker(Entry).IsNone();
 	case ECardKind::Back:
 		return true;
 	default:
@@ -952,10 +989,7 @@ FText SLRGameHud::GetCardEntryLabel(const FCardEntry& Entry) const
 	switch (Entry.Kind)
 	{
 	case ECardKind::Action:
-	{
-		const FLRActionStatus Status = GetStatus(Entry.Name);
-		return AsText(Status.bCasting ? FString::Printf(TEXT("%s..."), *Status.Label) : Status.Label);
-	}
+		return AsText(GetStatus(Entry.Name).Label);
 	case ECardKind::BuildPage:
 		return AsText(FString::Printf(TEXT("%s..."), *GetStatus(LRNames::Craft).Label));
 	case ECardKind::Recipe:
@@ -973,7 +1007,30 @@ FText SLRGameHud::GetCardEntryLabel(const FCardEntry& Entry) const
 
 FText SLRGameHud::GetCardEntryDetail(const FCardEntry& Entry) const
 {
-	return Entry.Kind == ECardKind::Recipe ? AsText(DescribeCost(Entry.Name, /*bMultiline*/ false)) : FText::GetEmpty();
+	// Why it can't be done, in a word or two (in red); a recipe shows its cost instead when
+	// matter is what's missing, or when nothing is.
+	const FName Blocker = GetCardEntryBlocker(Entry);
+	const bool bCost = Entry.Kind == ECardKind::Recipe && (Blocker.IsNone() || Blocker == FName(TEXT("insufficient_materials")));
+	if (bCost)
+	{
+		return AsText(DescribeCost(Entry.Name, /*bMultiline*/ false));
+	}
+	return AsText(FLRSimulation::DescribeReasonShort(Blocker));
+}
+
+FString SLRGameHud::DescribeJob(const FLRCellJob& Job) const
+{
+	const FLRSimulation* Sim = GetSimulation();
+	if (!Sim)
+	{
+		return FString();
+	}
+	if (Job.Request.Action == LRNames::Craft)
+	{
+		const FLRRecipeDef* Recipe = Sim->GetData().FindRecipe(Job.Request.Choice);
+		return FString::Printf(TEXT("Building %s"), Recipe ? *Recipe->Label : *Job.Request.Choice.ToString());
+	}
+	return GetStatus(Job.Request.Action).Label;
 }
 
 void SLRGameHud::RunCardEntry(const FCardEntry& Entry)
@@ -1498,22 +1555,6 @@ bool SLRGameHud::GetSelected(FIntVector& OutCell) const
 	return Sub && Sub->GetSelectedCell(OutCell);
 }
 
-bool SLRGameHud::CanOpenSelectedCell() const
-{
-	const FLRSimulation* Sim = GetSimulation();
-	FIntVector Cell;
-	return Sim && GetSelected(Cell) && Sim->FindCacheAt(Cell) != nullptr;
-}
-
-bool SLRGameHud::CanDismantleSelectedCell() const
-{
-	const FLRSimulation* Sim = GetSimulation();
-	FIntVector Cell;
-	const FLRPlacedEntity* Entity = (Sim && GetSelected(Cell)) ? Sim->FindPlaced(Cell) : nullptr;
-	const FLRItemDef* Def = Entity ? Sim->GetData().FindItem(Entity->Item) : nullptr;
-	return Entity && !(Def && Def->IsStructure());
-}
-
 FString SLRGameHud::DescribeCache(const FLRLootBoxInstance& Cache) const
 {
 	const FLRSimulation* Sim = GetSimulation();
@@ -1557,25 +1598,6 @@ bool SLRGameHud::IsCellSelected(const FIntVector& Cell) const
 	const ULRGameSubsystem* Sub = GetSubsystem();
 	FIntVector Selected;
 	return Sub && Sub->GetSelectedCell(Selected) && Selected == Cell;
-}
-
-bool SLRGameHud::CanPerturbSelectedCell() const
-{
-	const ULRGameSubsystem* Sub = GetSubsystem();
-	const FLRSimulation* Sim = GetSimulation();
-	const FLRActionDef* Perturb = Sim ? Sim->GetData().FindAction(LRNames::Perturb) : nullptr;
-	FIntVector Selected;
-	if (!Sub || !Perturb || !Sub->GetSelectedCell(Selected))
-	{
-		return false;
-	}
-	const FLRPlacedEntity* Entity = Sim->FindPlaced(Selected);
-	if (!Entity)
-	{
-		return true;
-	}
-	const FLRItemDef* Def = Sim->GetData().FindItem(Entity->Item);
-	return Entity->Item == Perturb->Places && Def && Entity->Amplitude < Def->MaxAmplitude;
 }
 
 FString SLRGameHud::DescribeOverdensity(const FLRPlacedEntity& Overdensity) const
@@ -1735,10 +1757,15 @@ FText SLRGameHud::GetHoverBody() const
 	{
 		const FLRActionStatus Status = GetStatus(HoverName);
 		FString Body = Status.Tooltip;
-		Body += FString::Printf(TEXT("\n\nCast %.0fs, cooldown %.0fs."), Status.CastTime, Status.Cooldown);
-		if (Status.bCasting)                { Body += TEXT("\nIn progress..."); }
-		else if (Status.bOnCooldown)        { Body += FString::Printf(TEXT("\nReady in %.1fs."), Status.CooldownRemaining); }
-		else if (!Status.bRequirementsMet)  { Body += TEXT("\nRequirements not met."); }
+		Body += Status.CastTime > 0.f
+			? FString::Printf(TEXT("\n\nTakes %.0fs in its cell (the cell is busy meanwhile; you can act elsewhere)."), Status.CastTime)
+			: FString(TEXT("\n\nInstant."));
+		// Why not, in full, when something stops it in the selected cell.
+		const FName Blocker = GetCardEntryBlocker({ ECardKind::Action, HoverName });
+		if (!Blocker.IsNone())
+		{
+			Body += FString::Printf(TEXT("\nCan't right now: %s."), *FLRSimulation::DescribeReason(Blocker));
+		}
 		return AsText(Body);
 	}
 

@@ -6,7 +6,7 @@ namespace
 {
 	const FName ReasonUnknownAction(TEXT("unknown_action"));
 	const FName ReasonNotRevealed(TEXT("not_revealed"));
-	const FName ReasonCasting(TEXT("casting"));
+	const FName ReasonCellBusy(TEXT("cell_busy"));
 	const FName ReasonOnCooldown(TEXT("on_cooldown"));
 	const FName ReasonRequirements(TEXT("requirements_not_met"));
 	const FName ReasonUnknownRecipe(TEXT("unknown_recipe"));
@@ -34,9 +34,30 @@ namespace
 	const FName HostEvent(TEXT("host"));
 }
 
+FString FLRSimulation::DescribeReasonShort(FName Reason)
+{
+	if (Reason.IsNone() || Reason == ReasonOnCooldown) { return FString(); } // a moment's pause, not worth a word
+	if (Reason == ReasonCellBusy) { return TEXT("busy"); }
+	if (Reason == ReasonInstrumentsDown) { return TEXT("instruments down"); }
+	if (Reason == ReasonRequirements || Reason == ReasonRecipeLocked || Reason == ReasonNotRevealed) { return TEXT("locked"); }
+	if (Reason == ReasonInsufficientMaterials) { return TEXT("not enough matter"); }
+	if (Reason == ReasonNoLootBox) { return TEXT("no cache"); }
+	if (Reason == ReasonOccupied) { return TEXT("occupied"); }
+	if (Reason == ReasonNothingPlaced) { return TEXT("empty"); }
+	if (Reason == ReasonNeedsIrradiator) { return TEXT("needs an irradiator"); }
+	if (Reason == ReasonChamberFull) { return TEXT("chamber full"); }
+	if (Reason == ReasonSourceFull) { return TEXT("has a source"); }
+	if (Reason == ReasonTooStrong) { return TEXT("too strong"); }
+	if (Reason == ReasonCantDismantle) { return TEXT("can't"); }
+	if (Reason == ReasonRippleAtMax) { return TEXT("at max"); }
+	if (Reason == ReasonHorizonWeak) { return TEXT("host too small"); }
+	if (Reason == ReasonNoHost) { return TEXT("no host"); }
+	return TEXT("unavailable");
+}
+
 FString FLRSimulation::DescribeReason(FName Reason)
 {
-	if (Reason == ReasonCasting) { return TEXT("already in progress"); }
+	if (Reason == ReasonCellBusy) { return TEXT("something is already under way in that cell"); }
 	if (Reason == ReasonOnCooldown) { return TEXT("on cooldown"); }
 	if (Reason == ReasonRequirements) { return TEXT("requirements not met"); }
 	if (Reason == ReasonUnknownRecipe) { return TEXT("pick something to build"); }
@@ -103,6 +124,8 @@ void FLRSimulation::Reset(int32 Seed)
 	LootBoxes.Reset();
 	Placed.Reset();
 	ActionStates.Reset();
+	Jobs.Reset();
+	GlobalCooldownUntil = 0.0;
 	Unlocked.Reset();
 	Stats.Reset();
 	HostMass = Data.Host.StartMass;
@@ -143,6 +166,7 @@ FLRSaveData FLRSimulation::Save() const
 	LootBoxes.GenerateValueArray(Out.LootBoxes);
 	Placed.GenerateValueArray(Out.Placed);
 	ActionStates.GenerateValueArray(Out.Actions);
+	Jobs.GenerateValueArray(Out.Jobs);
 	Out.Unlocked = Unlocked.Array();
 	Out.Stats = Stats;
 	const FLREpochDef* Epoch = GetEpoch();
@@ -195,6 +219,15 @@ bool FLRSimulation::Load(const FLRSaveData& SaveData)
 	{
 		ActionStates.Add(State.Name, State);
 	}
+	Jobs.Reset();
+	for (const FLRCellJob& Job : SaveData.Jobs)
+	{
+		if (Job.Request.bHasCell)
+		{
+			Jobs.Add(Job.Request.Cell, Job);
+		}
+	}
+	GlobalCooldownUntil = 0.0;
 
 	Unlocked.Reset();
 	Unlocked.Append(SaveData.Unlocked);
@@ -243,28 +276,21 @@ void FLRSimulation::Advance(double DeltaSeconds)
 	}
 	Now += DeltaSeconds;
 
-	// Rails: Solid Queue running PerformPlayerActionJob once its `wait:` elapsed.
-	TArray<FLRActionState*> Due;
-	for (TPair<FName, FLRActionState>& Pair : ActionStates)
+	// Jobs that have run their time are carried out, in the order they end. Rails: Solid Queue
+	// running PerformPlayerActionJob once its `wait:` elapsed.
+	TArray<FLRCellJob> Due;
+	for (const TPair<FIntVector, FLRCellJob>& Pair : Jobs)
 	{
-		if (Pair.Value.bCasting && Pair.Value.CastEndsAt <= Now)
+		if (Pair.Value.EndsAt <= Now)
 		{
-			Due.Add(&Pair.Value);
+			Due.Add(Pair.Value);
 		}
 	}
-	Due.Sort([](const FLRActionState& A, const FLRActionState& B) { return A.CastEndsAt < B.CastEndsAt; });
-
-	// Copy requests out first: executing an action never adds to ActionStates, but
-	// keeping pointers into the map across calls would be fragile.
-	TArray<FLRActionRequest> Requests;
-	for (FLRActionState* State : Due)
+	Due.Sort([](const FLRCellJob& A, const FLRCellJob& B) { return A.EndsAt < B.EndsAt; });
+	for (const FLRCellJob& Job : Due)
 	{
-		State->bCasting = false;
-		Requests.Add(State->PendingRequest);
-	}
-	for (const FLRActionRequest& Request : Requests)
-	{
-		Complete(Execute(Request));
+		Jobs.Remove(Job.Request.Cell); // the cell is free again before the action runs
+		Complete(Execute(Job.Request));
 	}
 
 	AdvanceHost(DeltaSeconds);
@@ -1143,27 +1169,23 @@ FLRActionStatus FLRSimulation::GetActionStatus(FName ActionName) const
 
 	Status.Label = Def->Label;
 	Status.Tooltip = Def->Tooltip;
-	Status.Cooldown = Def->Cooldown;
 	Status.CastTime = Def->CastTime;
 	Status.bRevealed = IsActionUnlocked(ActionName) && !IsActionRetired(ActionName); // latched tech-tree unlock
 
 	// Whether this recipe or that cell works is checked per request (ValidateBuild etc.).
 	Status.bRequirementsMet = CheckRequirements(Def->Requirements);
 
-	if (const FLRActionState* State = ActionStates.Find(ActionName))
-	{
-		Status.CooldownRemaining = static_cast<float>(FMath::Max(0.0, State->CooldownUntil - Now));
-		Status.bOnCooldown = Status.CooldownRemaining > 0.f;
-		Status.bCasting = State->bCasting;
-		if (State->bCasting)
-		{
-			const double Duration = FMath::Max(State->CastEndsAt - State->CastStartedAt, UE_DOUBLE_SMALL_NUMBER);
-			Status.CastProgress = static_cast<float>(FMath::Clamp((Now - State->CastStartedAt) / Duration, 0.0, 1.0));
-		}
-	}
+	// Cooldown: the global one (shared by every action), or the action's own if it has one and
+	// it's longer.
+	const FLRActionState* State = ActionStates.Find(ActionName);
+	const double OwnRemaining = State ? FMath::Max(0.0, State->CooldownUntil - Now) : 0.0;
+	const double GlobalRemaining = FMath::Max(0.0, GlobalCooldownUntil - Now);
+	Status.CooldownRemaining = static_cast<float>(FMath::Max(OwnRemaining, GlobalRemaining));
+	Status.Cooldown = OwnRemaining > GlobalRemaining ? Def->Cooldown : Data.GlobalCooldown;
+	Status.bOnCooldown = Status.CooldownRemaining > 0.f;
 
 	Status.bInstrumentsDown = AreInstrumentsDown();
-	Status.bEnabled = Status.bRevealed && Status.bRequirementsMet && !Status.bOnCooldown && !Status.bCasting && !Status.bInstrumentsDown;
+	Status.bEnabled = Status.bRevealed && Status.bRequirementsMet && !Status.bOnCooldown && !Status.bInstrumentsDown;
 	return Status;
 }
 
@@ -1213,14 +1235,7 @@ FLRActionResult FLRSimulation::RequestAction(const FLRActionRequest& Request)
 		return Result;
 	}
 
-	const FLRActionStatus Status = GetActionStatus(Request.Action);
-	FName Reason;
-	if (!Status.bRevealed)             { Reason = ReasonNotRevealed; }
-	else if (Status.bInstrumentsDown)  { Reason = ReasonInstrumentsDown; }
-	else if (Status.bCasting)          { Reason = ReasonCasting; }
-	else if (Status.bOnCooldown)       { Reason = ReasonOnCooldown; }
-	else if (!Status.bRequirementsMet) { Reason = ReasonRequirements; }
-	else                               { Reason = ValidateRequest(Request); }
+	const FName Reason = CheckRequest(Request);
 
 	if (!Reason.IsNone())
 	{
@@ -1230,11 +1245,15 @@ FLRActionResult FLRSimulation::RequestAction(const FLRActionRequest& Request)
 		return Result;
 	}
 
-	FLRActionState& State = ActionStates.FindOrAdd(Request.Action);
-	State.Name = Request.Action;
-	State.CooldownUntil = Now + Def->Cooldown;
+	GlobalCooldownUntil = Now + Data.GlobalCooldown;
+	if (Def->Cooldown > 0.f)
+	{
+		FLRActionState& State = ActionStates.FindOrAdd(Request.Action);
+		State.Name = Request.Action;
+		State.CooldownUntil = Now + Def->Cooldown;
+	}
 
-	if (Def->CastTime <= 0.f)
+	if (Def->CastTime <= 0.f || !Request.bHasCell)
 	{
 		// Rails: PerformPlayerActionJob.perform_now
 		FLRActionResult Result = Execute(Request);
@@ -1242,18 +1261,34 @@ FLRActionResult FLRSimulation::RequestAction(const FLRActionRequest& Request)
 		return Result;
 	}
 
-	// Rails: PerformPlayerActionJob.set(wait: cast_time).perform_later
-	State.bCasting = true;
-	State.CastStartedAt = Now;
-	State.CastEndsAt = Now + Def->CastTime;
-	State.PendingRequest = Request;
+	// A job in the cell: it's carried out when its time is up (Advance), and the cell is busy
+	// until then. Rails: PerformPlayerActionJob.set(wait: cast_time).perform_later
+	FLRCellJob& Job = Jobs.Add(Request.Cell);
+	Job.Request = Request;
+	Job.StartedAt = Now;
+	Job.EndsAt = Now + Def->CastTime;
 
 	FLRActionResult Result;
 	Result.Action = Request.Action;
 	Result.bSuccess = true;
 	Result.bStarted = true;
-	Result.Message = FString::Printf(TEXT("%s..."), *Def->Label);
+	Result.Message = FString::Printf(TEXT("%s in %s..."), *Def->Label, *DescribeCell(Request.Cell));
 	return Result;
+}
+
+FName FLRSimulation::CheckRequest(const FLRActionRequest& Request) const
+{
+	if (!Data.FindAction(Request.Action))
+	{
+		return ReasonUnknownAction;
+	}
+	const FLRActionStatus Status = GetActionStatus(Request.Action);
+	if (!Status.bRevealed)                          { return ReasonNotRevealed; }
+	if (Status.bInstrumentsDown)                    { return ReasonInstrumentsDown; }
+	if (Status.bOnCooldown)                         { return ReasonOnCooldown; }
+	if (Request.bHasCell && IsCellBusy(Request.Cell)) { return ReasonCellBusy; }
+	if (!Status.bRequirementsMet)                   { return ReasonRequirements; }
+	return ValidateRequest(Request);
 }
 
 FName FLRSimulation::ValidateRequest(const FLRActionRequest& Request) const
