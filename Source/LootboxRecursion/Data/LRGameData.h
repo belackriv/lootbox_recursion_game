@@ -99,6 +99,13 @@ struct LOOTBOXRECURSION_API FLRItemDef
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FName LootTable;
 
+	/**
+	 * Materials: atomic mass (u), e.g. 1.008 for hydrogen. Gas spreads between cells by
+	 * Graham's law, so lighter atoms move faster. 0 = this material doesn't spread.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float AtomicMass = 0.f;
+
 	/** Hex colour, e.g. "#E8A020". Used for slot swatches and world meshes. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	FString Color;
@@ -546,6 +553,48 @@ struct LOOTBOXRECURSION_API FLRHostDef
 };
 
 /**
+ * How loose matter (gas) spreads between neighbouring cells of a layer (universe.json "gas").
+ * See docs/DESIGN.md, "Gas spreads between cells".
+ *
+ * Each pair of neighbours trades matter from the side where more is escaping to the side where
+ * less is. What escapes a cell is its effusion: every material's particles (amount / atomic
+ * mass) times their speed, which goes as sqrt(T / atomic mass) (Graham's law). The flow is
+ * proportional to the difference, and it carries the materials in proportion to how fast each
+ * escapes, so hydrogen runs ahead and iron lags. Matter moves in whole units; the fractions
+ * carry over between steps.
+ */
+USTRUCT(BlueprintType)
+struct LOOTBOXRECURSION_API FLRGasDef
+{
+	GENERATED_BODY()
+
+	/**
+	 * Fraction of a hydrogen difference that crosses one cell edge per second, at the reference
+	 * temperature. 0 = gas doesn't spread; -1 = not set in this file.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float SpreadRate = -1.f;
+
+	/** Temperature (K) at which the spread runs at SpreadRate. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float ReferenceTemperature = 3000.f;
+
+	/** Speed goes as (T / ReferenceTemperature) ^ this. 0.5 is the real (Graham) value. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float TemperatureExponent = 0.5f;
+
+	/** The most the temperature can speed the spread up (the early universe is billions of K). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float MaxSpeedup = 4.f;
+
+	/** Seconds between spread steps. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float StepSeconds = 1.f;
+
+	bool IsDefined() const { return SpreadRate > 0.f; }
+};
+
+/**
  * The shape of one JSON file. Each file fills in whichever arrays it has
  * (items.json -> Items, recipes.json -> Recipes, ...); the loader merges them.
  */
@@ -575,6 +624,10 @@ struct LOOTBOXRECURSION_API FLRDataFile
 	UPROPERTY()
 	FLRHostDef Host;
 
+	/** universe.json: how gas spreads between cells. */
+	UPROPERTY()
+	FLRGasDef Gas;
+
 	/** universe.json: how many cells away building can draw matter from. -1 = not set in this file. */
 	UPROPERTY()
 	int32 ReachRadius = -1;
@@ -598,6 +651,8 @@ struct LOOTBOXRECURSION_API FLRGameData
 	TArray<FLRRadiationDef> Radiation;
 	TArray<FLREpochDef> Epochs;         // in cosmic order
 	FLRHostDef Host;
+	/** How gas spreads between cells (off unless universe.json sets a spreadRate). */
+	FLRGasDef Gas;
 	/** Building at a cell pays from matter in cells up to this many steps away (0 = the cell itself). */
 	int32 ReachRadius = 0;
 	/** After any action starts, no action can start for this long (s): against double presses. */

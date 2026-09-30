@@ -614,7 +614,8 @@ nowhere outside it for a stockpile to live. Everything is contained in the pocke
 - **Cells hold matter.** Each cell holds an amount of each material, alongside at most one
   entity. Ripples deposit their yield into their own cell, and an opened cache spills into
   its cell. The grid draws a disc of gas in every cell that holds matter, sized by how much
-  and tinted by the mix. Later that gas drifts along the gravity field.
+  and tinted by the mix. It spreads slowly into the cells around it (below); later it will
+  also drift along the gravity field.
 - **Costs come from within a reach radius.** Building at a cell draws its cost from the
   matter in cells within `reachRadius` steps of it (`universe.json`, currently 2), in its
   layer: the cell itself first, then ring by ring. Distance is the hex grid's own.
@@ -631,6 +632,42 @@ nowhere outside it for a stockpile to live. Everything is contained in the pocke
 - **Readability.** The Universe panel shows each material's total and how much is within
   reach of the selected cell. The Info panel lists the matter in the hovered cell (or the
   selected one).
+
+## Gas spreads between cells (implemented)
+
+Loose matter doesn't stay put: it leaks from crowded cells into emptier ones. Nobody directs
+it (that will be gravity's job, a separate system); it just happens, slowly. So a stockpile
+thins out of reach over time, and matter is better used near where it's made.
+
+- **Effusion, by the real laws.** A gas pushes by its particles, not its mass (the ideal gas
+  law), and lighter atoms move faster, at a speed that goes as sqrt(T / atomic mass)
+  (Graham's law). So what escapes a cell is each material's amount / atomic mass times its
+  speed, i.e. amount / mass^1.5, summed. Each material in `items.json` has an `atomicMass`
+  (H 1.008, He 4.0026, C 12.011, Fe 55.845).
+- **Downhill, in proportion to the difference.** Each pair of neighbouring cells in a layer
+  trades from the side where more escapes to the side where less does, at a rate
+  proportional to the difference (`gas.spreadRate` in `universe.json`: the fraction of a
+  hydrogen difference that crosses an edge per second). It carries the materials in
+  proportion to how fast each escapes, so hydrogen runs ahead and iron lags about 7.4x
+  behind: heavy elements stay near where they formed. Any cell can take gas, whatever is in
+  it.
+- **Temperature.** Hotter gas spreads faster, by (T / 3,000 K) ^ 0.5. T is the real
+  temperature of the universe at the cosmic clock's time: 1.5x10^10 K / sqrt(t) while
+  radiation dominates, then falling as t^(-2/3) after matter-radiation equality (about
+  50,000 years), which gives about 3,000 K at recombination. The early universe is billions
+  of degrees, so the speed-up is capped (`maxSpeedup`, 4x); through the dark ages it cools to
+  tens of kelvin and the spread slows to a crawl.
+- **Pretty slow.** At `spreadRate` 0.0001, a cell of hydrogen with empty cells around it loses
+  about two thirds of its excess in half an hour at 3,000 K (seven minutes at the 4x cap);
+  iron takes about 7.4 times as long.
+- **Whole units.** Cells hold whole units, so each edge keeps the fraction of a unit it owes,
+  per material, and moves a unit once it adds up to one. Nothing is created or lost. The
+  fractions aren't saved (each is under a unit, and nothing has left a cell for it yet).
+- **Code:** `FLRSimulation::AdvanceGas` / `StepGas`, `FLRGasDef` in `Data/LRGameData.h`,
+  `GetCosmicTemperature`. The tuning knobs are all in `universe.json`'s `gas`.
+- **Consequence to watch.** An unbounded grid means gas thins forever: a lone unit still
+  hops to a neighbour now and then. If the number of cells holding a unit or two becomes a
+  problem (for drawing, or for the player), a floor or a boundary can come later.
 
 ## The grid (implemented)
 

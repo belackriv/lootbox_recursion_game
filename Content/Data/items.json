@@ -1,5 +1,5 @@
 {
-	"_comment": "Item definitions. category: material | lootbox | placeable | source | structure. Everything lives in the pocket universe: materials are matter in grid cells, and the rest are built in cells. Materials follow the cosmology: hydrogen and helium are primordial, while carbon and iron only come out of collapsing caches for now. Items with a lootTable are caches: they sit in a cell (or an irradiator's chamber) until opened. Irradiators (placeable with maxExposureStacks > 0) hold one cache and one radiation source, both built into them; sources name a radiation id from radiation.json. Structures are part of the pocket universe: actions create them and they can't be dismantled. An overdensity (structure with maxAmplitude > 0) yields the current epoch's yieldTable into its own cell every yieldSeconds, one roll per amplitude. stackSize only matters for uniqueness (1). opacity (0 to 1, default 1) is how solid the item draws: below 1 it is see-through, so an irradiator shows the cache and source inside. material (optional asset path, e.g. /Game/Materials/M_Ripple) overrides the shared world material for this item when the asset exists (docs/MATERIALS.md). The loot_box item is shown to players as the Quantum Cache (ids keep the old name).",
+	"_comment": "Item definitions. category: material | lootbox | placeable | source | structure. Everything lives in the pocket universe: materials are matter in grid cells, and the rest are built in cells. atomicMass (materials, in u) makes a material a gas that spreads between cells, lighter ones faster (universe.json gas). Materials follow the cosmology: hydrogen and helium are primordial, while carbon and iron only come out of collapsing caches for now. Items with a lootTable are caches: they sit in a cell (or an irradiator's chamber) until opened. Irradiators (placeable with maxExposureStacks > 0) hold one cache and one radiation source, both built into them; sources name a radiation id from radiation.json. Structures are part of the pocket universe: actions create them and they can't be dismantled. An overdensity (structure with maxAmplitude > 0) yields the current epoch's yieldTable into its own cell every yieldSeconds, one roll per amplitude. stackSize only matters for uniqueness (1). opacity (0 to 1, default 1) is how solid the item draws: below 1 it is see-through, so an irradiator shows the cache and source inside. material (optional asset path, e.g. /Game/Materials/M_Ripple) overrides the shared world material for this item when the asset exists (docs/MATERIALS.md). The loot_box item is shown to players as the Quantum Cache (ids keep the old name).",
 	"items": [
 		{
 			"id": "hydrogen",
@@ -7,6 +7,7 @@
 			"abbrev": "H",
 			"tooltip": "Primordial hydrogen: a lone proton, and three quarters of all the matter there will ever be.",
 			"category": "material",
+			"atomicMass": 1.008,
 			"stackSize": 100,
 			"color": "#8FB8FF"
 		},
@@ -16,6 +17,7 @@
 			"abbrev": "He",
 			"tooltip": "Primordial helium, fused in the first few minutes. A quarter of all the matter there will ever be.",
 			"category": "material",
+			"atomicMass": 4.0026,
 			"stackSize": 100,
 			"color": "#F2C879"
 		},
@@ -25,6 +27,7 @@
 			"abbrev": "C",
 			"tooltip": "Forged when three helium nuclei fuse. No star has shone yet, so only the crush inside a collapsing cache is enough to make it.",
 			"category": "material",
+			"atomicMass": 12.011,
 			"stackSize": 100,
 			"color": "#6E6E78"
 		},
@@ -34,6 +37,7 @@
 			"abbrev": "Fe",
 			"tooltip": "The end of the fusion road: fusing iron costs energy instead of releasing it. Only the most compressed caches collapse this far.",
 			"category": "material",
+			"atomicMass": 55.845,
 			"stackSize": 100,
 			"color": "#A8745A"
 		},

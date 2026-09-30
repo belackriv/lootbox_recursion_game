@@ -30,6 +30,19 @@ namespace
 	const FName ReasonInstrumentsDown(TEXT("instruments_down"));
 	const FName ReasonNoBuilds(TEXT("no_builds"));
 
+	/** The universe's temperature a second after the Big Bang, K (radiation era: T ~ 1 / sqrt(t)). */
+	constexpr double CosmicRadiationTemperature = 1.5e10;
+	/** Matter-radiation equality, s (about 50,000 years): after it, T ~ t^(-2/3). */
+	constexpr double CosmicEqualitySeconds = 1.6e12;
+
+	/** A fixed order for the two cells of a grid edge, so each edge has one key. */
+	bool IsGasEdgeFirst(const FIntVector& A, const FIntVector& B)
+	{
+		if (A.X != B.X) { return A.X < B.X; }
+		if (A.Y != B.Y) { return A.Y < B.Y; }
+		return A.Z < B.Z;
+	}
+
 	const FName IrradiateEvent(TEXT("irradiate"));
 	const FName UnlockEvent(TEXT("unlock"));
 	const FName HostEvent(TEXT("host"));
@@ -128,6 +141,8 @@ void FLRSimulation::Reset(int32 Seed)
 	Placed.Reset();
 	ActionStates.Reset();
 	Jobs.Reset();
+	GasCarry.Reset();
+	GasProgress = 0.0;
 	GlobalCooldownUntil = 0.0;
 	Unlocked.Reset();
 	Stats.Reset();
@@ -222,6 +237,8 @@ bool FLRSimulation::Load(const FLRSaveData& SaveData)
 	{
 		ActionStates.Add(State.Name, State);
 	}
+	GasCarry.Reset();
+	GasProgress = 0.0;
 	Jobs.Reset();
 	for (const FLRCellJob& Job : SaveData.Jobs)
 	{
@@ -309,6 +326,7 @@ void FLRSimulation::Advance(double DeltaSeconds)
 	{
 		AdvanceIrradiation(DeltaSeconds);
 		AdvanceStructures(DeltaSeconds);
+		AdvanceGas(DeltaSeconds);
 	}
 }
 
@@ -772,6 +790,158 @@ void FLRSimulation::AdvanceStructures(double DeltaSeconds)
 	{
 		AnnounceUnlocks(RefreshUnlocks());
 	}
+}
+
+double FLRSimulation::GetCosmicTemperature(double CosmicSeconds)
+{
+	const double Seconds = FMath::Max(CosmicSeconds, 1e-40);
+	if (Seconds <= CosmicEqualitySeconds)
+	{
+		return CosmicRadiationTemperature / FMath::Sqrt(Seconds);
+	}
+	const double AtEquality = CosmicRadiationTemperature / FMath::Sqrt(CosmicEqualitySeconds);
+	return AtEquality * FMath::Pow(Seconds / CosmicEqualitySeconds, -2.0 / 3.0);
+}
+
+double FLRSimulation::GetGasSpeedup() const
+{
+	const FLRGasDef& Gas = Data.Gas;
+	if (!Gas.IsDefined())
+	{
+		return 0.0;
+	}
+	// Atoms move at sqrt(T / m): hotter gas spreads faster. The early universe is billions of
+	// degrees, so the speed-up is capped.
+	const double Ratio = GetCosmicTemperature(CosmicTime) / static_cast<double>(Gas.ReferenceTemperature);
+	return FMath::Min(static_cast<double>(Gas.MaxSpeedup), FMath::Pow(Ratio, static_cast<double>(Gas.TemperatureExponent)));
+}
+
+void FLRSimulation::AdvanceGas(double DeltaSeconds)
+{
+	if (!Data.Gas.IsDefined())
+	{
+		GasProgress = 0.0;
+		return;
+	}
+	const double Step = static_cast<double>(Data.Gas.StepSeconds);
+	GasProgress += DeltaSeconds;
+	bool bMoved = false;
+	while (GasProgress >= Step)
+	{
+		GasProgress -= Step;
+		bMoved |= StepGas(Step);
+	}
+	if (bMoved)
+	{
+		OnMatterChanged.Broadcast();
+	}
+}
+
+bool FLRSimulation::StepGas(double Seconds)
+{
+	const double Rate = static_cast<double>(Data.Gas.SpreadRate) * GetGasSpeedup() * Seconds;
+	if (Rate <= 0.0 || Matter.IsEmpty())
+	{
+		return false;
+	}
+
+	// How fast each material's atoms move, relative to one of atomic mass 1 (Graham's law:
+	// 1 / sqrt(mass)); 0 for anything that doesn't spread.
+	TMap<FName, double> Speeds;
+	auto SpeedOf = [this, &Speeds](FName Item)
+	{
+		if (const double* Known = Speeds.Find(Item))
+		{
+			return *Known;
+		}
+		const FLRItemDef* Def = Data.FindItem(Item);
+		const double Mass = Def ? static_cast<double>(Def->AtomicMass) : 0.0;
+		return Speeds.Add(Item, Mass > 0.0 ? 1.0 / FMath::Sqrt(Mass) : 0.0);
+	};
+
+	// What escapes each cell: every material's particles (amount / mass) times their speed.
+	TMap<FIntVector, double> Escaping;
+	for (const TPair<FIntVector, FLRCellMatter>& Pair : Matter)
+	{
+		double Sum = 0.0;
+		for (const FLRItemAmount& Amount : Pair.Value.Amounts)
+		{
+			const double Speed = SpeedOf(Amount.Item);
+			Sum += Amount.Count * Speed * Speed * Speed; // amount / mass^1.5
+		}
+		if (Sum > 0.0)
+		{
+			Escaping.Add(Pair.Key, Sum);
+		}
+	}
+
+	// Each edge carries matter from the side where more escapes to the side where less does, in
+	// proportion to the difference. It carries each material in proportion to how fast that
+	// material escapes (amount x speed), so light gas runs ahead of heavy.
+	for (const TPair<FIntVector, double>& Pair : Escaping)
+	{
+		for (const FIntVector& Next : FLRHexGrid::Neighbors(Pair.Key))
+		{
+			const double* NextEscaping = Escaping.Find(Next);
+			if (NextEscaping && !IsGasEdgeFirst(Pair.Key, Next))
+			{
+				continue; // an edge between two cells with gas is done once, from its first cell
+			}
+			const double There = NextEscaping ? *NextEscaping : 0.0;
+			if (Pair.Value == There)
+			{
+				continue;
+			}
+			const bool bOutward = Pair.Value > There;
+			const FIntVector& From = bOutward ? Pair.Key : Next;
+			const FIntVector& To = bOutward ? Next : Pair.Key;
+			const double Share = Rate * FMath::Abs(Pair.Value - There) / FMath::Max(Pair.Value, There);
+			const bool bFromFirst = IsGasEdgeFirst(From, To);
+			for (const FLRItemAmount& Amount : Matter[From].Amounts)
+			{
+				const double Flow = Share * Amount.Count * SpeedOf(Amount.Item);
+				if (Flow > 0.0)
+				{
+					GasCarry.FindOrAdd(MakeTuple(bFromFirst ? From : To, bFromFirst ? To : From, Amount.Item)) += bFromFirst ? Flow : -Flow;
+				}
+			}
+		}
+	}
+
+	// Matter moves in whole units; the fractions wait for the next step.
+	bool bMoved = false;
+	for (auto It = GasCarry.CreateIterator(); It; ++It)
+	{
+		const FIntVector First = It->Key.Get<0>();
+		const FIntVector Second = It->Key.Get<1>();
+		const FName Item = It->Key.Get<2>();
+		const int32 Whole = static_cast<int32>(It->Value); // towards zero
+		if (Whole != 0)
+		{
+			const FIntVector& From = Whole > 0 ? First : Second;
+			const FIntVector& To = Whole > 0 ? Second : First;
+			FLRCellMatter* Source = Matter.Find(From);
+			const int32 Moved = Source ? FMath::Min(FMath::Abs(Whole), Source->Get(Item)) : 0;
+			if (Moved > 0)
+			{
+				Source->Add(Item, -Moved);
+				if (Source->IsEmpty())
+				{
+					Matter.Remove(From);
+				}
+				AddMatter(To, Item, Moved);
+				bMoved = true;
+			}
+			// Whatever couldn't be paid (the matter already left by another edge) is dropped:
+			// only the fraction carries over.
+			It->Value -= Whole;
+		}
+		if (GetMatter(First, Item) == 0 && GetMatter(Second, Item) == 0)
+		{
+			It.RemoveCurrent(); // neither side has this gas any more
+		}
+	}
+	return bMoved;
 }
 
 void FLRSimulation::AnnounceEvents(FName Event, const TArray<FString>& Messages)

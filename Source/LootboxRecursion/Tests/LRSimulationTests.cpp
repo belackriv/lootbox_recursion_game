@@ -510,6 +510,105 @@ bool FLRMatterReachTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+namespace LRTest
+{
+	/** Test data where carbon (mass 1) and iron (mass 64, 8x slower) spread as gas, 1% per edge per second, at any temperature. */
+	FLRGameData MakeGasData()
+	{
+		FLRGameData Data = MakeData();
+		Data.Items[Carbon].AtomicMass = 1.f;
+		Data.Items[Iron].AtomicMass = 64.f;
+		Data.Gas.SpreadRate = 0.01f;
+		Data.Gas.TemperatureExponent = 0.f;
+		Data.Gas.MaxSpeedup = 1.f;
+		Data.Gas.StepSeconds = 1.f;
+		return Data;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRGasSpreadTest, "LootboxRecursion.Matter.GasSpreadsByGrahamsLaw", LR_TEST_FLAGS)
+bool FLRGasSpreadTest::RunTest(const FString& Parameters)
+{
+	FLRSimulation Sim(LRTest::MakeGasData(), 1);
+	const FIntVector Centre(0, 0, 0);
+	Sim.GiveMatter(Centre, LRTest::Carbon, 1000);
+	Sim.GiveMatter(Centre, LRTest::Iron, 1000);
+	Sim.Advance(10.0);
+
+	// Downhill from the full cell, the same to every side, and none of it lost.
+	TestEqual(TEXT("carbon conserved"), Sim.GetTotalMatter(LRTest::Carbon), 1000);
+	TestEqual(TEXT("iron conserved"), Sim.GetTotalMatter(LRTest::Iron), 1000);
+	const TArray<FIntVector> Ring = FLRHexGrid::Neighbors(Centre);
+	const int32 CarbonNext = Sim.GetMatter(Ring[0], LRTest::Carbon);
+	const int32 IronNext = Sim.GetMatter(Ring[0], LRTest::Iron);
+	TestTrue(TEXT("its neighbours got some"), CarbonNext > 0 && IronNext > 0);
+	for (const FIntVector& Next : Ring)
+	{
+		TestTrue(TEXT("the same on every side"), Sim.GetMatter(Next, LRTest::Carbon) == CarbonNext && Sim.GetMatter(Next, LRTest::Iron) == IronNext);
+	}
+	// Graham's law: the light gas runs ahead (about 556 carbon and 934 iron are left after 10 s).
+	const int32 CarbonLeft = Sim.GetMatter(Centre, LRTest::Carbon);
+	const int32 IronLeft = Sim.GetMatter(Centre, LRTest::Iron);
+	TestTrue(TEXT("carbon spreads"), CarbonLeft >= 540 && CarbonLeft <= 570);
+	TestTrue(TEXT("iron lags"), IronLeft >= 925 && IronLeft <= 940);
+	TestTrue(TEXT("carbon leaves at least 5x faster"), 1000 - CarbonLeft >= 5 * (1000 - IronLeft));
+	const FIntVector Beyond = Ring[0] * 2; // two steps out
+	TestTrue(TEXT("carbon is already two cells out"), Sim.GetMatter(Beyond, LRTest::Carbon) > 0);
+	TestEqual(TEXT("iron isn't"), Sim.GetMatter(Beyond, LRTest::Iron), 0);
+
+	// Two cells alike don't trade.
+	FLRSimulation Even(LRTest::MakeGasData(), 1);
+	Even.GiveMatter(Centre, LRTest::Carbon, 1);
+	for (const FIntVector& Next : Ring)
+	{
+		Even.GiveMatter(Next, LRTest::Carbon, 1);
+	}
+	Even.Advance(50.0);
+	TestEqual(TEXT("level ground: the middle keeps its unit"), Even.GetMatter(Centre, LRTest::Carbon), 1);
+
+	// The early universe is hot: with the real exponent the spread runs at its cap.
+	FLRGameData Hot = LRTest::MakeGasData();
+	Hot.Gas.TemperatureExponent = 0.5f;
+	Hot.Gas.MaxSpeedup = 4.f;
+	TestEqual(TEXT("capped when hot"), FLRSimulation(Hot, 1).GetGasSpeedup(), 4.0);
+	FLRGameData Off = LRTest::MakeGasData();
+	Off.Gas.SpreadRate = 0.f;
+	TestEqual(TEXT("off"), FLRSimulation(Off, 1).GetGasSpeedup(), 0.0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRGasWholeUnitsTest, "LootboxRecursion.Matter.GasMovesInWholeUnits", LR_TEST_FLAGS)
+bool FLRGasWholeUnitsTest::RunTest(const FString& Parameters)
+{
+	// A lone unit owes 1% of itself to each side every second: after about 100 s that adds up
+	// to a whole unit, and it moves to one neighbour (the fractions owed elsewhere are dropped).
+	FLRSimulation Sim(LRTest::MakeGasData(), 1);
+	const FIntVector Lone(5, -2, 0);
+	Sim.GiveMatter(Lone, LRTest::Carbon, 1);
+	Sim.Advance(90.0);
+	TestEqual(TEXT("not yet a whole unit"), Sim.GetMatter(Lone, LRTest::Carbon), 1);
+	Sim.Advance(15.0);
+	TestEqual(TEXT("it has moved"), Sim.GetMatter(Lone, LRTest::Carbon), 0);
+	TestEqual(TEXT("still exactly one"), Sim.GetTotalMatter(LRTest::Carbon), 1);
+	int32 Beside = 0;
+	for (const FIntVector& Next : FLRHexGrid::Neighbors(Lone))
+	{
+		Beside += Sim.GetMatter(Next, LRTest::Carbon);
+	}
+	TestEqual(TEXT("to a neighbour"), Beside, 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRCosmicTemperatureTest, "LootboxRecursion.Cosmos.TemperatureFallsAsItExpands", LR_TEST_FLAGS)
+bool FLRCosmicTemperatureTest::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("15 billion K at one second"), FMath::IsNearlyEqual(FLRSimulation::GetCosmicTemperature(1.0), 1.5e10, 1.0));
+	const double Recombination = FLRSimulation::GetCosmicTemperature(1.2e13);
+	TestTrue(TEXT("about 3,000 K at recombination"), Recombination > 2900.0 && Recombination < 3200.0);
+	TestTrue(TEXT("colder later"), FLRSimulation::GetCosmicTemperature(3.156e15) < Recombination / 10.0);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRSimOpenTest, "LootboxRecursion.Simulation.OpenCacheSpillsIntoItsCell", LR_TEST_FLAGS)
 bool FLRSimOpenTest::RunTest(const FString& Parameters)
 {

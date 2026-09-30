@@ -21,6 +21,8 @@ HOST_DEFAULTS = {"startMass": 0, "lifetimeSeconds": 0, "seedCost": 0, "perturbCo
                  "injectorMaxRate": 0, "injectorResponseSeconds": 15, "chamberRadius": 0, "safetyGravity": 9.80665,
                  "chargeCapacity": 0, "rechargeRate": 0, "warningSeconds": 300}
 G = 6.674e-11  # mirrors LRPhysics::G
+GAS_DEFAULTS = {"spreadRate": -1, "referenceTemperature": 3000, "temperatureExponent": 0.5, "maxSpeedup": 4,
+                "stepSeconds": 1}
 
 
 def main() -> int:
@@ -29,6 +31,7 @@ def main() -> int:
     host = dict(HOST_DEFAULTS)
     reach_radius = 0
     cancel_refund = 0.75
+    gas = dict(GAS_DEFAULTS)
 
     files = sorted(DATA_DIR.glob("*.json"))
     if not files:
@@ -59,6 +62,9 @@ def main() -> int:
             reach_radius = doc["reachRadius"]
         if doc.get("cancelRefund", -1) >= 0:
             cancel_refund = doc["cancelRefund"]
+        file_gas = doc.get("gas")
+        if file_gas and file_gas.get("spreadRate", -1) >= 0:
+            gas = {**GAS_DEFAULTS, **file_gas}
         file_host = doc.get("host")
         if file_host and file_host.get("startMass", 0) > 0:
             host = {**HOST_DEFAULTS, **file_host}
@@ -94,6 +100,9 @@ def main() -> int:
         opacity = item.get("opacity", 1)
         if not 0 < opacity <= 1:
             errors.append(f"{where}: opacity must be above 0 and at most 1")
+        atomic_mass = item.get("atomicMass", 0)
+        if atomic_mass < 0 or (atomic_mass > 0 and item.get("category") != "material"):
+            errors.append(f"{where}: atomicMass is for materials, and must be >= 0")
         amplitude = item.get("maxAmplitude", 0)
         if amplitude < 0 or (amplitude > 0 and (item.get("category") != "structure" or item.get("yieldSeconds", 10) <= 0)):
             errors.append(f"{where}: maxAmplitude is for structure items, and needs yieldSeconds > 0")
@@ -213,6 +222,12 @@ def main() -> int:
         errors.append("reachRadius must be >= 0")
     if cancel_refund > 1:
         errors.append("cancelRefund must be between 0 and 1")
+    if gas["spreadRate"] > 0:
+        if (gas["referenceTemperature"] <= 0 or gas["temperatureExponent"] < 0 or gas["maxSpeedup"] < 1
+                or gas["stepSeconds"] <= 0):
+            errors.append("gas: referenceTemperature and stepSeconds must be > 0, temperatureExponent >= 0 and maxSpeedup >= 1")
+        elif gas["spreadRate"] * gas["maxSpeedup"] * gas["stepSeconds"] > 1 / 12:
+            errors.append("gas: spreadRate x maxSpeedup x stepSeconds must be at most 1/12")
 
     if host["startMass"] < 0:
         errors.append("host: startMass must be >= 0")

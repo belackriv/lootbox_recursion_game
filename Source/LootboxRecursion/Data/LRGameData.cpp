@@ -139,6 +139,10 @@ void FLRGameData::AddFrom(const FLRDataFile& File)
 	{
 		Host = File.Host;
 	}
+	if (File.Gas.SpreadRate >= 0.f)
+	{
+		Gas = File.Gas;
+	}
 	if (File.ReachRadius >= 0)
 	{
 		ReachRadius = File.ReachRadius;
@@ -256,6 +260,10 @@ TArray<FString> FLRGameData::Validate() const
 		if (Item.Category == LRNames::CategorySource && !FindRadiation(Item.Radiation))
 		{
 			Errors.Add(FString::Printf(TEXT("%s: unknown radiation '%s'"), *Where, *Item.Radiation.ToString()));
+		}
+		if (Item.AtomicMass < 0.f || (Item.AtomicMass > 0.f && Item.Category != LRNames::CategoryMaterial))
+		{
+			Errors.Add(FString::Printf(TEXT("%s: atomicMass is for materials, and must be >= 0"), *Where));
 		}
 		if (Item.MaxExposureStacks < 0 || Item.MaxRadiationTier < 0 || (Item.MaxExposureStacks > 0 && Item.ExposureSeconds <= 0.f))
 		{
@@ -391,6 +399,19 @@ TArray<FString> FLRGameData::Validate() const
 	if (CancelRefund > 1.f)
 	{
 		Errors.Add(TEXT("cancelRefund must be between 0 and 1"));
+	}
+	if (Gas.IsDefined())
+	{
+		if (Gas.ReferenceTemperature <= 0.f || Gas.TemperatureExponent < 0.f || Gas.MaxSpeedup < 1.f || Gas.StepSeconds <= 0.f)
+		{
+			Errors.Add(TEXT("gas: referenceTemperature and stepSeconds must be > 0, temperatureExponent >= 0 and maxSpeedup >= 1"));
+		}
+		// Explicit steps: a cell loses at most this much to each of its six neighbours per step,
+		// so keep it well under 1/12 or the spread overshoots and oscillates.
+		else if (Gas.SpreadRate * Gas.MaxSpeedup * Gas.StepSeconds > 1.f / 12.f)
+		{
+			Errors.Add(TEXT("gas: spreadRate x maxSpeedup x stepSeconds must be at most 1/12"));
+		}
 	}
 
 	if (Host.StartMass < 0.0)

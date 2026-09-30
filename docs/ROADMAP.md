@@ -171,7 +171,9 @@ Matter moves into the pocket universe first (see *Matter lives in the pocket uni
       the injectors' flow under the same Eddington limit and safeties (mass by balance
       value, a throughput and a material filter). The universe starts feeding itself.
 - [ ] Sources irradiate caches within a radius, so irradiation becomes spatial (idea).
-- [ ] Gas drifts downhill and diffuses. Injecting hydrogen fills the target cell.
+- [x] Gas spreads between cells by Graham's law, faster when the universe is hot, in whole
+      units (a fraction carried per edge).
+- [ ] Gas drifts downhill along the gravity field. Injecting hydrogen fills the target cell.
 - [ ] Conveyors deliver matter into a build site's reach automatically (the radius stays the
       same).
 - [ ] Gravity field: softened 1/r potential from every massive body, sampled on the grid.

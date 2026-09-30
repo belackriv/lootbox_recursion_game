@@ -124,6 +124,14 @@ public:
 	float GetPlasmaOpacity() const;
 	/** "10^-36 s", "3 min", "380 thousand years", "13.8 billion years". */
 	static FString FormatCosmicTime(double Seconds);
+	/**
+	 * The universe's temperature (K) at a cosmic time: T = 1.5e10 K / sqrt(t) while radiation
+	 * dominates, then falling as t^(-2/3) after matter-radiation equality (about 50,000 years).
+	 * About 3,000 K at recombination.
+	 */
+	static double GetCosmicTemperature(double CosmicSeconds);
+	/** How fast gas spreads now relative to Data.Gas.SpreadRate (from the temperature); 0 if gas doesn't spread. */
+	double GetGasSpeedup() const;
 
 	// ---- The host black hole and the injectors that feed it (the outside panel) -----------
 	/** The host black hole's mass, kg. */
@@ -306,6 +314,10 @@ private:
 	void AdvanceCosmos(double DeltaSeconds);
 	/** Overdensities: yield matter into their own cell and, in later epochs, deepen on their own. */
 	void AdvanceStructures(double DeltaSeconds);
+	/** Gas spreads between neighbouring cells, in steps of Data.Gas.StepSeconds (see FLRGasDef). */
+	void AdvanceGas(double DeltaSeconds);
+	/** One spread step; returns true if any matter moved. */
+	bool StepGas(double Seconds);
 	/** Make Index the current epoch (clock, start time). */
 	void EnterEpoch(int32 Index);
 	/** Broadcast event messages (host warnings) through OnActionCompleted. */
@@ -355,6 +367,14 @@ private:
 	TMap<FIntVector, FLRPlacedEntity> Placed;  // by grid cell
 	TMap<FName, FLRActionState> ActionStates;  // by action name (only actions with their own cooldown)
 	TMap<FIntVector, FLRCellJob> Jobs;         // by cell: actions under way there
+	/**
+	 * Gas owed across each cell edge that hasn't added up to a whole unit yet, per material:
+	 * (first cell, second cell, item), with the cells in sorted order, positive from the first
+	 * to the second. Not saved: each is under a unit, and no matter has left a cell for it yet.
+	 */
+	TMap<TTuple<FIntVector, FIntVector, FName>, double> GasCarry;
+	/** Time towards the next gas step. Not saved. */
+	double GasProgress = 0.0;
 	/** No action can start before this (Data.GlobalCooldown after the last one started). Not saved. */
 	double GlobalCooldownUntil = 0.0;
 	int32 EpochIndex = 0;
