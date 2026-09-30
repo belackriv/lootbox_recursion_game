@@ -2253,7 +2253,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			]
 		];
 
-	// Under the dial and the chamber: a camera looking into the chamber. For now it's a dark
+	// Under the dial and the chamber: a 4:3 camera looking into the chamber. For now it's a dark
 	// screen (later, a 3D view of the containment field, the injectors and the singularity),
 	// and it shows static while the instruments are down.
 	TSharedRef<SWidget> Camera = Screen(
@@ -2261,7 +2261,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 		+ SOverlay::Slot()
 		[
 			SNew(SLRStaticNoise)
-			.Resolution(FIntPoint(200, 56))
+			.Resolution(FIntPoint(200, 150))
 			.Material(StaticMaterial)
 			.Intensity_Lambda([this]() { return StaticLevel; })
 		]
@@ -2285,7 +2285,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			.Visibility_Lambda([this]() { return StaticLevel > 0.5f ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
 			.Text(LOCTEXT("CameraNoSignal", "NO SIGNAL"))
 		],
-		/*Width*/ 524.f, /*Height*/ 150.f);
+		/*Width*/ 524.f, /*Height*/ 393.f); // 4:3, as wide as the dial and chamber together
 
 	TSharedRef<SWidget> Instruments = SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
