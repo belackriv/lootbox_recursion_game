@@ -21,6 +21,7 @@ namespace LRNames
 	inline const FName Perturb(TEXT("perturb"));
 	/** Not an action in actions.json: the outside panel's kick-start (FLRSimulation::Ignite). */
 	inline const FName Ignite(TEXT("ignite"));
+	inline const FName Vent(TEXT("vent"));
 	inline const FName Craft(TEXT("craft"));
 	inline const FName Use(TEXT("use"));
 	inline const FName Dismantle(TEXT("dismantle"));

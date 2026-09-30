@@ -257,6 +257,16 @@ ELRInjectorAuto ULRGameSubsystem::GetInjectorAuto() const
 	return Simulation ? Simulation->GetInjectorAuto() : ELRInjectorAuto::Off;
 }
 
+FLRActionResult ULRGameSubsystem::SetVenting(bool bVent)
+{
+	return Simulation ? Simulation->SetVenting(bVent) : FLRActionResult();
+}
+
+bool ULRGameSubsystem::IsVenting() const
+{
+	return Simulation && Simulation->IsVenting();
+}
+
 FLRActionResult ULRGameSubsystem::Ignite()
 {
 	return Simulation ? Simulation->Ignite() : FLRActionResult();

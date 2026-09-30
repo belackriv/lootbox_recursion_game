@@ -28,6 +28,7 @@ namespace
 	const FName ReasonRecharging(TEXT("recharging"));
 	const FName ReasonHostAlive(TEXT("host_alive"));
 	const FName ReasonInstrumentsDown(TEXT("instruments_down"));
+	const FName ReasonVentFloor(TEXT("vent_floor"));
 
 	const FName IrradiateEvent(TEXT("irradiate"));
 	const FName UnlockEvent(TEXT("unlock"));
@@ -56,7 +57,8 @@ FString FLRSimulation::DescribeReason(FName Reason)
 	if (Reason == ReasonNoHost) { return TEXT("there is no host black hole"); }
 	if (Reason == ReasonRecharging) { return TEXT("the stored charge is still recharging"); }
 	if (Reason == ReasonHostAlive) { return TEXT("the host is still there, feed it with the dial"); }
-	if (Reason == ReasonInstrumentsDown) { return TEXT("the instruments are down until the stored charge is full again"); }
+	if (Reason == ReasonInstrumentsDown) { return TEXT("the instruments are down"); }
+	if (Reason == ReasonVentFloor) { return TEXT("the host is too close to its point of no return to vent"); }
 	return Reason.ToString();
 }
 
@@ -108,6 +110,7 @@ void FLRSimulation::Reset(int32 Seed)
 	HostMass = Data.Host.StartMass;
 	InjectorTarget = 0.0;
 	InjectorAuto = ELRInjectorAuto::Off;
+	bVenting = false;
 	Injector = FLRInjectorState();
 	StoredCharge = Data.Host.ChargeCapacity;
 	bRecharging = false;
@@ -151,6 +154,7 @@ FLRSaveData FLRSimulation::Save() const
 	Out.HostMass = HostMass;
 	Out.InjectorTarget = InjectorTarget;
 	Out.InjectorAuto = InjectorAuto;
+	Out.bVenting = bVenting;
 	Out.InjectorFlow = Injector.Flow;
 	Out.InjectorChange = Injector.Change;
 	Out.StoredCharge = StoredCharge;
@@ -200,7 +204,8 @@ bool FLRSimulation::Load(const FLRSaveData& SaveData)
 	HostMass = Data.Host.IsDefined() ? FMath::Max(0.0, SaveData.HostMass) : 0.0;
 	InjectorTarget = FMath::Clamp(SaveData.InjectorTarget, 0.0, Data.Host.InjectorMaxRate);
 	InjectorAuto = SaveData.InjectorAuto;
-	Injector.Flow = FMath::Clamp(SaveData.InjectorFlow, 0.0, Data.Host.InjectorMaxRate);
+	bVenting = SaveData.bVenting && Data.Host.IsDefined();
+	Injector.Flow = FMath::Clamp(SaveData.InjectorFlow, -Data.Host.InjectorMaxRate, Data.Host.InjectorMaxRate);
 	Injector.Change = SaveData.InjectorChange;
 	StoredCharge = FMath::Clamp(SaveData.StoredCharge, 0.0, Data.Host.ChargeCapacity);
 	bRecharging = SaveData.bRecharging;
@@ -307,11 +312,17 @@ void FLRSimulation::AdvanceHost(double DeltaSeconds)
 
 		UpdateAutoTarget();
 		const bool bFeeding = HostMass > 0.0 && !bRecharging;
-		Injector = bFeeding ? StepInjector(Injector, InjectorTarget, Step, Host.InjectorResponseSeconds) : FLRInjectorState();
-		if (Injector.Flow > Host.InjectorMaxRate)
+		// Venting runs the same injectors in reverse: the dial sets how hard they pull.
+		const double Target = bVenting ? -InjectorTarget : InjectorTarget;
+		Injector = bFeeding ? StepInjector(Injector, Target, Step, Host.InjectorResponseSeconds) : FLRInjectorState();
+		if (FMath::Abs(Injector.Flow) > Host.InjectorMaxRate)
 		{
-			Injector.Flow = Host.InjectorMaxRate;
+			Injector.Flow = FMath::Sign(Injector.Flow) * Host.InjectorMaxRate;
 			Injector.Change = 0.0;
+		}
+		if (!bVenting && Injector.Flow < 0.0 && Injector.Flow > -VentResidualRate)
+		{
+			Injector = FLRInjectorState(); // wound down after venting
 		}
 		if (HostMass <= 0.0)
 		{
@@ -328,13 +339,28 @@ void FLRSimulation::AdvanceHost(double DeltaSeconds)
 		{
 			HostMass = 0.0;
 			Injector = FLRInjectorState();
+			bVenting = false;
 			Messages.Add(TEXT("The host black hole has evaporated in a final flash. The pocket universe is frozen until you Ignite a new one (outside panel)."));
 			continue;
 		}
 
 		// Feeding: the flow reaches the host up to the rated limit; the rest is blown back out.
-		const double Intake = bFeeding ? FMath::Min(Injector.Flow, Host.GetRatedLimit(HostMass)) : 0.0;
-		HostMass += Intake * Step;
+		// Venting pulls no harder than that either.
+		const double Limit = Host.GetRatedLimit(HostMass);
+		const double Intake = (bFeeding && Injector.Flow > 0.0) ? FMath::Min(Injector.Flow, Limit) : 0.0;
+		const double Extraction = (bFeeding && Injector.Flow < 0.0) ? FMath::Min(-Injector.Flow, Limit) : 0.0;
+		HostMass += (Intake - Extraction) * Step;
+
+		// The vent interlock: cut the reversed beam at once before the host gets near its
+		// point of no return.
+		if (bVenting && HostMass <= GetVentFloor())
+		{
+			bVenting = false;
+			InjectorTarget = 0.0;
+			Injector = FLRInjectorState();
+			Messages.Add(FString::Printf(TEXT("VENT INTERLOCK: the host (%s) reached the vent floor, %s above its point of no return. The reversed beam was cut and the dial set to OFF; the instruments are back online."),
+				*FormatMass(HostMass), *FormatMass(GetVentFloor() - GetTippingMass())));
+		}
 
 		// The safeties: once the 1 g radius reaches the chamber wall, dump the beam at once.
 		if (Cap > 0.0 && Intake > 0.0 && HostMass >= Cap)
@@ -406,7 +432,9 @@ FLRInjectorState FLRSimulation::StepInjector(const FLRInjectorState& State, doub
 	FLRInjectorState Out;
 	Out.Flow = Target + (Error + Momentum * DeltaSeconds) * Decay;
 	Out.Change = (State.Change - Omega * Momentum * DeltaSeconds) * Decay;
-	if (Out.Flow <= 0.0)
+	// Never cross zero away from the target: turning the dial down doesn't run the injectors
+	// backwards, but reversing them (a negative target) ramps through zero.
+	if ((State.Flow >= 0.0 && Target >= 0.0 && Out.Flow < 0.0) || (State.Flow <= 0.0 && Target <= 0.0 && Out.Flow > 0.0))
 	{
 		Out.Flow = 0.0;
 		Out.Change = 0.0;
@@ -422,14 +450,14 @@ void FLRSimulation::SetInjectorTarget(double KgPerSecond)
 
 void FLRSimulation::SetInjectorAuto(ELRInjectorAuto Mode)
 {
-	InjectorAuto = Mode;
+	InjectorAuto = bVenting ? ELRInjectorAuto::Off : Mode; // only the dial itself works while venting
 	UpdateAutoTarget();
 }
 
 void FLRSimulation::UpdateAutoTarget()
 {
 	// With no host there's no mark to follow: the dial keeps its last setting until Ignite.
-	if (InjectorAuto == ELRInjectorAuto::Off || HostMass <= 0.0)
+	if (InjectorAuto == ELRInjectorAuto::Off || bVenting || HostMass <= 0.0)
 	{
 		return;
 	}
@@ -439,11 +467,20 @@ void FLRSimulation::UpdateAutoTarget()
 
 double FLRSimulation::GetIntakeRate() const
 {
-	if (HostMass <= 0.0 || bRecharging)
+	if (HostMass <= 0.0 || bRecharging || Injector.Flow <= 0.0)
 	{
 		return 0.0;
 	}
 	return FMath::Min(Injector.Flow, GetRatedLimit());
+}
+
+double FLRSimulation::GetExtractionRate() const
+{
+	if (HostMass <= 0.0 || bRecharging || Injector.Flow >= 0.0)
+	{
+		return 0.0;
+	}
+	return FMath::Min(-Injector.Flow, GetRatedLimit());
 }
 
 double FLRSimulation::GetTimeToEvaporation() const
@@ -453,7 +490,23 @@ double FLRSimulation::GetTimeToEvaporation() const
 	{
 		return 0.0;
 	}
-	if (K <= 0.0 || GetNetRate() >= 0.0)
+	if (GetNetRate() >= 0.0)
+	{
+		return TNumericLimits<double>::Max();
+	}
+	// Venting: dM/dt = -E - K / M^2 with a steady extraction E, which takes
+	// M / E - sqrt(K / E) / E * atan(M sqrt(E / K)) to reach zero (M / E with no evaporation).
+	const double Extraction = GetExtractionRate();
+	if (Extraction > 0.0)
+	{
+		if (K <= 0.0)
+		{
+			return HostMass / Extraction;
+		}
+		const double Scale = FMath::Sqrt(K / Extraction);
+		return HostMass / Extraction - Scale / Extraction * FMath::Atan(HostMass / Scale);
+	}
+	if (K <= 0.0)
 	{
 		return TNumericLimits<double>::Max();
 	}
@@ -473,7 +526,68 @@ double FLRSimulation::GetTimeToEvaporation() const
 
 bool FLRSimulation::AreInstrumentsDown() const
 {
-	return Data.Host.IsDefined() && bRecharging;
+	return Data.Host.IsDefined() && (bRecharging || bVenting || Injector.Flow < 0.0);
+}
+
+double FLRSimulation::GetVentFloor() const
+{
+	return GetTippingMass() * VentFloorFactor;
+}
+
+bool FLRSimulation::CanVent() const
+{
+	const FLRHostDef& Host = Data.Host;
+	return Host.IsDefined() && !bVenting && Host.ChargeCapacity > 0.0 && !bRecharging && StoredCharge >= Host.ChargeCapacity
+		&& HostMass > 0.0 && HostMass > GetVentFloor();
+}
+
+FLRActionResult FLRSimulation::SetVenting(bool bVent)
+{
+	FLRActionResult Result;
+	Result.Action = LRNames::Vent;
+	if (bVent == bVenting)
+	{
+		Result.bSuccess = true;
+		return Result;
+	}
+	if (!bVent)
+	{
+		bVenting = false;
+		InjectorTarget = 0.0;
+		Result.bSuccess = true;
+		Result.Message = TEXT("Vent stopped: the dial is at OFF and the reversed injectors wind down. The instruments come back once they're still.");
+		Complete(Result);
+		return Result;
+	}
+
+	FName Reason = NAME_None;
+	if (!Data.Host.IsDefined() || Data.Host.ChargeCapacity <= 0.0 || HostMass <= 0.0)
+	{
+		Reason = ReasonNoHost;
+	}
+	else if (bRecharging || StoredCharge < Data.Host.ChargeCapacity)
+	{
+		Reason = ReasonRecharging;
+	}
+	else if (HostMass <= GetVentFloor())
+	{
+		Reason = ReasonVentFloor;
+	}
+	if (!Reason.IsNone())
+	{
+		FLRActionResult Failure = MakeFailure(LRNames::Vent, Reason, FString::Printf(TEXT("Can't vent: %s"), *DescribeReason(Reason)));
+		Complete(Failure);
+		return Failure;
+	}
+
+	bVenting = true;
+	InjectorAuto = ELRInjectorAuto::Off;
+	InjectorTarget = 0.0;
+	Result.bSuccess = true;
+	Result.Message = FString::Printf(TEXT("Venting: the injectors run in reverse. The graviton lens drives the horizon into stimulated emission, and the beamline draws the radiation off, so the host sheds mass as fast as the dial says (up to the rated limit). The radiation floods the chamber, so the instruments are down while it runs. Turn the dial up to start; the interlock stops it at %s."),
+		*FormatMass(GetVentFloor()));
+	Complete(Result);
+	return Result;
 }
 
 bool FLRSimulation::CanIgnite() const
@@ -508,6 +622,7 @@ FLRActionResult FLRSimulation::Ignite()
 	HostMass = StoredCharge;
 	StoredCharge = 0.0;
 	bRecharging = true;
+	bVenting = false;
 	Injector = FLRInjectorState();
 	bHostWarned = false;
 

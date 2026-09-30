@@ -119,16 +119,21 @@ public:
 	 */
 	void SetInjectorAuto(ELRInjectorAuto Mode);
 	ELRInjectorAuto GetInjectorAuto() const { return InjectorAuto; }
-	/** What the injectors are sending right now, kg/s (it follows the dial with inertia). */
+	/**
+	 * What the injectors are sending right now, kg/s (it follows the dial with inertia).
+	 * Negative while they run in reverse (venting).
+	 */
 	double GetInjectorFlow() const { return Injector.Flow; }
 	/** What actually reaches the host per second: the flow, up to the rated limit. */
 	double GetIntakeRate() const;
+	/** What venting draws out of the host per second: the reversed flow, up to the rated limit. */
+	double GetExtractionRate() const;
 	/** The injectors' rated limit at the host's current mass, kg/s (the dial's limit mark). */
 	double GetRatedLimit() const { return Data.Host.GetRatedLimit(HostMass); }
 	/** Mass lost to Hawking radiation per second right now (the dial's break-even mark). */
 	double GetEvaporationRate() const { return Data.Host.GetEvaporationRate(HostMass); }
-	/** Intake minus evaporation, kg/s. */
-	double GetNetRate() const { return GetIntakeRate() - GetEvaporationRate(); }
+	/** Intake minus extraction and evaporation, kg/s. */
+	double GetNetRate() const { return GetIntakeRate() - GetExtractionRate() - GetEvaporationRate(); }
 	/**
 	 * Seconds until the host evaporates if the intake stays as it is now (it's still shrinking
 	 * and speeding up as it goes). A very large number if it isn't shrinking.
@@ -143,13 +148,34 @@ public:
 	 * The instruments that observe and manipulate the pocket universe don't work: every action
 	 * (Perturb, Build, Open, Dismantle) is refused. They run off the stored charge, so they're
 	 * down while it rebuilds: after the host reaches the chamber wall (the safeties trip), and
-	 * after Ignite.
+	 * after Ignite. They're also down while venting floods the chamber with radiation, until
+	 * the reversed flow has wound down.
 	 */
 	bool AreInstrumentsDown() const;
 	/** The host is gone and the stored charge is full. */
 	bool CanIgnite() const;
 	/** The kick-start: fire the whole stored charge at the singularity to make a new host. */
 	FLRActionResult Ignite();
+
+	/**
+	 * Venting (docs/DESIGN.md, "Venting mass"): the injectors run in reverse. The graviton lens
+	 * drives the horizon into stimulated emission and the beamline draws the radiation off, so
+	 * the host sheds mass at the dial's rate (up to the rated limit), far faster than it
+	 * evaporates. Starting it needs a full stored charge and a host above the vent floor; it
+	 * sets the dial to OFF and turns auto off. While it runs (and until the reversed flow has
+	 * wound down) the instruments are down, and only the dial itself works. It stops itself at
+	 * the vent floor. Stopping it sets the dial to OFF again.
+	 */
+	FLRActionResult SetVenting(bool bVent);
+	bool IsVenting() const { return bVenting; }
+	/** Venting could start now. */
+	bool CanVent() const;
+	/** The interlock stops venting here: a margin above the point of no return. */
+	double GetVentFloor() const;
+	/** The vent floor as a multiple of the point of no return. */
+	static constexpr double VentFloorFactor = 1.25;
+	/** Once venting stops, a reversed flow weaker than this (kg/s) snaps to zero. */
+	static constexpr double VentResidualRate = 1.0;
 	/** Below this mass the host can't be fed out of evaporating (see FLRHostDef::GetTippingMass). */
 	double GetTippingMass() const { return Data.Host.GetTippingMass(); }
 
@@ -157,7 +183,9 @@ public:
 	 * Injector inertia: the flow after DeltaSeconds, chasing Target like a critically damped
 	 * spring (a parabolic start, then it settles without overshooting), reaching 90% of the way
 	 * in about ResponseSeconds. Exact for any step size, so it doesn't depend on the frame rate.
-	 * The flow never goes below zero. Swap this function to change how the injectors feel.
+	 * The flow never crosses zero away from the target: turning the dial down never runs the
+	 * injectors backwards, but reversing them (a negative target) ramps through zero. Swap this
+	 * function to change how the injectors feel.
 	 */
 	static FLRInjectorState StepInjector(const FLRInjectorState& State, double Target, double DeltaSeconds, double ResponseSeconds);
 
@@ -295,6 +323,7 @@ private:
 	double HostMass = 0.0;
 	double InjectorTarget = 0.0;
 	ELRInjectorAuto InjectorAuto = ELRInjectorAuto::Off;
+	bool bVenting = false;
 	FLRInjectorState Injector;
 	double StoredCharge = 0.0;
 	bool bRecharging = false;

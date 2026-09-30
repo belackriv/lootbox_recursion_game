@@ -45,6 +45,9 @@ struct FLRHudStyle
 	FLinearColor ConsoleAccent;
 	FLinearColor ConsoleScreen;
 	FLinearColor ConsoleScreenBorder;
+	/** The dial's screen while the injectors run in reverse (venting), and the reversed flow. */
+	FLinearColor VentScreen;
+	FLinearColor Vent;
 
 	/** One white brush, tinted per use via BorderBackgroundColor. */
 	FSlateColorBrush WhiteBrush;

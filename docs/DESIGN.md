@@ -223,8 +223,13 @@ The outside panel shows the host itself, not only numbers:
   trip is, with no arithmetic.
 - **A camera into the chamber** (built as a placeholder). A wide dark screen under the dial and
   the chamber view, labelled CAM 1. For now it's black, and shows static while the instruments
-  are down. Later it becomes a 3D view of the containment field, the injectors and the
-  singularity.
+  are down. Later it becomes an elaborate 3D scene of the chamber:
+  - the containment field, flaring as the 1 g sphere nears the wall;
+  - the injectors, firing the neutronium beam through the graviton lens;
+  - the singularity with its glow, hotter and brighter as it shrinks;
+  - venting: the injectors running in reverse, the horizon blazing with stimulated emission,
+    and the radiation streaming back up the beamline to the beam dump;
+  - a trip: the beam dump firing and the magnets quenching.
 
 ### The instruments go down (built)
 
@@ -246,21 +251,34 @@ unfed life, so a trip only paused the injectors. Now reaching the wall hurts.
   a little brighter or darker, with a brighter band rolling down. It has a material hook,
   `M_Static` (docs/MATERIALS.md).
 
-### Venting mass (proposal, not built)
+### Venting mass (built)
 
 A way to shed mass on purpose, faster than evaporation. At the cap the host evaporates only
-18 kg/s, so shedding even 300 t takes over 4 hours; players will want a faster way down.
+18 kg/s, so shedding even 300 t would take over 4 hours.
 
-- **The fiction (to settle).** Stimulated Hawking emission: the facility drives the horizon
-  so it radiates far more than it would on its own. All that extra radiation floods the
-  instruments, so they're down while venting, as after a trip.
-- **A possible rule.**
-  - A VENT toggle on the outside panel multiplies evaporation (100×, say) while it's on.
-    At the cap that's 1.8 t/s, so 300 t goes in under 3 minutes.
-  - The injectors are off while venting, and the instruments are down.
-  - It can't run below the point of no return, or it stops itself there.
+- **The fiction.** The injectors run in reverse. Driven backwards, the graviton lens pumps the
+  horizon into **stimulated Hawking emission**: it radiates far more than it would on its own,
+  and the lens focuses that radiation back up the beamline and off to the beam dump. In short,
+  instead of forcing mass in, the injectors draw radiation out. All that radiation floods the
+  chamber, so the instruments are down while venting, as after a trip.
+- **The rule.**
+  - VENT (on the outside panel, next to Ignite) needs a **full stored charge** to start.
+  - Starting it sets the dial to OFF and turns auto off. The dial then sets how hard the
+    injectors pull, and they pull no harder than the rated limit (the lens pulls only as hard
+    as it can push). At the cap, full reverse (20 t/s) sheds about 1,000 t a minute.
+  - The flow keeps its inertia: it ramps through zero into reverse, and winds back down when
+    venting stops.
+  - **Only the dial works.** The presets and auto buttons under it are disabled.
+  - The instruments are down while venting, and until the reversed flow has wound down.
+  - **The interlock.** Venting stops itself at the **vent floor**, 1.25 × the point of no
+    return (about 1,250 t), cutting the reversed beam at once and setting the dial to OFF. It
+    won't start below the floor.
+  - STOP VENTING sets the dial to OFF, and the reversed flow winds down (about 15 s).
+- **What you see.** The dial's screen turns violet and reads REVERSED. The zone up to LIMIT is
+  violet (everything up to it is drawn out), HOLD is hidden, and the flow needle is violet.
+  The readouts say "Venting X out", and the status bar says VENTING.
 - **Why it's interesting.** It trades time without instruments for size, so it's a choice
-  rather than a free undo. Later it could feed something (the radiation as a resource).
+  rather than a free undo. Later the radiation could feed something (a resource).
 
 ### Losing the host, and the kick-start
 
@@ -367,7 +385,7 @@ The game has two UIs, one for each side of the horizon.
   controls:
   - the dial, with the Eddington and break-even marks and the setting and flow needles;
   - the stored charge (the mass "bucket"): how full it is, and any lockout;
-  - Ignite;
+  - VENT and Ignite;
   - the host's mass and net rate next to the dial.
 
 **How it looks.** The outside is the inverse of the inside: a light grey console with dark

@@ -43,6 +43,8 @@ FLRHudStyle::FLRHudStyle()
 	, ConsoleAccent(Hex(TEXT("9A5800")))
 	, ConsoleScreen(Hex(TEXT("0E1117")))
 	, ConsoleScreenBorder(Hex(TEXT("3A4150")))
+	, VentScreen(Hex(TEXT("2A0A26")))
+	, Vent(Hex(TEXT("FF5FD2")))
 	, WhiteBrush(FLinearColor::White)
 {
 	ButtonStyle = FButtonStyle()

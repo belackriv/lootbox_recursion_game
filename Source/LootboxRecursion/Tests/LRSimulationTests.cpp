@@ -1152,6 +1152,15 @@ bool FLRInjectorInertiaTest::RunTest(const FString& Parameters)
 		bNegative |= Falling.Flow < 0.0;
 	}
 	TestFalse(TEXT("never negative"), bNegative);
+
+	// Reversed (venting), it ramps through zero to the other side.
+	FLRInjectorState Reversing;
+	Reversing.Flow = 100.0;
+	for (int32 Step = 0; Step < 200; ++Step)
+	{
+		Reversing = FLRSimulation::StepInjector(Reversing, -100.0, 0.5, 10.0);
+	}
+	TestTrue(TEXT("runs in reverse"), FMath::IsNearlyEqual(Reversing.Flow, -100.0, 1e-3));
 	return true;
 }
 
@@ -1192,6 +1201,78 @@ bool FLRHostAutoDialTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("a hand on the dial turns auto off"), Grown.GetInjectorAuto() == ELRInjectorAuto::Off);
 	Grown.Advance(10.0);
 	TestTrue(TEXT("and the dial stays put"), Grown.GetInjectorTarget() == 5.0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostVentTest, "LootboxRecursion.Host.VentingRunsTheInjectorsInReverse", LR_TEST_FLAGS)
+bool FLRHostVentTest::RunTest(const FString& Parameters)
+{
+	// No evaporation: 1,000 kg, rated at 10 kg/s, a full 400 kg charge.
+	FLRSimulation Sim(LRTest::MakeStableCosmosData(), 1);
+	LRTest::FMessageLog Log(Sim);
+	Sim.SetInjectorAuto(ELRInjectorAuto::Limit);
+	TestTrue(TEXT("a full charge can vent"), Sim.CanVent());
+	const FLRActionResult Started = Sim.SetVenting(true);
+	TestTrue(TEXT("venting"), Started.bSuccess && Sim.IsVenting() && Log.Contains(TEXT("Venting")));
+	TestTrue(TEXT("the dial starts at OFF, auto off"), Sim.GetInjectorTarget() == 0.0 && Sim.GetInjectorAuto() == ELRInjectorAuto::Off);
+	Sim.SetInjectorAuto(ELRInjectorAuto::Hold);
+	TestTrue(TEXT("auto doesn't work while venting"), Sim.GetInjectorAuto() == ELRInjectorAuto::Off);
+	TestTrue(TEXT("the instruments are down"), Sim.AreInstrumentsDown() && !Sim.GetActionStatus(LRTest::Seed).bEnabled);
+
+	// Only the dial works: it sets how hard the injectors pull.
+	Sim.SetInjectorTarget(50.0);
+	TestTrue(TEXT("the dial still works"), Sim.IsVenting() && Sim.GetInjectorTarget() == 50.0);
+	Sim.Advance(30.0);
+	TestTrue(TEXT("the flow runs backwards"), Sim.GetInjectorFlow() < 0.0 && Sim.GetIntakeRate() == 0.0);
+	TestTrue(TEXT("pulling as hard as the rated limit allows"), FMath::IsNearlyEqual(Sim.GetExtractionRate(), Sim.GetRatedLimit(), 1e-9));
+	TestTrue(TEXT("the host shed mass"), Sim.GetHostMass() < 800.0); // about 750 kg
+	TestTrue(TEXT("the net rate counts it"), Sim.GetNetRate() < 0.0 && Sim.GetTimeToEvaporation() < TNumericLimits<double>::Max());
+
+	FLRSimulation Loaded(LRTest::MakeStableCosmosData(), 2);
+	TestTrue(TEXT("load"), Loaded.Load(Sim.Save()));
+	TestTrue(TEXT("venting is saved"), Loaded.IsVenting() && Loaded.GetInjectorFlow() < 0.0);
+
+	// Stopped: the dial goes to OFF and the reversed flow winds down, then the instruments are back.
+	Sim.SetVenting(false);
+	TestTrue(TEXT("stopped, dial at OFF"), !Sim.IsVenting() && Sim.GetInjectorTarget() == 0.0);
+	TestTrue(TEXT("still down while the flow winds down"), Sim.AreInstrumentsDown());
+	Sim.Advance(20.0); // about 15 s
+	TestTrue(TEXT("wound down"), Sim.GetInjectorFlow() == 0.0 && !Sim.AreInstrumentsDown());
+	const double Settled = Sim.GetHostMass();
+	Sim.Advance(10.0);
+	TestTrue(TEXT("and nothing more is drawn"), Sim.GetHostMass() == Settled);
+
+	// It needs a full stored charge.
+	FLRGameData Capped = LRTest::MakeStableCosmosData();
+	LRTest::SetSafetyCap(Capped, 1100.0);
+	FLRSimulation Tripped(Capped, 1);
+	Tripped.SetInjectorTarget(50.0);
+	for (int32 Step = 0; Step < 240 && !Tripped.IsRecharging(); ++Step)
+	{
+		Tripped.Advance(0.5);
+	}
+	TestTrue(TEXT("tripped"), Tripped.IsRecharging());
+	TestFalse(TEXT("no venting without a full charge"), Tripped.CanVent());
+	const FLRActionResult NoCharge = Tripped.SetVenting(true);
+	TestTrue(TEXT("refused"), !NoCharge.bSuccess && NoCharge.Reason == FName(TEXT("recharging")) && !Tripped.IsVenting());
+
+	// The interlock stops it above the point of no return (322 kg here; the floor is 402 kg).
+	FLRSimulation Deep(LRTest::MakeCosmosData(), 1);
+	LRTest::FMessageLog DeepLog(Deep);
+	TestTrue(TEXT("the floor is a margin above the point of no return"),
+		FMath::IsNearlyEqual(Deep.GetVentFloor(), Deep.GetTippingMass() * FLRSimulation::VentFloorFactor, 1e-9));
+	Deep.SetVenting(true);
+	Deep.SetInjectorTarget(50.0);
+	for (int32 Step = 0; Step < 1000 && Deep.IsVenting(); ++Step)
+	{
+		Deep.Advance(0.5);
+	}
+	TestFalse(TEXT("the interlock stopped it"), Deep.IsVenting());
+	TestTrue(TEXT("at the vent floor"), DeepLog.Contains(TEXT("VENT INTERLOCK"))
+		&& Deep.GetHostMass() <= Deep.GetVentFloor() && Deep.GetHostMass() > Deep.GetVentFloor() - 5.0);
+	TestTrue(TEXT("the beam was cut at once"), Deep.GetInjectorFlow() == 0.0 && Deep.GetInjectorTarget() == 0.0 && !Deep.AreInstrumentsDown());
+	const FLRActionResult TooLow = Deep.SetVenting(true);
+	TestTrue(TEXT("and it won't start again below the floor"), !TooLow.bSuccess && TooLow.Reason == FName(TEXT("vent_floor")));
 	return true;
 }
 

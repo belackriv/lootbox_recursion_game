@@ -125,8 +125,11 @@ See [COSMOLOGY.md](COSMOLOGY.md) for the physics behind each item.
         no inside actions, TV static over the 3D view (hook `M_Static`), a banner, and
         INSTRUMENTS DOWN on the status bar.
   - [x] A chamber camera screen on the outside panel (a placeholder, black or static).
-  - [ ] The chamber camera as a 3D view: containment field, injectors, singularity.
-  - [ ] Venting mass (DESIGN.md, "Venting mass"): a proposal, waiting on a decision.
+  - [ ] The chamber camera as a 3D view: containment field, injectors, singularity, venting
+        (the injectors in reverse) and trips.
+  - [x] Venting mass (DESIGN.md, "Venting mass"): VENT runs the injectors in reverse (needs a
+        full stored charge); only the dial works, the instruments are down, and an interlock
+        stops it at 1.25 × the point of no return.
   - [ ] Play and tune it in the engine: the numbers are real physics where it's playable,
         which may not be fun yet.
   - [ ] Chamber and injector upgrades in the tech tree (a larger chamber, a higher rating).

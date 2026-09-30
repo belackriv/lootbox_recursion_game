@@ -233,6 +233,12 @@ TSharedRef<SWidget> SLRGameHud::BuildInstrumentStatic()
 				.Text_Lambda([this]()
 				{
 					const FLRSimulation* Sim = GetSimulation();
+					if (Sim && !Sim->IsRecharging() && (Sim->IsVenting() || Sim->GetInjectorFlow() < 0.0))
+					{
+						return AsText(Sim->IsVenting()
+							? FString(TEXT("INSTRUMENTS DOWN\nVenting floods the chamber with radiation"))
+							: FString(TEXT("INSTRUMENTS DOWN\nThe reversed injectors are winding down")));
+					}
 					const double Full = Sim ? Sim->GetData().Host.ChargeCapacity : 0.0;
 					const double Percent = (Sim && Full > 0.0) ? 100.0 * Sim->GetStoredCharge() / Full : 0.0;
 					return AsText(FString::Printf(TEXT("INSTRUMENTS DOWN\nThey come back when the stored charge is full (%.0f%%)"), Percent));
@@ -391,6 +397,10 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 					if (Sim->GetHostMass() < Sim->GetTippingMass())
 					{
 						Trend += TEXT("  BELOW THE POINT OF NO RETURN");
+					}
+					if (Sim->IsVenting())
+					{
+						Trend += TEXT("  VENTING");
 					}
 					if (Sim->AreInstrumentsDown())
 					{
@@ -1830,7 +1840,13 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 				return (Sim && Sim->GetData().Host.IsDefined()) ? AsText(Describe(*Sim)) : FText::GetEmpty();
 			});
 	};
-	auto Preset = [this](const FText& Label, const FText& Tip, TFunction<double(const FLRSimulation&)> Rate) -> TSharedRef<SWidget>
+	// While venting only the dial itself works: the buttons under it are disabled.
+	auto NotVenting = [this]()
+	{
+		const ULRGameSubsystem* Sub = GetSubsystem();
+		return !(Sub && Sub->IsVenting());
+	};
+	auto Preset = [this, NotVenting](const FText& Label, const FText& Tip, TFunction<double(const FLRSimulation&)> Rate) -> TSharedRef<SWidget>
 	{
 		const FLRHudStyle& S = FLRHudStyle::Get();
 		return SNew(SButton)
@@ -1838,6 +1854,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			.IsFocusable(false)
 			.ContentPadding(FMargin(4.f, 2.f))
 			.HAlign(HAlign_Center)
+			.IsEnabled_Lambda(NotVenting)
 			.ToolTipText(Tip)
 			.OnClicked_Lambda([this, Rate]()
 			{
@@ -1853,7 +1870,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			];
 	};
 	// A toggle for one of the dial's auto modes: lit while it's on; clicking it again stops it.
-	auto AutoToggle = [this](const FText& Label, const FText& Tip, ELRInjectorAuto Mode) -> TSharedRef<SWidget>
+	auto AutoToggle = [this, NotVenting](const FText& Label, const FText& Tip, ELRInjectorAuto Mode) -> TSharedRef<SWidget>
 	{
 		const FLRHudStyle& S = FLRHudStyle::Get();
 		auto IsOn = [this, Mode]()
@@ -1866,6 +1883,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			.IsFocusable(false)
 			.ContentPadding(FMargin(4.f, 2.f))
 			.HAlign(HAlign_Center)
+			.IsEnabled_Lambda(NotVenting)
 			.ToolTipText(Tip)
 			.ButtonColorAndOpacity_Lambda([IsOn]() -> FSlateColor { return IsOn() ? FLinearColor(1.f, 0.72f, 0.35f) : FLinearColor::White; })
 			.OnClicked_Lambda([this, Mode, IsOn]()
@@ -1890,7 +1908,8 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 
 	// The instruments (the dial, the chamber, the camera) sit in dark screens set into the light
 	// console. The dial and the chamber are the same size.
-	auto Screen = [&Style](const TSharedRef<SWidget>& Instrument, float Width = 250.f, float Height = 240.f) -> TSharedRef<SWidget>
+	auto Screen = [&Style](const TSharedRef<SWidget>& Instrument, float Width = 250.f, float Height = 240.f,
+		TAttribute<FSlateColor> Background = TAttribute<FSlateColor>()) -> TSharedRef<SWidget>
 	{
 		return SNew(SBorder)
 			.BorderImage(&Style.WhiteBrush)
@@ -1899,7 +1918,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			[
 				SNew(SBorder)
 				.BorderImage(&Style.WhiteBrush)
-				.BorderBackgroundColor(Style.ConsoleScreen)
+				.BorderBackgroundColor(Background.IsSet() ? Background : TAttribute<FSlateColor>(FSlateColor(Style.ConsoleScreen)))
 				.Padding(FMargin(4.f))
 				[
 					SNew(SBox)
@@ -1918,7 +1937,13 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 		.AutoHeight()
 		.HAlign(HAlign_Center)
 		[
-			Screen(SNew(SLRFeedDial).Subsystem(Subsystem))
+			// Its screen turns violet while the injectors run in reverse.
+			Screen(SNew(SLRFeedDial).Subsystem(Subsystem), 250.f, 240.f, TAttribute<FSlateColor>::CreateLambda([this]() -> FSlateColor
+			{
+				const FLRHudStyle& S = FLRHudStyle::Get();
+				const FLRSimulation* Sim = GetSimulation();
+				return (Sim && (Sim->IsVenting() || Sim->GetInjectorFlow() < 0.0)) ? S.VentScreen : S.ConsoleScreen;
+			}))
 		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
@@ -2012,7 +2037,13 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			[
 				Readout([](const FLRSimulation& Sim)
 				{
-					return FString::Printf(TEXT("Flow %s, dial %s"), *FLRSimulation::FormatRate(Sim.GetInjectorFlow()),
+					const double Flow = Sim.GetInjectorFlow();
+					if (Sim.IsVenting() || Flow < 0.0)
+					{
+						return FString::Printf(TEXT("Venting %s out, dial %s"), *FLRSimulation::FormatRate(FMath::Abs(Flow)),
+							*FLRSimulation::FormatRate(Sim.GetInjectorTarget()));
+					}
+					return FString::Printf(TEXT("Flow %s, dial %s"), *FLRSimulation::FormatRate(Flow),
 						*FLRSimulation::FormatRate(Sim.GetInjectorTarget()));
 				}, Style.BodyFont)
 			]
@@ -2149,6 +2180,43 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 					}
 					return FString::Printf(TEXT("Charged: %s of neutronium"), *FLRSimulation::FormatMass(Sim.GetStoredCharge()));
 				}, Style.BodyFont)
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 6.f, 0.f, 0.f))
+			[
+				SNew(SButton)
+				.ButtonStyle(&Style.ConsoleButtonStyle)
+				.IsFocusable(false)
+				.HAlign(HAlign_Center)
+				.ContentPadding(FMargin(8.f, 5.f))
+				.IsEnabled_Lambda([this]()
+				{
+					const FLRSimulation* Sim = GetSimulation();
+					return Sim && (Sim->IsVenting() || Sim->CanVent());
+				})
+				.ButtonColorAndOpacity_Lambda([this]() -> FSlateColor
+				{
+					const FLRSimulation* Sim = GetSimulation();
+					return (Sim && Sim->IsVenting()) ? FLinearColor(1.f, 0.6f, 0.9f) : FLinearColor::White;
+				})
+				.ToolTipText(LOCTEXT("VentTip", "Run the injectors in reverse to shed mass: the graviton lens drives the horizon into stimulated emission and the beamline draws the radiation off, as fast as the dial says (up to the rated limit). Needs a full stored charge. The radiation floods the chamber, so the instruments are down while it runs; only the dial works. It stops itself a margin above the point of no return."))
+				.OnClicked_Lambda([this]()
+				{
+					if (ULRGameSubsystem* Sub = GetSubsystem())
+					{
+						Sub->SetVenting(!Sub->IsVenting());
+					}
+					return FReply::Handled();
+				})
+				[
+					SNew(STextBlock)
+					.Font(Style.HeadingFont)
+					.ColorAndOpacity(Style.ConsoleAccent)
+					.Text_Lambda([this]()
+					{
+						const FLRSimulation* Sim = GetSimulation();
+						return (Sim && Sim->IsVenting()) ? LOCTEXT("VentStop", "STOP VENTING") : LOCTEXT("Vent", "VENT");
+					})
+				]
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 6.f))
 			[

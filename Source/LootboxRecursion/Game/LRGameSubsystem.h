@@ -101,6 +101,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Outside")
 	ELRInjectorAuto GetInjectorAuto() const;
 
+	/** Run the injectors in reverse to shed mass (needs a full stored charge), or stop. */
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Outside")
+	FLRActionResult SetVenting(bool bVent);
+
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Outside")
+	bool IsVenting() const;
+
 	/** Fire the stored charge at the singularity to make a new host (only once the host is gone). */
 	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Outside")
 	FLRActionResult Ignite();

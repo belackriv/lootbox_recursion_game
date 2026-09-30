@@ -387,6 +387,10 @@ struct LOOTBOXRECURSION_API FLRSaveData
 	UPROPERTY()
 	bool bRecharging = false;
 
+	/** The injectors run in reverse, drawing radiation out of the host. */
+	UPROPERTY()
+	bool bVenting = false;
+
 	/** Whether the feed dial follows the HOLD or LIMIT mark by itself. */
 	UPROPERTY()
 	ELRInjectorAuto InjectorAuto = ELRInjectorAuto::Off;
@@ -395,10 +399,11 @@ struct LOOTBOXRECURSION_API FLRSaveData
 /**
  * The mass injectors' flow: how much they feed the host per second, and how fast that is
  * changing. The flow follows the feed dial with inertia (see FLRSimulation::StepInjector).
+ * It's negative while venting: the injectors run in reverse and draw mass out.
  */
 struct FLRInjectorState
 {
-	/** kg/s */
+	/** kg/s, into the host (negative: out of it) */
 	double Flow = 0.0;
 	/** kg/s^2 */
 	double Change = 0.0;

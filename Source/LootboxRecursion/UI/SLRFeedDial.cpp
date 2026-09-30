@@ -190,7 +190,17 @@ int32 SLRFeedDial::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 	const double Limit = Sim ? RateToFraction(Sim->GetRatedLimit(), MaxRate) : 1.0;
 	const double Hold = Sim ? RateToFraction(Sim->GetEvaporationRate(), MaxRate) : 0.0;
 	const bool bHostAlive = Sim && !Sim->IsFrozen();
-	if (bHostAlive)
+	// Reversed (venting, or winding down after it): the dial sets how hard the injectors pull.
+	// Everything up to LIMIT is drawn out, and HOLD means nothing.
+	const bool bReversed = Sim && (Sim->IsVenting() || Sim->GetInjectorFlow() < 0.0);
+	const FLinearColor VentZone(Style.Vent.R, Style.Vent.G, Style.Vent.B, 0.45f);
+	if (bHostAlive && bReversed)
+	{
+		DrawArc(OutDrawElements, LayerId + 1, AllottedGeometry, Centre, Radius, 0.0, Limit, VentZone, 8.f);
+		LRSlateDraw::Label(OutDrawElements, LayerId + 1, AllottedGeometry, TEXT("REVERSED"), Style.SmallFont,
+			Centre - FVector2f(0.f, Radius * 0.45f), Style.Vent);
+	}
+	else if (bHostAlive)
 	{
 		DrawArc(OutDrawElements, LayerId + 1, AllottedGeometry, Centre, Radius, Hold, Limit, GrowZone, 8.f);
 		DrawArc(OutDrawElements, LayerId + 1, AllottedGeometry, Centre, Radius, Limit, 1.0, WasteZone, 8.f);
@@ -218,21 +228,26 @@ int32 SLRFeedDial::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 	{
 		DrawRadial(OutDrawElements, LayerId + 3, AllottedGeometry, Centre, Limit, Radius - 14.f, Radius + 10.f, Style.Orange, 3.f);
 		LRSlateDraw::Label(OutDrawElements, LayerId + 3, AllottedGeometry, TEXT("LIMIT"), Style.SmallFont, PointAt(Centre, Radius - 26.f, Limit), Style.Orange);
-		DrawRadial(OutDrawElements, LayerId + 3, AllottedGeometry, Centre, Hold, Radius - 14.f, Radius + 10.f, HoldColor, 3.f);
-		LRSlateDraw::Label(OutDrawElements, LayerId + 3, AllottedGeometry, TEXT("HOLD"), Style.SmallFont, PointAt(Centre, Radius - 26.f, Hold), HoldColor);
+		if (!bReversed)
+		{
+			DrawRadial(OutDrawElements, LayerId + 3, AllottedGeometry, Centre, Hold, Radius - 14.f, Radius + 10.f, HoldColor, 3.f);
+			LRSlateDraw::Label(OutDrawElements, LayerId + 3, AllottedGeometry, TEXT("HOLD"), Style.SmallFont, PointAt(Centre, Radius - 26.f, Hold), HoldColor);
+		}
 	}
 
-	// Needles: the dial setting (thin) and the actual flow (thick, red above the limit).
+	// Needles: the dial setting (thin) and the actual flow (thick: green in, red above the limit,
+	// violet when it runs in reverse).
 	const double Target = Sim ? Sim->GetInjectorTarget() : 0.0;
 	const double Flow = Sim ? Sim->GetInjectorFlow() : 0.0;
-	const bool bWasting = Sim && Flow > Sim->GetRatedLimit() * 1.001;
+	const bool bWasting = Sim && FMath::Abs(Flow) > Sim->GetRatedLimit() * 1.001;
+	const FLinearColor FlowColor = Flow < 0.0 ? Style.Vent : (bWasting ? Style.Red : Style.Green);
 	DrawRadial(OutDrawElements, LayerId + 4, AllottedGeometry, Centre, RateToFraction(Target, MaxRate), 0.f, Radius - 2.f, Style.Text, 1.5f);
-	DrawRadial(OutDrawElements, LayerId + 5, AllottedGeometry, Centre, RateToFraction(Flow, MaxRate), 0.f, Radius - 16.f,
-		bWasting ? Style.Red : Style.Green, 4.f);
+	DrawRadial(OutDrawElements, LayerId + 5, AllottedGeometry, Centre, RateToFraction(FMath::Abs(Flow), MaxRate), 0.f, Radius - 16.f,
+		FlowColor, 4.f);
 
 	// The readout in the middle.
-	FString Status = FLRSimulation::FormatRate(Flow);
-	FLinearColor StatusColor = Style.Text;
+	FString Status = Flow < 0.0 ? FString::Printf(TEXT("%s out"), *FLRSimulation::FormatRate(-Flow)) : FLRSimulation::FormatRate(Flow);
+	FLinearColor StatusColor = Flow < 0.0 ? Style.Vent : Style.Text;
 	if (!Sim || !Sim->GetData().Host.IsDefined())
 	{
 		Status = TEXT("NO HOST");
@@ -250,7 +265,8 @@ int32 SLRFeedDial::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 	}
 	LRSlateDraw::Label(OutDrawElements, LayerId + 6, AllottedGeometry, Status, Style.HeadingFont, Centre + FVector2f(0.f, Radius * 0.45f), StatusColor);
 	const ELRInjectorAuto Auto = Sim ? Sim->GetInjectorAuto() : ELRInjectorAuto::Off;
-	const TCHAR* AutoMode = Auto == ELRInjectorAuto::Hold ? TEXT("auto hold ") : (Auto == ELRInjectorAuto::Limit ? TEXT("auto limit ") : TEXT("dial "));
+	const TCHAR* AutoMode = (Sim && Sim->IsVenting()) ? TEXT("vent ")
+		: (Auto == ELRInjectorAuto::Hold ? TEXT("auto hold ") : (Auto == ELRInjectorAuto::Limit ? TEXT("auto limit ") : TEXT("dial ")));
 	LRSlateDraw::Label(OutDrawElements, LayerId + 6, AllottedGeometry, FString::Printf(TEXT("%s%s"), AutoMode, *FLRSimulation::FormatRate(Target)),
 		Style.SmallFont, Centre + FVector2f(0.f, Radius * 0.45f + 16.f), Style.TextDim);
 	return LayerId + 6;
