@@ -12,7 +12,7 @@
 		"chamberRadius": 0.01,
 		"safetyGravity": 9.80665,
 		"chargeCapacity": 2000000,
-		"rechargeRate": 10000,
+		"rechargeRate": 100000,
 		"warningSeconds": 300
 	},
 	"epochs": [

@@ -241,7 +241,7 @@ unfed life, so a trip only paused the injectors. Now reaching the wall hurts.
   containment barrier, the safeties trip, the magnets quench, and the charge is dumped. The
   instruments stop working correctly until the charge is full again.
 - **The rule.** The instruments are down whenever the stored charge is rebuilding: after a
-  trip (200 s at the start), and after Ignite. Meanwhile every inside action (Perturb, Build,
+  trip (20 s at the start), and after Ignite. Meanwhile every inside action (Perturb, Build,
   Open, Dismantle) is refused. The universe itself keeps running: ripples gather and
   irradiators irradiate.
 - **What you see.** Old-school TV static over the 3D view (and NO SIGNAL on the chamber camera),
@@ -362,7 +362,7 @@ kg/s, while it evaporates 324 kg/s.
 | Injector maximum | 20 t/s | the top of the dial, until injector upgrades |
 | `injectorResponseSeconds` (to 90%) | 15 s | ω ≈ 0.26 /s |
 | Stored charge (Ignite) | 2,000 t | above the tipping point |
-| Recharge rate | 10 t/s | 200 s lockout after a trip, or to recharge Ignite |
+| Recharge rate | 100 t/s | 20 s lockout after a trip, or to recharge after Ignite (it was 200 s, which felt too long) |
 | Seed a ripple | 500 t | three seeds take a fresh host from 3,500 t to 2,000 t, 11 minutes from death |
 | Deepen a ripple | 70 t | |
 
