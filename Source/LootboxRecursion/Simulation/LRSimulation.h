@@ -138,6 +138,11 @@ public:
 	bool IsGasBound(const FIntVector& Cell) const;
 	/** How much gas Cell would need to clump right now (0 while the gas is a plasma or clumping is off). */
 	double GetJeansMass(const FIntVector& Cell) const;
+	/**
+	 * How fast Cell is gaining (+) or losing (-) each material right now, per second: the gas
+	 * crossing its edges, plus a ripple's average yield. One-offs (building, opening) aren't rates.
+	 */
+	TMap<FName, double> GetMatterRates(const FIntVector& Cell) const;
 
 	// ---- The host black hole and the injectors that feed it (the outside panel) -----------
 	/** The host black hole's mass, kg. */
@@ -338,6 +343,12 @@ private:
 		bool bBound = false;
 	};
 	FGasCell DescribeGas(const FLRCellMatter& CellMatter, bool bIonized, double Temperature) const;
+	/**
+	 * The gas crossing the edge between A and B: Visit(From, To, Item, Amount) for each gas that
+	 * moves, SpreadShare / InfallShare being the fractions for this step (or per second).
+	 */
+	void ForEachGasEdgeFlow(const FIntVector& A, const FGasCell& GasA, const FIntVector& B, const FGasCell& GasB,
+		double SpreadShare, double InfallShare, bool bIonized, TFunctionRef<void(const FIntVector&, const FIntVector&, FName, double)> Visit) const;
 	/** A gas's speed relative to an atom of mass 1: 1 / sqrt(mass), or 1 for everything in the plasma; 0 if Item isn't a gas. */
 	double GetGasSpeed(FName Item, bool bIonized) const;
 	/** Make Index the current epoch (clock, start time). */

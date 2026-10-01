@@ -897,6 +897,127 @@ double FLRSimulation::GetJeansMass(const FIntVector& Cell) const
 	return CellMatter ? DescribeGas(*CellMatter, IsGasIonized(), GetCosmicTemperature(CosmicTime)).JeansMass : 0.0;
 }
 
+void FLRSimulation::ForEachGasEdgeFlow(const FIntVector& A, const FGasCell& GasA, const FIntVector& B, const FGasCell& GasB,
+	double SpreadShare, double InfallShare, bool bIonized, TFunctionRef<void(const FIntVector&, const FIntVector&, FName, double)> Visit) const
+{
+	// Share of each gas in From (scaled by its speed if bBySpeed) goes to To.
+	auto Owe = [this, bIonized, &Visit](const FIntVector& From, const FIntVector& To, double Share, bool bBySpeed)
+	{
+		const FLRCellMatter* Source = Matter.Find(From);
+		if (!Source)
+		{
+			return;
+		}
+		for (const FLRItemAmount& Amount : Source->Amounts)
+		{
+			const double Speed = GetGasSpeed(Amount.Item, bIonized);
+			const double Flow = Share * Amount.Count * (bBySpeed ? Speed : (Speed > 0.0 ? 1.0 : 0.0));
+			if (Flow > 0.0)
+			{
+				Visit(From, To, Amount.Item, Flow);
+			}
+		}
+	};
+
+	if (GasA.bBound || GasB.bBound)
+	{
+		// Gravity: a clump holds its gas and pulls in its neighbours' (all of it alike: gravity
+		// doesn't care about mass). Of two clumps, the lighter falls into the heavier.
+		if (GasA.bBound && GasB.bBound)
+		{
+			if (GasA.Total != GasB.Total)
+			{
+				const bool bAFalls = GasA.Total < GasB.Total;
+				Owe(bAFalls ? A : B, bAFalls ? B : A, InfallShare, /*bBySpeed*/ false);
+			}
+		}
+		else if (GasA.bBound && GasB.Total > 0.0)
+		{
+			Owe(B, A, InfallShare, /*bBySpeed*/ false);
+		}
+		else if (GasB.bBound && GasA.Total > 0.0)
+		{
+			Owe(A, B, InfallShare, /*bBySpeed*/ false);
+		}
+		return;
+	}
+	// Pressure: from the side where more escapes to the side where less does, in proportion to
+	// the difference, each gas in proportion to how fast it escapes.
+	if (GasA.Escaping == GasB.Escaping)
+	{
+		return;
+	}
+	const bool bAOut = GasA.Escaping > GasB.Escaping;
+	const double Share = SpreadShare * FMath::Abs(GasA.Escaping - GasB.Escaping) / FMath::Max(GasA.Escaping, GasB.Escaping);
+	Owe(bAOut ? A : B, bAOut ? B : A, Share, /*bBySpeed*/ true);
+}
+
+TMap<FName, double> FLRSimulation::GetMatterRates(const FIntVector& Cell) const
+{
+	TMap<FName, double> Rates;
+	if (IsFrozen())
+	{
+		return Rates; // nothing moves in a frozen universe
+	}
+
+	// Gas crossing the cell's six edges right now.
+	const FLRGasDef& Gas = Data.Gas;
+	if (Gas.IsDefined())
+	{
+		const bool bIonized = IsGasIonized();
+		const double Temperature = GetCosmicTemperature(CosmicTime);
+		auto Describe = [this, bIonized, Temperature](const FIntVector& At)
+		{
+			const FLRCellMatter* CellMatter = Matter.Find(At);
+			return CellMatter ? DescribeGas(*CellMatter, bIonized, Temperature) : FGasCell();
+		};
+		const FGasCell Here = Describe(Cell);
+		const double SpreadShare = static_cast<double>(Gas.SpreadRate) * GetGasSpeedup();
+		for (const FIntVector& Next : FLRHexGrid::Neighbors(Cell))
+		{
+			ForEachGasEdgeFlow(Cell, Here, Next, Describe(Next), SpreadShare, static_cast<double>(Gas.InfallRate), bIonized,
+				[&Rates, &Cell](const FIntVector& From, const FIntVector& To, FName Item, double Flow)
+				{
+					Rates.FindOrAdd(Item) += (To == Cell) ? Flow : -Flow;
+				});
+		}
+	}
+
+	// A ripple's yield, on average: rolls (one per amplitude) x what a roll gives, every yieldSeconds.
+	const FLRPlacedEntity* Entity = Placed.Find(Cell);
+	const FLRItemDef* Def = Entity ? Data.FindItem(Entity->Item) : nullptr;
+	const FLREpochDef* Epoch = GetEpoch();
+	const FLRLootTableDef* YieldTable = (Epoch && !Epoch->YieldTable.IsNone()) ? Data.FindLootTable(Epoch->YieldTable) : nullptr;
+	if (Def && Def->IsOverdensity() && YieldTable)
+	{
+		TArray<FLRLootModifier> Modifiers;
+		if (Entity->Amplitude > 1)
+		{
+			FLRLootModifier ExtraRolls;
+			ExtraRolls.Kind = LRNames::ModifierExtraRolls;
+			ExtraRolls.Value = static_cast<float>(Entity->Amplitude - 1);
+			Modifiers.Add(ExtraRolls);
+		}
+		const FLRLootTableDef Table = ApplyModifiers(*YieldTable, Modifiers);
+		int32 TotalWeight = 0;
+		for (const FLRLootEntry& Entry : Table.Entries)
+		{
+			TotalWeight += FMath::Max(0, Entry.Weight);
+		}
+		if (TotalWeight > 0)
+		{
+			const double Rolls = 0.5 * (FMath::Max(0, FMath::Min(Table.RollsMin, Table.RollsMax)) + FMath::Max(0, FMath::Max(Table.RollsMin, Table.RollsMax)));
+			const double PerSecond = Rolls / FMath::Max(0.1, static_cast<double>(Def->YieldSeconds));
+			for (const FLRLootEntry& Entry : Table.Entries)
+			{
+				const double Chance = static_cast<double>(FMath::Max(0, Entry.Weight)) / TotalWeight;
+				Rates.FindOrAdd(Entry.Item) += PerSecond * Chance * 0.5 * (Entry.MinCount + Entry.MaxCount);
+			}
+		}
+	}
+	return Rates;
+}
+
 bool FLRSimulation::StepGas(double Seconds)
 {
 	const FLRGasDef& Gas = Data.Gas;
@@ -919,24 +1040,8 @@ bool FLRSimulation::StepGas(double Seconds)
 		}
 	}
 
-	// Owe Share of each gas in From (scaled by its speed if bBySpeed) to To.
-	auto Owe = [this, bIonized](const FIntVector& From, const FIntVector& To, double Share, bool bBySpeed)
-	{
-		const bool bFromFirst = IsGasEdgeFirst(From, To);
-		for (const FLRItemAmount& Amount : Matter[From].Amounts)
-		{
-			const double Speed = GetGasSpeed(Amount.Item, bIonized);
-			const double Flow = Share * Amount.Count * (bBySpeed ? Speed : (Speed > 0.0 ? 1.0 : 0.0));
-			if (Flow > 0.0)
-			{
-				GasCarry.FindOrAdd(MakeTuple(bFromFirst ? From : To, bFromFirst ? To : From, Amount.Item)) += bFromFirst ? Flow : -Flow;
-			}
-		}
-	};
-
 	for (const TPair<FIntVector, FGasCell>& Pair : Cells)
 	{
-		const FGasCell& Here = Pair.Value;
 		for (const FIntVector& Next : FLRHexGrid::Neighbors(Pair.Key))
 		{
 			const FGasCell* Found = Cells.Find(Next);
@@ -944,38 +1049,12 @@ bool FLRSimulation::StepGas(double Seconds)
 			{
 				continue; // an edge between two cells with gas is done once, from its first cell
 			}
-			const FGasCell There = Found ? *Found : FGasCell();
-			if (Here.bBound || There.bBound)
-			{
-				// Gravity: a clump holds its gas and pulls in its neighbours' (all of it alike:
-				// gravity doesn't care about mass). Of two clumps, the lighter falls into the heavier.
-				if (Here.bBound && There.bBound)
+			ForEachGasEdgeFlow(Pair.Key, Pair.Value, Next, Found ? *Found : FGasCell(), SpreadShare, InfallShare, bIonized,
+				[this](const FIntVector& From, const FIntVector& To, FName Item, double Flow)
 				{
-					if (Here.Total != There.Total)
-					{
-						const bool bHereFalls = Here.Total < There.Total;
-						Owe(bHereFalls ? Pair.Key : Next, bHereFalls ? Next : Pair.Key, InfallShare, /*bBySpeed*/ false);
-					}
-				}
-				else if (Here.bBound && There.Total > 0.0)
-				{
-					Owe(Next, Pair.Key, InfallShare, /*bBySpeed*/ false);
-				}
-				else if (There.bBound)
-				{
-					Owe(Pair.Key, Next, InfallShare, /*bBySpeed*/ false);
-				}
-				continue;
-			}
-			// Pressure: from the side where more escapes to the side where less does, in
-			// proportion to the difference, each gas in proportion to how fast it escapes.
-			if (Here.Escaping == There.Escaping)
-			{
-				continue;
-			}
-			const bool bOutward = Here.Escaping > There.Escaping;
-			const double Share = SpreadShare * FMath::Abs(Here.Escaping - There.Escaping) / FMath::Max(Here.Escaping, There.Escaping);
-			Owe(bOutward ? Pair.Key : Next, bOutward ? Next : Pair.Key, Share, /*bBySpeed*/ true);
+					const bool bFromFirst = IsGasEdgeFirst(From, To);
+					GasCarry.FindOrAdd(MakeTuple(bFromFirst ? From : To, bFromFirst ? To : From, Item)) += bFromFirst ? Flow : -Flow;
+				});
 		}
 	}
 

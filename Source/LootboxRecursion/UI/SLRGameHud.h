@@ -105,16 +105,10 @@ private:
 	TSharedRef<SWidget> MakePanel(const FText& Title, const TSharedRef<SWidget>& Content,
 		const TSharedRef<SWidget>& HeaderExtra, bool bFillHeight = false, bool bConsole = false);
 	TSharedRef<SWidget> MakeMatterRow(FName Item);
-
-	/** The Universe panel's +/- column: the selected cell's matter, sampled over the last minute of game time. */
-	struct FMatterSample
-	{
-		double Time = 0.0;
-		TMap<FName, int32> Amounts;
-	};
-	void SampleCellMatter();
-	/** How much of Item the selected cell gained (or lost) in the last minute; unset until there are a few seconds of history. */
-	TOptional<int32> GetCellTrend(FName Item) const;
+	/** The Universe panel's +/- column: how fast the selected cell is gaining (+) or losing (-) Item, per second; unset with no selection. */
+	TOptional<double> GetCellRate(FName Item) const;
+	/** "+12/s", "-3.5/s", "+0.06/s", or "0" when it's next to nothing. */
+	static FString FormatRate(double PerSecond);
 	TSharedRef<SWidget> MakeCardSlot(int32 Slot);
 
 	// The command card
@@ -244,15 +238,9 @@ private:
 	FIntVector CardCell = FIntVector::ZeroValue;
 	bool bCardHadSelection = false;
 	bool bMenuOpen = false;
-	TArray<FMatterSample> CellHistory;
-	FIntVector HistoryCell = FIntVector::ZeroValue;
-	bool bHistoryHasCell = false;
-	/** The Universe panel's number columns (the +/- one is narrower). */
-	static constexpr float MatterColumnWidth = 66.f;
-	static constexpr float TrendColumnWidth = 48.f;
-	static constexpr double TrendWindowSeconds = 60.0;
-	static constexpr double TrendSampleSeconds = 1.0;
-	static constexpr double TrendMinSeconds = 5.0;
+	/** The Universe panel's number columns. */
+	static constexpr float MatterColumnWidth = 62.f;
+	static constexpr float TrendColumnWidth = 62.f;
 	TSharedPtr<SLRGameMenu> Menu;
 	/** How strong the static is (0 = none), fading towards whether the instruments are down. */
 	float StaticLevel = 0.f;

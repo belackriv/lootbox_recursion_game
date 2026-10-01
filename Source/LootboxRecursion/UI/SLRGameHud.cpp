@@ -291,8 +291,6 @@ void SLRGameHud::Tick(const FGeometry& AllottedGeometry, const double InCurrentT
 	// In the UI's own (scaled) units, which is what the panels are laid out in.
 	ViewSize = FVector2f(AllottedGeometry.GetLocalSize()) / GetUIScale();
 
-	SampleCellMatter();
-
 	// A different selection (or none) puts the card back on its main page.
 	FIntVector Selected = FIntVector::ZeroValue;
 	const bool bHasSelection = GetSelected(Selected);
@@ -1145,7 +1143,7 @@ TSharedRef<SWidget> SLRGameHud::BuildUniversePanel()
 {
 	// No inventory: matter lives in grid cells. This is the total of each material, how much of
 	// it the selected cell can reach (what building there can use), how much is in the cell
-	// itself, and how that has changed over the last minute.
+	// itself, and how fast that's changing.
 	const FLRHudStyle& Style = FLRHudStyle::Get();
 	TSharedRef<SVerticalBox> Box = SNew(SVerticalBox);
 
@@ -1229,7 +1227,7 @@ TSharedRef<SWidget> SLRGameHud::BuildUniversePanel()
 			{
 				return FText::Format(LOCTEXT("ReachHint", "Select a cell to see what's within reach of it (matter up to {0} cells away), what's in it, and how that's changing."), FText::AsNumber(Radius));
 			}
-			return FText::Format(LOCTEXT("ReachOf", "In reach of {0}: matter up to {1} cells away; building there pays from it, nearest first. This cell: what's in {0} itself. +/-: how much it gained or lost in the last minute."),
+			return FText::Format(LOCTEXT("ReachOf", "In reach of {0}: matter up to {1} cells away; building there pays from it, nearest first. This cell: what's in {0} itself. +/-: how fast it's gaining or losing each, per second (gas flowing in and out, and a ripple's average yield)."),
 				AsText(FLRSimulation::DescribeCell(Cell)), FText::AsNumber(Radius));
 		})
 	];
@@ -1465,80 +1463,44 @@ TSharedRef<SWidget> SLRGameHud::MakeMatterRow(FName Item)
 					.Font(Style.BodyFont)
 					.ColorAndOpacity_Lambda([this, Item, Gaining = Style.Green, Losing = Style.Red, Steady = Style.TextDark]()
 					{
-						const int32 Change = GetCellTrend(Item).Get(0);
-						return FSlateColor(Change > 0 ? Gaining : (Change < 0 ? Losing : Steady));
+						const FString Shown = FormatRate(GetCellRate(Item).Get(0.0));
+						return FSlateColor(Shown.StartsWith(TEXT("+")) ? Gaining : (Shown.StartsWith(TEXT("-")) ? Losing : Steady));
 					})
 					.Text_Lambda([this, Item]()
 					{
-						const TOptional<int32> Trend = GetCellTrend(Item);
-						if (!Trend.IsSet())
-						{
-							return FText::FromString(TEXT("-"));
-						}
-						const int32 Change = Trend.GetValue();
-						return FText::FromString(Change > 0 ? FString::Printf(TEXT("+%d"), Change) : FString::FromInt(Change));
+						const TOptional<double> Rate = GetCellRate(Item);
+						return FText::FromString(Rate.IsSet() ? FormatRate(Rate.GetValue()) : FString(TEXT("-")));
 					})
 				]
 			]
 		];
 }
 
-void SLRGameHud::SampleCellMatter()
+TOptional<double> SLRGameHud::GetCellRate(FName Item) const
 {
 	const FLRSimulation* Sim = GetSimulation();
 	FIntVector Cell;
 	if (!Sim || !GetSelected(Cell))
 	{
-		CellHistory.Reset();
-		bHistoryHasCell = false;
-		return;
+		return TOptional<double>();
 	}
-	const double SimNow = Sim->GetNow();
-	// A new cell starts a new history, and so does the clock going back (a load or a new game).
-	if (!bHistoryHasCell || Cell != HistoryCell || (!CellHistory.IsEmpty() && SimNow < CellHistory.Last().Time))
-	{
-		CellHistory.Reset();
-		HistoryCell = Cell;
-		bHistoryHasCell = true;
-	}
-	if (!CellHistory.IsEmpty() && SimNow - CellHistory.Last().Time < TrendSampleSeconds)
-	{
-		return;
-	}
-	FMatterSample& Sample = CellHistory.AddDefaulted_GetRef();
-	Sample.Time = SimNow;
-	if (const FLRCellMatter* CellMatter = Sim->GetAllMatter().Find(Cell))
-	{
-		for (const FLRItemAmount& Amount : CellMatter->Amounts)
-		{
-			Sample.Amounts.Add(Amount.Item, Amount.Count);
-		}
-	}
-	// Keep one sample from at least a minute ago, and nothing older.
-	while (CellHistory.Num() > 2 && CellHistory[1].Time <= SimNow - TrendWindowSeconds)
-	{
-		CellHistory.RemoveAt(0);
-	}
+	const double* Rate = Sim->GetMatterRates(Cell).Find(Item);
+	return Rate ? *Rate : 0.0;
 }
 
-TOptional<int32> SLRGameHud::GetCellTrend(FName Item) const
+FString SLRGameHud::FormatRate(double PerSecond)
 {
-	const FLRSimulation* Sim = GetSimulation();
-	FIntVector Cell;
-	if (!Sim || !GetSelected(Cell) || !bHistoryHasCell || Cell != HistoryCell || CellHistory.IsEmpty())
+	const double Size = FMath::Abs(PerSecond);
+	if (Size < 0.005)
 	{
-		return TOptional<int32>();
+		return TEXT("0"); // rounds to nothing
 	}
-	const FMatterSample& Oldest = CellHistory[0];
-	const double Span = Sim->GetNow() - Oldest.Time;
-	if (Span < TrendMinSeconds)
+	const TCHAR* Sign = PerSecond > 0.0 ? TEXT("+") : TEXT("-");
+	if (Size >= 10.0)
 	{
-		return TOptional<int32>(); // not enough history yet
+		return FString::Printf(TEXT("%s%.0f/s"), Sign, Size);
 	}
-	const int32* Then = Oldest.Amounts.Find(Item);
-	const double Change = static_cast<double>(Sim->GetMatter(Cell, Item) - (Then ? *Then : 0));
-	// Per minute: the change since the oldest sample, scaled to a minute if there's less history.
-	return FMath::RoundToInt32(Change * TrendWindowSeconds / Span);
+	return Size >= 1.0 ? FString::Printf(TEXT("%s%.1f/s"), Sign, Size) : FString::Printf(TEXT("%s%.2f/s"), Sign, Size);
 }
 
 TSharedRef<SWidget> SLRGameHud::MakeSmallButton(const FText& Label, TFunction<void()> OnClick, bool bConsole)

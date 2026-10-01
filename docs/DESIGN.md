@@ -631,10 +631,11 @@ nowhere outside it for a stockpile to live. Everything is contained in the pocke
   radius stays the same; conveyors carry matter into a build site's reach automatically.
 - **Readability.** The Universe panel shows, for each material: its total in the universe,
   how much is within reach of the selected cell (amber), how much is in the cell itself (pale
-  blue, like the selection), and +/-: how much the cell gained (green) or lost (red) over the
-  last minute of game time (sampled once a second by the HUD; it shows "-" for the first few
-  seconds after selecting a cell, and stops while paused). The Info panel lists the matter in
-  the hovered cell (or the selected one).
+  blue, like the selection), and +/-: how fast the cell is gaining (green, "+12/s") or losing
+  (red, "-0.35/s") it right now. The rate comes from the simulation
+  (`FLRSimulation::GetMatterRates`): the gas crossing the cell's six edges this second, plus a
+  ripple's average yield. One-offs (building, opening a cache) aren't rates, so they don't
+  show. The Info panel lists the matter in the hovered cell (or the selected one).
 
 ## Gas spreads, then clumps (implemented)
 

@@ -678,6 +678,33 @@ bool FLRGasClumpTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRMatterRatesTest, "LootboxRecursion.Matter.RatesShowWhatsFlowing", LR_TEST_FLAGS)
+bool FLRMatterRatesTest::RunTest(const FString& Parameters)
+{
+	auto RateOf = [](const FLRSimulation& Sim, const FIntVector& Cell, FName Item)
+	{
+		const double* Rate = Sim.GetMatterRates(Cell).Find(Item);
+		return Rate ? *Rate : 0.0;
+	};
+
+	// 1,000 carbon with empty cells round it: 1% of the difference crosses each edge per second.
+	FLRSimulation Sim(LRTest::MakeGasData(), 1);
+	const FIntVector Centre(0, 0, 0);
+	const FIntVector Next = FLRHexGrid::Neighbors(Centre)[0];
+	Sim.GiveMatter(Centre, LRTest::Carbon, 1000);
+	TestTrue(TEXT("the full cell loses 60/s"), FMath::IsNearlyEqual(RateOf(Sim, Centre, LRTest::Carbon), -60.0, 0.01));
+	TestTrue(TEXT("each neighbour gains 10/s"), FMath::IsNearlyEqual(RateOf(Sim, Next, LRTest::Carbon), 10.0, 0.01));
+	TestEqual(TEXT("two cells away, nothing yet"), RateOf(Sim, Next * 2, LRTest::Carbon), 0.0);
+
+	// A clump pulls 1% of its neighbour's gas per second, and leaks nothing.
+	FLRSimulation Clumps(LRTest::MakeClumpData(), 1);
+	Clumps.GiveMatter(Centre, LRTest::Carbon, 200);
+	Clumps.GiveMatter(Next, LRTest::Carbon, 50);
+	TestTrue(TEXT("the clump gains 0.5/s"), FMath::IsNearlyEqual(RateOf(Clumps, Centre, LRTest::Carbon), 0.5, 0.001));
+	TestTrue(TEXT("its neighbour loses that, and spreads the rest"), RateOf(Clumps, Next, LRTest::Carbon) < -0.5);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRGasWholeUnitsTest, "LootboxRecursion.Matter.GasMovesInWholeUnits", LR_TEST_FLAGS)
 bool FLRGasWholeUnitsTest::RunTest(const FString& Parameters)
 {
