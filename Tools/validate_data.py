@@ -22,7 +22,7 @@ HOST_DEFAULTS = {"startMass": 0, "lifetimeSeconds": 0, "seedCost": 0, "perturbCo
                  "chargeCapacity": 0, "rechargeRate": 0, "warningSeconds": 300}
 G = 6.674e-11  # mirrors LRPhysics::G
 GAS_DEFAULTS = {"spreadRate": -1, "referenceTemperature": 3000, "temperatureExponent": 0.5, "maxSpeedup": 4,
-                "stepSeconds": 1}
+                "stepSeconds": 1, "ionizationTemperature": 3000, "jeansMass": 0, "infallRate": 0}
 
 
 def main() -> int:
@@ -224,10 +224,13 @@ def main() -> int:
         errors.append("cancelRefund must be between 0 and 1")
     if gas["spreadRate"] > 0:
         if (gas["referenceTemperature"] <= 0 or gas["temperatureExponent"] < 0 or gas["maxSpeedup"] < 1
-                or gas["stepSeconds"] <= 0):
-            errors.append("gas: referenceTemperature and stepSeconds must be > 0, temperatureExponent >= 0 and maxSpeedup >= 1")
-        elif gas["spreadRate"] * gas["maxSpeedup"] * gas["stepSeconds"] > 1 / 12:
-            errors.append("gas: spreadRate x maxSpeedup x stepSeconds must be at most 1/12")
+                or gas["stepSeconds"] <= 0 or gas["ionizationTemperature"] < 0 or gas["jeansMass"] < 0
+                or gas["infallRate"] < 0):
+            errors.append("gas: referenceTemperature and stepSeconds must be > 0, temperatureExponent >= 0, maxSpeedup >= 1, "
+                          "and ionizationTemperature, jeansMass and infallRate >= 0")
+        elif (gas["spreadRate"] * gas["maxSpeedup"] * gas["stepSeconds"] > 1 / 12
+                or gas["infallRate"] * gas["stepSeconds"] > 1 / 12):
+            errors.append("gas: spreadRate x maxSpeedup x stepSeconds and infallRate x stepSeconds must be at most 1/12")
 
     if host["startMass"] < 0:
         errors.append("host: startMass must be >= 0")

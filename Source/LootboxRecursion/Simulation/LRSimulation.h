@@ -132,6 +132,12 @@ public:
 	static double GetCosmicTemperature(double CosmicSeconds);
 	/** How fast gas spreads now relative to Data.Gas.SpreadRate (from the temperature); 0 if gas doesn't spread. */
 	double GetGasSpeedup() const;
+	/** The gas is still a plasma (hotter than Data.Gas.IonizationTemperature): it spreads mass-blind and can't clump. */
+	bool IsGasIonized() const;
+	/** The gas in Cell is a clump: more than its Jeans mass, so it holds its gas and pulls in its neighbours'. */
+	bool IsGasBound(const FIntVector& Cell) const;
+	/** How much gas Cell would need to clump right now (0 while the gas is a plasma or clumping is off). */
+	double GetJeansMass(const FIntVector& Cell) const;
 
 	// ---- The host black hole and the injectors that feed it (the outside panel) -----------
 	/** The host black hole's mass, kg. */
@@ -318,6 +324,22 @@ private:
 	void AdvanceGas(double DeltaSeconds);
 	/** One spread step; returns true if any matter moved. */
 	bool StepGas(double Seconds);
+	/** A cell's gas, as the spread sees it. */
+	struct FGasCell
+	{
+		/** Amount of gas (materials with an atomic mass). */
+		double Total = 0.0;
+		/** Particles: amount / atomic mass, summed. */
+		double Particles = 0.0;
+		/** What escapes: each gas's amount x speed^3 (amount / mass^1.5 for neutral gas, the amount in the plasma). */
+		double Escaping = 0.0;
+		/** Gas needed to clump here (0 if it can't). */
+		double JeansMass = 0.0;
+		bool bBound = false;
+	};
+	FGasCell DescribeGas(const FLRCellMatter& CellMatter, bool bIonized, double Temperature) const;
+	/** A gas's speed relative to an atom of mass 1: 1 / sqrt(mass), or 1 for everything in the plasma; 0 if Item isn't a gas. */
+	double GetGasSpeed(FName Item, bool bIonized) const;
 	/** Make Index the current epoch (clock, start time). */
 	void EnterEpoch(int32 Index);
 	/** Broadcast event messages (host warnings) through OnActionCompleted. */

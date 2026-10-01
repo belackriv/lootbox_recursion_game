@@ -402,15 +402,16 @@ TArray<FString> FLRGameData::Validate() const
 	}
 	if (Gas.IsDefined())
 	{
-		if (Gas.ReferenceTemperature <= 0.f || Gas.TemperatureExponent < 0.f || Gas.MaxSpeedup < 1.f || Gas.StepSeconds <= 0.f)
+		if (Gas.ReferenceTemperature <= 0.f || Gas.TemperatureExponent < 0.f || Gas.MaxSpeedup < 1.f || Gas.StepSeconds <= 0.f
+			|| Gas.IonizationTemperature < 0.f || Gas.JeansMass < 0.f || Gas.InfallRate < 0.f)
 		{
-			Errors.Add(TEXT("gas: referenceTemperature and stepSeconds must be > 0, temperatureExponent >= 0 and maxSpeedup >= 1"));
+			Errors.Add(TEXT("gas: referenceTemperature and stepSeconds must be > 0, temperatureExponent >= 0, maxSpeedup >= 1, and ionizationTemperature, jeansMass and infallRate >= 0"));
 		}
 		// Explicit steps: a cell loses at most this much to each of its six neighbours per step,
 		// so keep it well under 1/12 or the spread overshoots and oscillates.
-		else if (Gas.SpreadRate * Gas.MaxSpeedup * Gas.StepSeconds > 1.f / 12.f)
+		else if (Gas.SpreadRate * Gas.MaxSpeedup * Gas.StepSeconds > 1.f / 12.f || Gas.InfallRate * Gas.StepSeconds > 1.f / 12.f)
 		{
-			Errors.Add(TEXT("gas: spreadRate x maxSpeedup x stepSeconds must be at most 1/12"));
+			Errors.Add(TEXT("gas: spreadRate x maxSpeedup x stepSeconds and infallRate x stepSeconds must be at most 1/12"));
 		}
 	}
 

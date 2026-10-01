@@ -512,8 +512,12 @@ bool FLRMatterReachTest::RunTest(const FString& Parameters)
 
 namespace LRTest
 {
-	/** Test data where carbon (mass 1) and iron (mass 64, 8x slower) spread as gas, 1% per edge per second, at any temperature. */
-	FLRGameData MakeGasData()
+	/**
+	 * Test data where carbon (mass 1) and iron (mass 64, 8x slower) spread as gas, 1% per edge
+	 * per second whatever the temperature. The cosmic clock stands still at CosmicSeconds: by
+	 * default 10^15 s, about 160 K, so the gas is neutral.
+	 */
+	FLRGameData MakeGasData(double CosmicSeconds = 1e15)
 	{
 		FLRGameData Data = MakeData();
 		Data.Items[Carbon].AtomicMass = 1.f;
@@ -522,6 +526,23 @@ namespace LRTest
 		Data.Gas.TemperatureExponent = 0.f;
 		Data.Gas.MaxSpeedup = 1.f;
 		Data.Gas.StepSeconds = 1.f;
+		Data.Gas.IonizationTemperature = 3000.f;
+		FLREpochDef Epoch;
+		Epoch.Id = TEXT("still");
+		Epoch.Name = TEXT("Still");
+		Epoch.StartTime = CosmicSeconds;
+		Epoch.ClockSeconds = 0.f; // the clock doesn't run
+		Data.Epochs = { Epoch };
+		return Data;
+	}
+
+	/** Gas data that clumps: a cell of more than 100 carbon (or 100 / 64 iron) is a clump, pulling 1% of each neighbour's gas per second. */
+	FLRGameData MakeClumpData()
+	{
+		FLRGameData Data = MakeGasData();
+		Data.Gas.ReferenceTemperature = static_cast<float>(FLRSimulation::GetCosmicTemperature(1e15)); // Jeans mass as given
+		Data.Gas.JeansMass = 100.f;
+		Data.Gas.InfallRate = 0.01f;
 		return Data;
 	}
 }
@@ -567,13 +588,93 @@ bool FLRGasSpreadTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("level ground: the middle keeps its unit"), Even.GetMatter(Centre, LRTest::Carbon), 1);
 
 	// The early universe is hot: with the real exponent the spread runs at its cap.
-	FLRGameData Hot = LRTest::MakeGasData();
+	FLRGameData Hot = LRTest::MakeGasData(100.0);
 	Hot.Gas.TemperatureExponent = 0.5f;
 	Hot.Gas.MaxSpeedup = 4.f;
 	TestEqual(TEXT("capped when hot"), FLRSimulation(Hot, 1).GetGasSpeedup(), 4.0);
 	FLRGameData Off = LRTest::MakeGasData();
 	Off.Gas.SpreadRate = 0.f;
 	TestEqual(TEXT("off"), FLRSimulation(Off, 1).GetGasSpeedup(), 0.0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRGasPlasmaTest, "LootboxRecursion.Matter.PlasmaSpreadsWhateverItsMass", LR_TEST_FLAGS)
+bool FLRGasPlasmaTest::RunTest(const FString& Parameters)
+{
+	// 100 s after the Big Bang it's over a billion K: the gas is a plasma, moving with the light.
+	FLRGameData Data = LRTest::MakeGasData(100.0);
+	Data.Gas.JeansMass = 1.f; // would clump at once if it were neutral
+	FLRSimulation Sim(Data, 1);
+	TestTrue(TEXT("ionized"), Sim.IsGasIonized());
+	const FIntVector Centre(0, 0, 0);
+	Sim.GiveMatter(Centre, LRTest::Carbon, 1000);
+	Sim.GiveMatter(Centre, LRTest::Iron, 1000);
+	TestFalse(TEXT("the plasma never clumps"), Sim.IsGasBound(Centre));
+	Sim.Advance(10.0);
+	const int32 CarbonLeft = Sim.GetMatter(Centre, LRTest::Carbon);
+	TestTrue(TEXT("it spreads"), CarbonLeft < 1000);
+	TestEqual(TEXT("iron keeps up with carbon (about 556 of each left)"), Sim.GetMatter(Centre, LRTest::Iron), CarbonLeft);
+	const FIntVector Next = FLRHexGrid::Neighbors(Centre)[0];
+	TestEqual(TEXT("the mix arrives as it left"), Sim.GetMatter(Next, LRTest::Iron), Sim.GetMatter(Next, LRTest::Carbon));
+	TestEqual(TEXT("carbon conserved"), Sim.GetTotalMatter(LRTest::Carbon), 1000);
+
+	TestFalse(TEXT("neutral by 10^15 s"), FLRSimulation(LRTest::MakeGasData(), 1).IsGasIonized());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRGasClumpTest, "LootboxRecursion.Matter.GasClumpsPastItsJeansMass", LR_TEST_FLAGS)
+bool FLRGasClumpTest::RunTest(const FString& Parameters)
+{
+	// Past its Jeans mass a cell is a clump. Heavier atoms mean fewer of them pushing back, so
+	// iron clumps 64x sooner than carbon.
+	{
+		FLRSimulation Sim(LRTest::MakeClumpData(), 1);
+		const FIntVector Light(0, 0, 0);
+		const FIntVector Heavy(10, 0, 0);
+		Sim.GiveMatter(Light, LRTest::Carbon, 50);
+		Sim.GiveMatter(Heavy, LRTest::Iron, 50);
+		TestTrue(TEXT("carbon's Jeans mass is 100"), FMath::IsNearlyEqual(Sim.GetJeansMass(Light), 100.0, 0.01));
+		TestFalse(TEXT("50 carbon is too little"), Sim.IsGasBound(Light));
+		TestTrue(TEXT("50 iron is plenty"), Sim.IsGasBound(Heavy));
+	}
+
+	// A clump holds its gas: nothing leaks into the empty cells around it.
+	{
+		FLRSimulation Sim(LRTest::MakeClumpData(), 1);
+		const FIntVector Clump(3, -1, 0);
+		Sim.GiveMatter(Clump, LRTest::Carbon, 200);
+		TestTrue(TEXT("200 carbon is a clump"), Sim.IsGasBound(Clump));
+		Sim.Advance(50.0);
+		TestEqual(TEXT("it keeps all of it"), Sim.GetMatter(Clump, LRTest::Carbon), 200);
+		TestEqual(TEXT("and nothing else holds any"), Sim.GetAllMatter().Num(), 1);
+	}
+
+	// It pulls in its neighbours' gas.
+	{
+		FLRSimulation Sim(LRTest::MakeClumpData(), 1);
+		const FIntVector Clump(0, 0, 0);
+		const FIntVector Next = FLRHexGrid::Neighbors(Clump)[0];
+		Sim.GiveMatter(Clump, LRTest::Carbon, 200);
+		Sim.GiveMatter(Next, LRTest::Carbon, 50);
+		Sim.Advance(10.0);
+		TestTrue(TEXT("the clump grows (about 204)"), Sim.GetMatter(Clump, LRTest::Carbon) > 200);
+		TestTrue(TEXT("its neighbour drains (about 31 left)"), Sim.GetMatter(Next, LRTest::Carbon) < 40);
+		TestEqual(TEXT("carbon conserved"), Sim.GetTotalMatter(LRTest::Carbon), 250);
+	}
+
+	// Of two clumps side by side, the lighter falls into the heavier.
+	{
+		FLRSimulation Sim(LRTest::MakeClumpData(), 1);
+		const FIntVector Big(0, 0, 0);
+		const FIntVector Small = FLRHexGrid::Neighbors(Big)[2];
+		Sim.GiveMatter(Big, LRTest::Carbon, 300);
+		Sim.GiveMatter(Small, LRTest::Carbon, 150);
+		Sim.Advance(10.0);
+		const int32 SmallLeft = Sim.GetMatter(Small, LRTest::Carbon);
+		TestTrue(TEXT("the small one falls in (about 136 left)"), SmallLeft >= 130 && SmallLeft <= 140);
+		TestEqual(TEXT("into the big one"), Sim.GetMatter(Big, LRTest::Carbon), 450 - SmallLeft);
+		TestEqual(TEXT("nowhere else"), Sim.GetAllMatter().Num(), 2);
+	}
 	return true;
 }
 

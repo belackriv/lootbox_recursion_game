@@ -100,8 +100,8 @@ struct LOOTBOXRECURSION_API FLRItemDef
 	FName LootTable;
 
 	/**
-	 * Materials: atomic mass (u), e.g. 1.008 for hydrogen. Gas spreads between cells by
-	 * Graham's law, so lighter atoms move faster. 0 = this material doesn't spread.
+	 * Materials: atomic mass (u), e.g. 1.008 for hydrogen. Gas spreads between cells (once it
+	 * stops being a plasma, by Graham's law: lighter atoms move faster). 0 = this material doesn't spread.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	float AtomicMass = 0.f;
@@ -553,15 +553,16 @@ struct LOOTBOXRECURSION_API FLRHostDef
 };
 
 /**
- * How loose matter (gas) spreads between neighbouring cells of a layer (universe.json "gas").
- * See docs/DESIGN.md, "Gas spreads between cells".
+ * How loose matter (gas) spreads and clumps between neighbouring cells of a layer
+ * (universe.json "gas"). See docs/DESIGN.md, "Gas spreads, then clumps".
  *
  * Each pair of neighbours trades matter from the side where more is escaping to the side where
- * less is. What escapes a cell is its effusion: every material's particles (amount / atomic
- * mass) times their speed, which goes as sqrt(T / atomic mass) (Graham's law). The flow is
- * proportional to the difference, and it carries the materials in proportion to how fast each
- * escapes, so hydrogen runs ahead and iron lags. Matter moves in whole units; the fractions
- * carry over between steps.
+ * less is, in proportion to the difference. While the universe is hotter than
+ * IonizationTemperature the gas is a plasma and moves as one, whatever its mass. After that
+ * it's neutral: what escapes is every material's particles (amount / atomic mass) times their
+ * speed, sqrt(T / atomic mass) (Graham's law), so hydrogen runs ahead and iron lags. Neutral
+ * gas heavier than its Jeans mass is a clump: it holds its gas and pulls in its neighbours'.
+ * Matter moves in whole units; the fractions carry over between steps.
  */
 USTRUCT(BlueprintType)
 struct LOOTBOXRECURSION_API FLRGasDef
@@ -590,6 +591,26 @@ struct LOOTBOXRECURSION_API FLRGasDef
 	/** Seconds between spread steps. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	float StepSeconds = 1.f;
+
+	/**
+	 * Above this temperature (K) the gas is a plasma, tied to the light: it spreads whatever
+	 * its mass, and the light's pressure stops it clumping. Below it (recombination) it's
+	 * neutral gas: Graham's law, and it can clump. 0 = never a plasma.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float IonizationTemperature = 3000.f;
+
+	/**
+	 * Jeans mass of hydrogen in one cell at ReferenceTemperature: a cell holding more gas than
+	 * this collapses into a clump. It scales with temperature / mean atomic mass, so cold or
+	 * heavy gas clumps sooner. 0 = gas never clumps.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float JeansMass = 0.f;
+
+	/** Fraction of a neighbour's gas a clump pulls in per second (and of a lighter clump next to a heavier one). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
+	float InfallRate = 0.f;
 
 	bool IsDefined() const { return SpreadRate > 0.f; }
 };

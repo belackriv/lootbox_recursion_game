@@ -171,8 +171,11 @@ Matter moves into the pocket universe first (see *Matter lives in the pocket uni
       the injectors' flow under the same Eddington limit and safeties (mass by balance
       value, a throughput and a material filter). The universe starts feeding itself.
 - [ ] Sources irradiate caches within a radius, so irradiation becomes spatial (idea).
-- [x] Gas spreads between cells by Graham's law, faster when the universe is hot, in whole
-      units (a fraction carried per edge).
+- [x] Gas spreads between cells, faster when the universe is hot, in whole units (a fraction
+      carried per edge): mass-blind as a plasma, by Graham's law once neutral.
+- [x] After recombination gas past its Jeans mass clumps: it holds its gas and pulls in its
+      neighbours'; the lighter of two clumps falls into the heavier.
+- [ ] Show clumps (Info panel: "clump", Jeans mass); ripples (dark matter) add to a cell's pull.
 - [ ] Gas drifts downhill along the gravity field. Injecting hydrogen fills the target cell.
 - [ ] Conveyors deliver matter into a build site's reach automatically (the radius stays the
       same).
