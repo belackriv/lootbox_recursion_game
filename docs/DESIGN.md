@@ -629,9 +629,12 @@ nowhere outside it for a stockpile to live. Everything is contained in the pocke
   gained for the tech tree.
 - **Conveyors deliver, they don't extend reach** (planned). Once gravity conveyors unlock, the
   radius stays the same; conveyors carry matter into a build site's reach automatically.
-- **Readability.** The Universe panel shows each material's total and how much is within
-  reach of the selected cell. The Info panel lists the matter in the hovered cell (or the
-  selected one).
+- **Readability.** The Universe panel shows, for each material: its total in the universe,
+  how much is within reach of the selected cell (amber), how much is in the cell itself (pale
+  blue, like the selection), and +/-: how much the cell gained (green) or lost (red) over the
+  last minute of game time (sampled once a second by the HUD; it shows "-" for the first few
+  seconds after selecting a cell, and stops while paused). The Info panel lists the matter in
+  the hovered cell (or the selected one).
 
 ## Gas spreads, then clumps (implemented)
 

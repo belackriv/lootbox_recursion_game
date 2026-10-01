@@ -31,6 +31,8 @@ struct FLRHudStyle
 	FLinearColor SlotBorder;
 	FLinearColor Red;
 	FLinearColor Green;
+	/** The selected cell (pale blue, as its outline in the world). */
+	FLinearColor Selection;
 
 	/*
 	 * The outside panel is the facility's console, the inverse of the inside: light grey, with
