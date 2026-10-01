@@ -258,11 +258,6 @@ int32 SLRFeedDial::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 		Status = TEXT("NO HOST");
 		StatusColor = Style.Red;
 	}
-	else if (Sim->IsRecharging())
-	{
-		Status = TEXT("LOCKED OUT");
-		StatusColor = Style.Red;
-	}
 	LRSlateDraw::Label(OutDrawElements, LayerId + 6, AllottedGeometry, Status, Style.HeadingFont, Centre + FVector2f(0.f, Radius * 0.45f), StatusColor);
 	const ELRInjectorAuto Auto = Sim ? Sim->GetInjectorAuto() : ELRInjectorAuto::Off;
 	const TCHAR* AutoMode = (Sim && Sim->IsVenting()) ? TEXT("vent ")

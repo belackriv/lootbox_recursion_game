@@ -19,6 +19,10 @@ class ULRUserSettings;
  *   Changes apply at once and are saved: keys in Enhanced Input's user settings
  *   (LRKeyBindings), graphics in UGameUserSettings, the rest in ULRUserSettings.
  *
+ * When the game is over (the host breached its containment or evaporated) it opens on that
+ * instead: how it ended, then Load autosave, Load, New Game or Quit. It can't be closed
+ * until a game is loaded or started.
+ *
  * It takes keyboard focus while open, so key presses reach it (for rebinding) rather than
  * the game.
  */
@@ -50,13 +54,18 @@ private:
 		Settings,
 		ConfirmNewGame,
 		ConfirmQuit,
+		GameOver,
 	};
+
+	/** The game is over: the menu stays up on the game-over page. */
+	bool IsGameOver() const;
 
 	void ShowPage(EPage NewPage);
 	TSharedRef<SWidget> BuildMainPage();
 	TSharedRef<SWidget> BuildSavePage();
 	TSharedRef<SWidget> BuildLoadPage();
 	TSharedRef<SWidget> BuildSettingsPage();
+	TSharedRef<SWidget> BuildGameOverPage();
 	TSharedRef<SWidget> BuildConfirmPage(const FText& Question, TFunction<void()> OnYes);
 
 	TSharedRef<SWidget> MakeMenuButton(const FText& Label, TFunction<void()> OnClick, float Width = 260.f);

@@ -64,6 +64,41 @@ namespace
 		return (KgPerSecond >= 0.0 ? TEXT("+") : TEXT("-")) + FLRSimulation::FormatRate(FMath::Abs(KgPerSecond));
 	}
 
+	/** "4:50", "0:07": an alarm's countdown. */
+	FString FormatCountdown(double Seconds)
+	{
+		const int32 Whole = FMath::Max(0, FMath::CeilToInt32(Seconds));
+		return FString::Printf(TEXT("%d:%02d"), Whole / 60, Whole % 60);
+	}
+
+	/** "WARNING: breach in 1:40" (empty when there's no alarm). */
+	FString DescribeHostAlarm(const FLRHostAlarm& Alarm)
+	{
+		if (!Alarm.IsActive())
+		{
+			return FString();
+		}
+		if (Alarm.Kind == ELRAlarmKind::Evaporating)
+		{
+			return FString::Printf(TEXT("PAST THE POINT OF NO RETURN: evaporates in %s"), *FormatCountdown(Alarm.Seconds));
+		}
+		const TCHAR* Level = Alarm.Level == ELRAlarmLevel::Critical ? TEXT("CRITICAL") : (Alarm.Level == ELRAlarmLevel::Warning ? TEXT("WARNING") : TEXT("CAUTION"));
+		const TCHAR* What = Alarm.Kind == ELRAlarmKind::Breach ? TEXT("containment breach") : TEXT("point of no return");
+		return FString::Printf(TEXT("%s: %s in %s"), Level, What, *FormatCountdown(Alarm.Seconds));
+	}
+
+	/** Amber for caution, red for warning; critical flashes red. */
+	FLinearColor AlarmTint(ELRAlarmLevel Level)
+	{
+		const FLRHudStyle& Style = FLRHudStyle::Get();
+		if (Level == ELRAlarmLevel::Critical)
+		{
+			const bool bOn = FMath::Frac(FSlateApplication::Get().GetCurrentTime() * 2.0) < 0.5;
+			return bOn ? Style.Red : Style.Text;
+		}
+		return Level == ELRAlarmLevel::Warning ? Style.Red : Style.Orange;
+	}
+
 	/** How far the outside panel has slid down, eased. */
 	float EaseOut(float Alpha)
 	{
@@ -311,8 +346,26 @@ void SLRGameHud::Tick(const FGeometry& AllottedGeometry, const double InCurrentT
 		CameraSize = FVector2f(Height * 4.f / 3.f, Height);
 	}
 	const FLRSimulation* Sim = GetSimulation();
-	const float StaticGoal = (Sim && Sim->AreInstrumentsDown()) ? 1.f : 0.f;
-	StaticLevel = FMath::FInterpConstantTo(StaticLevel, StaticGoal, InDeltaTime, 3.f); // a third of a second
+	float StaticGoal = (Sim && Sim->AreInstrumentsDown()) ? 1.f : 0.f;
+	// Close to the chamber wall the instruments start to fail: static flickers in, worse as the
+	// breach nears.
+	const FLRHostAlarm Alarm = Sim ? Sim->GetHostAlarm() : FLRHostAlarm();
+	if (StaticGoal < 1.f && Alarm.Kind == ELRAlarmKind::Breach && Alarm.Level >= ELRAlarmLevel::Warning)
+	{
+		const float Base = Alarm.Level == ELRAlarmLevel::Critical ? 0.3f : 0.1f;
+		StaticGoal = Base + (FMath::FRand() < 0.15f ? FMath::FRand() * 0.35f : 0.f);
+		StaticLevel = StaticGoal; // flicker: no easing
+	}
+	else
+	{
+		StaticLevel = FMath::FInterpConstantTo(StaticLevel, StaticGoal, InDeltaTime, 3.f); // a third of a second
+	}
+
+	// Game over: the menu shows how it ended, and the ways back in.
+	if (Sim && Sim->IsFrozen() && !bMenuOpen)
+	{
+		SetMenuOpen(true);
+	}
 }
 
 TSharedRef<SWidget> SLRGameHud::BuildInstrumentStatic()
@@ -344,15 +397,9 @@ TSharedRef<SWidget> SLRGameHud::BuildInstrumentStatic()
 				.Text_Lambda([this]()
 				{
 					const FLRSimulation* Sim = GetSimulation();
-					if (Sim && !Sim->IsRecharging() && (Sim->IsVenting() || Sim->GetInjectorFlow() < 0.0))
-					{
-						return AsText(Sim->IsVenting()
-							? FString(TEXT("INSTRUMENTS DOWN\nVenting floods the chamber with radiation"))
-							: FString(TEXT("INSTRUMENTS DOWN\nThe reversed injectors are winding down")));
-					}
-					const double Full = Sim ? Sim->GetData().Host.ChargeCapacity : 0.0;
-					const double Percent = (Sim && Full > 0.0) ? 100.0 * Sim->GetStoredCharge() / Full : 0.0;
-					return AsText(FString::Printf(TEXT("INSTRUMENTS DOWN\nThey come back when the stored charge is full (%.0f%%)"), Percent));
+					return AsText((Sim && Sim->IsVenting())
+						? FString(TEXT("INSTRUMENTS DOWN\nVenting floods the chamber with radiation"))
+						: FString(TEXT("INSTRUMENTS DOWN\nThe reversed injectors are winding down")));
 				})
 			]
 		];
@@ -522,15 +569,16 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 					}
 					if (Sim->IsFrozen())
 					{
-						return LOCTEXT("HostFrozen", "Host evaporated: universe frozen. Ignite a new one (F)");
+						return LOCTEXT("HostGone", "The host is lost");
 					}
 					const double Net = Sim->GetNetRate();
 					FString Trend = Net < 0.0
 						? FString::Printf(TEXT("evaporates in %s"), *FormatDuration(Sim->GetTimeToEvaporation()))
 						: FString(TEXT("growing"));
-					if (Sim->GetHostMass() < Sim->GetTippingMass())
+					const FLRHostAlarm& Alarm = Sim->GetHostAlarm();
+					if (Alarm.IsActive())
 					{
-						Trend += TEXT("  BELOW THE POINT OF NO RETURN");
+						Trend = DescribeHostAlarm(Alarm);
 					}
 					if (Sim->IsVenting())
 					{
@@ -551,6 +599,10 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 					{
 						return S.Red;
 					}
+					if (Sim->GetHostAlarm().IsActive())
+					{
+						return AlarmTint(Sim->GetHostAlarm().Level);
+					}
 					return Sim->GetNetRate() < 0.0 ? S.Red : S.Green;
 				})
 			]
@@ -564,7 +616,7 @@ TSharedRef<SWidget> SLRGameHud::BuildHeader()
 				.ButtonStyle(&Style.ButtonStyle)
 				.IsFocusable(false)
 				.ContentPadding(FMargin(10.f, 3.f))
-				.ToolTipText(LOCTEXT("OutsideTip", "The facility's injectors: the feed dial, the host in its chamber, the stored charge and Ignite (F or Tab)"))
+				.ToolTipText(LOCTEXT("OutsideTip", "The facility's injectors: the feed dial, the host in its chamber, the alarms and Vent (F or Tab)"))
 				.ButtonColorAndOpacity_Lambda([this]() -> FSlateColor
 				{
 					if (!DoesOutsideNeedAttention())
@@ -1698,11 +1750,7 @@ FString SLRGameHud::DescribeOverdensity(const FLRPlacedEntity& Overdensity) cons
 		Text += TEXT("\nNothing to gather yet: there is no matter in this epoch.");
 	}
 
-	if (Sim->IsFrozen())
-	{
-		Text += TEXT("\nFrozen: the host black hole has evaporated. Ignite a new one (outside panel, F).");
-	}
-	else if (Overdensity.Amplitude >= Def->MaxAmplitude)
+	if (Overdensity.Amplitude >= Def->MaxAmplitude)
 	{
 		Text += TEXT("\nAs deep as it gets.");
 	}
@@ -1980,7 +2028,7 @@ TSharedRef<SWidget> SLRGameHud::BuildHelpDialog()
 		{ TEXT("PgUp / PgDn, ] / ["), TEXT("Build layer up / down") },
 		{ TEXT("R"), TEXT("Reset the camera angle and zoom") },
 		{ TEXT("H / Home"), TEXT("Fly to the first thing you placed") },
-		{ TEXT("F / Tab, OUTSIDE"), TEXT("The outside console: feed the host with the dial (drag or scroll, or WASD / arrows: A/D fine, W/S coarse), watch it in its chamber, Ignite a new one if it evaporates. While it's down, 1-8 press its buttons.") },
+		{ TEXT("F / Tab, OUTSIDE"), TEXT("The outside console: feed the host with the dial (drag or scroll, or WASD / arrows: A/D fine, W/S coarse), watch it in its chamber and its alarms. There are no safeties: let it reach the chamber wall, or fall past its point of no return, and the game is over. While it's down, 1-7 press its buttons.") },
 		{ TEXT("Esc / F10, MENU"), TEXT("The menu: save, load, settings (rebind any key), quit. The game pauses while it's open. (In the editor, Esc stops Play; use F10.)") },
 		{ TEXT("~"), TEXT("Console: LRGive hydrogen 500 (into the selected cell), LRTimeScale 10, LRSave, LRReset") },
 		{ TEXT("Keys"), TEXT("These are the defaults: rebind any of them in MENU > Settings.") },
@@ -2040,9 +2088,7 @@ bool SLRGameHud::DoesOutsideNeedAttention() const
 	{
 		return false;
 	}
-	const double Cap = Sim->GetSafetyCap();
-	return Sim->IsFrozen() || Sim->IsRecharging() || Sim->GetNetRate() < 0.0
-		|| (Cap > 0.0 && Sim->GetHostMass() >= Cap * 0.95);
+	return Sim->GetHostAlarm().IsActive() || Sim->IsVenting();
 }
 
 bool SLRGameHud::IsOutsideSlotEnabled(EOutsideSlot Button) const
@@ -2054,9 +2100,8 @@ bool SLRGameHud::IsOutsideSlotEnabled(EOutsideSlot Button) const
 	}
 	switch (Button)
 	{
-	case EOutsideSlot::Vent:   return Sim->IsVenting() || Sim->CanVent();
-	case EOutsideSlot::Ignite: return Sim->CanIgnite();
-	default:                   return !Sim->IsVenting(); // only the dial itself works while venting
+	case EOutsideSlot::Vent: return Sim->IsVenting() || Sim->CanVent();
+	default:                 return !Sim->IsFrozen() && !Sim->IsVenting(); // only the dial itself works while venting
 	}
 }
 
@@ -2081,7 +2126,6 @@ void SLRGameHud::RunOutsideSlot(EOutsideSlot Button)
 		Sub->SetInjectorAuto(Sub->GetInjectorAuto() == ELRInjectorAuto::Limit ? ELRInjectorAuto::Off : ELRInjectorAuto::Limit);
 		break;
 	case EOutsideSlot::Vent:      Sub->SetVenting(!Sub->IsVenting()); break;
-	case EOutsideSlot::Ignite:    Sub->Ignite(); break;
 	default: break;
 	}
 }
@@ -2269,7 +2313,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 				]
 				+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(2.f, 0.f))
 				[
-					AutoToggle(LOCTEXT("DialAutoLimit", "Auto Limit"), LOCTEXT("DialAutoLimitTip", "Keep the dial on the LIMIT mark as the host grows, the fastest growth there is. It doesn't stop at the chamber wall: watch the safeties. Moving the dial or a preset stops it."),
+					AutoToggle(LOCTEXT("DialAutoLimit", "Auto Limit"), LOCTEXT("DialAutoLimitTip", "Keep the dial on the LIMIT mark as the host grows, the fastest growth there is. It doesn't stop at the chamber wall, and there are no safeties: watch the alarms. Moving the dial or a preset stops it."),
 						ELRInjectorAuto::Limit, EOutsideSlot::AutoLimit)
 				]
 			]
@@ -2357,9 +2401,9 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			[
 				Readout([](const FLRSimulation& Sim)
 				{
-					const double Cap = Sim.GetSafetyCap();
-					return Cap > 0.0 ? FString::Printf(TEXT("Safety cap %s (%.0f%% of it)"), *FLRSimulation::FormatMass(Cap), 100.0 * Sim.GetHostMass() / Cap)
-						: FString(TEXT("No safety cap"));
+					const double Cap = Sim.GetContainmentCap();
+					return Cap > 0.0 ? FString::Printf(TEXT("Containment holds to %s (%.0f%%)"), *FLRSimulation::FormatMass(Cap), 100.0 * Sim.GetHostMass() / Cap)
+						: FString(TEXT("No containment limit"));
 				}, Style.BodyFont)
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 2.f))
@@ -2376,7 +2420,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 					}
 					const bool bBelow = !Sim->IsFrozen() && Sim->GetHostMass() < Sim->GetTippingMass();
 					return AsText(FString::Printf(TEXT("Point of no return %s%s"), *FLRSimulation::FormatMass(Sim->GetTippingMass()),
-						bBelow ? TEXT(": BELOW IT, it can't be saved") : TEXT("")));
+						bBelow ? TEXT(": PAST IT, it will evaporate") : TEXT("")));
 				})
 				.ColorAndOpacity_Lambda([this]() -> FSlateColor
 				{
@@ -2416,47 +2460,100 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 			}, Style.SmallFont)
 		];
 
-	// Far right: the stored charge and Ignite.
+	// Far right: the alarms (one lamp per disaster), and Vent.
+	auto AlarmLamp = [this, &Style](const FText& Name, TFunction<bool(const FLRHostAlarm&)> IsThis)
+	{
+		return SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(FMargin(0.f, 0.f, 6.f, 0.f))
+			[
+				SNew(SBox)
+				.WidthOverride(12.f)
+				.HeightOverride(12.f)
+				[
+					SNew(SBorder)
+					.BorderImage(&Style.WhiteBrush)
+					.BorderBackgroundColor_Lambda([this, IsThis]() -> FSlateColor
+					{
+						const FLRSimulation* Sim = GetSimulation();
+						const FLRHostAlarm Alarm = Sim ? Sim->GetHostAlarm() : FLRHostAlarm();
+						return IsThis(Alarm) ? AlarmTint(Alarm.Level) : FLRHudStyle::Get().ConsoleInner;
+					})
+				]
+			]
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.f)
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Font(Style.BodyFont)
+				.ColorAndOpacity(Style.ConsoleText)
+				.Text(Name)
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Font(Style.HeadingFont)
+				.Text_Lambda([this, IsThis]()
+				{
+					const FLRSimulation* Sim = GetSimulation();
+					const FLRHostAlarm Alarm = Sim ? Sim->GetHostAlarm() : FLRHostAlarm();
+					return AsText(IsThis(Alarm) ? FormatCountdown(Alarm.Seconds) : FString(TEXT("OK")));
+				})
+				.ColorAndOpacity_Lambda([this, IsThis]() -> FSlateColor
+				{
+					const FLRSimulation* Sim = GetSimulation();
+					const FLRHostAlarm Alarm = Sim ? Sim->GetHostAlarm() : FLRHostAlarm();
+					return IsThis(Alarm) ? FSlateColor(AlarmTint(Alarm.Level)) : FSlateColor(FLRHudStyle::Get().ConsoleTextDim);
+				})
+			];
+	};
+
 	TSharedRef<SWidget> Ring = SNew(SBox)
 		.WidthOverride(210.f)
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
 			[
-				SNew(STextBlock).Font(Style.HeadingFont).ColorAndOpacity(Style.ConsoleAccent).Text(LOCTEXT("ChargeTitle", "STORED CHARGE"))
+				SNew(STextBlock).Font(Style.HeadingFont).ColorAndOpacity(Style.ConsoleAccent).Text(LOCTEXT("AlarmsTitle", "ALARMS"))
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 4.f))
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 4.f, 0.f, 2.f))
 			[
-				SNew(SBox)
-				.HeightOverride(10.f)
-				[
-					SNew(SProgressBar)
-					.Style(&Style.ProgressStyle)
-					.Percent_Lambda([this]() -> TOptional<float>
-					{
-						const FLRSimulation* Sim = GetSimulation();
-						const double Full = Sim ? Sim->GetData().Host.ChargeCapacity : 0.0;
-						return Full > 0.0 ? static_cast<float>(Sim->GetStoredCharge() / Full) : 0.f;
-					})
-					.FillColorAndOpacity_Lambda([this]() -> FSlateColor
-					{
-						const FLRHudStyle& S = FLRHudStyle::Get();
-						const FLRSimulation* Sim = GetSimulation();
-						return (Sim && Sim->IsRecharging()) ? S.Red : S.Green;
-					})
-				]
+				AlarmLamp(LOCTEXT("AlarmBreach", "Containment"), [](const FLRHostAlarm& Alarm) { return Alarm.IsActive() && Alarm.Kind == ELRAlarmKind::Breach; })
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 2.f))
 			[
-				Readout([](const FLRSimulation& Sim)
+				AlarmLamp(LOCTEXT("AlarmNoReturn", "No return"), [](const FLRHostAlarm& Alarm)
 				{
-					const double Full = Sim.GetData().Host.ChargeCapacity;
-					if (Sim.IsRecharging())
+					return Alarm.IsActive() && (Alarm.Kind == ELRAlarmKind::NoReturn || Alarm.Kind == ELRAlarmKind::Evaporating);
+				})
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 2.f))
+			[
+				SNew(STextBlock)
+				.Font(Style.SmallFont)
+				.AutoWrapText(true)
+				.Text_Lambda([this]()
+				{
+					const FLRSimulation* Sim = GetSimulation();
+					const FLRHostAlarm Alarm = Sim ? Sim->GetHostAlarm() : FLRHostAlarm();
+					if (Alarm.IsActive())
 					{
-						return FString::Printf(TEXT("Recharging (%.0f%%): feeding is locked out"), Full > 0.0 ? 100.0 * Sim.GetStoredCharge() / Full : 0.0);
+						return AsText(DescribeHostAlarm(Alarm) + TEXT(" at this setting."));
 					}
-					return FString::Printf(TEXT("Charged: %s of neutronium"), *FLRSimulation::FormatMass(Sim.GetStoredCharge()));
-				}, Style.BodyFont)
+					return AsText(FString::Printf(TEXT("Nothing goes wrong within %s at this setting."),
+						*FormatDuration(Sim ? static_cast<double>(Sim->GetData().Host.CautionSeconds) : 0.0)));
+				})
+				.ColorAndOpacity_Lambda([this]() -> FSlateColor
+				{
+					const FLRSimulation* Sim = GetSimulation();
+					const FLRHostAlarm Alarm = Sim ? Sim->GetHostAlarm() : FLRHostAlarm();
+					return Alarm.IsActive() ? FSlateColor(AlarmTint(Alarm.Level)) : FSlateColor(FLRHudStyle::Get().ConsoleTextDim);
+				})
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 6.f, 0.f, 0.f))
 			[
@@ -2471,7 +2568,7 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 					const FLRSimulation* Sim = GetSimulation();
 					return (Sim && Sim->IsVenting()) ? FLinearColor(1.f, 0.6f, 0.9f) : FLinearColor::White;
 				})
-				.ToolTipText(LOCTEXT("VentTip", "Run the injectors in reverse to shed mass: the graviton lens drives the horizon into stimulated emission and the beamline draws the radiation off, as fast as the dial says (up to the rated limit). Needs a full stored charge. The radiation floods the chamber, so the instruments are down while it runs; only the dial works. It doesn't use the charge up, and nothing stops it at the point of no return: vent too far and the host is lost."))
+				.ToolTipText(LOCTEXT("VentTip", "Run the injectors in reverse to shed mass: the graviton lens drives the horizon into stimulated emission and the beamline draws the radiation off, as fast as the dial says (up to the rated limit). The radiation floods the chamber, so the instruments are down while it runs; only the dial works. Nothing stops it at the point of no return: vent too far and the host is lost."))
 				.OnClicked_Lambda([this]()
 				{
 					RunOutsideSlot(EOutsideSlot::Vent);
@@ -2489,34 +2586,13 @@ TSharedRef<SWidget> SLRGameHud::BuildOutsidePanel()
 					})
 				]
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 6.f))
-			[
-				SNew(SButton)
-				.ButtonStyle(&Style.ConsoleButtonStyle)
-				.IsFocusable(false)
-				.HAlign(HAlign_Center)
-				.ContentPadding(FMargin(8.f, 5.f))
-				.IsEnabled_Lambda([this]() { return IsOutsideSlotEnabled(EOutsideSlot::Ignite); })
-				.ToolTipText(LOCTEXT("IgniteTip", "Once the host has evaporated: fire the whole stored charge at the singularity. A charge that big collapses straight into a new horizon."))
-				.OnClicked_Lambda([this]()
-				{
-					RunOutsideSlot(EOutsideSlot::Ignite);
-					return FReply::Handled();
-				})
-				[
-					SNew(STextBlock)
-					.Font(Style.HeadingFont)
-					.ColorAndOpacity(Style.ConsoleAccent)
-					.Text_Lambda([this]() { return GetOutsideSlotLabel(EOutsideSlot::Ignite, LOCTEXT("Ignite", "IGNITE")); })
-				]
-			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 6.f, 0.f, 0.f))
 			[
 				SNew(STextBlock)
 				.Font(Style.SmallFont)
 				.ColorAndOpacity(Style.ConsoleTextDim)
 				.AutoWrapText(true)
-				.Text(LOCTEXT("InjectorLore", "Neutronium injectors: neutral matter the host's glow barely pushes, focused by a graviton lens. The safeties dump the beam when the 1 g sphere reaches the chamber wall, and the instruments inside go dark until the charge is back."))
+				.Text(LOCTEXT("InjectorLore", "Neutronium injectors: neutral matter the host's glow barely pushes, focused by a graviton lens. There are no safeties. The alarms forecast the host at the dial's setting: if its 1 g sphere reaches the chamber wall, the containment fails; if it falls past its point of no return, nothing can stop it evaporating."))
 			]
 		];
 

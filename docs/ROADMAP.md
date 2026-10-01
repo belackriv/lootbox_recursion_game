@@ -106,7 +106,7 @@ See [COSMOLOGY.md](COSMOLOGY.md) for the physics behind each item.
 - [x] Recombination as the phase boundary: a glowing plasma veil in the sky, driven by the
       epoch, clears when it's reached.
 - [x] Hawking evaporation on the host black hole, and a `host` check (now in tonnes).
-      Decision: a soft fail. At zero the universe freezes until a new host is ignited.
+      Decision now: game over (it was a soft fail with Ignite; see the safeties item below).
 - [ ] Play it in the engine: compile, run the automation tests, and tune the host lifetime,
       perturbation cost, ripple yields and epoch thresholds by feel.
 - [ ] A visible hint for the next epoch (what it needs), like the tech tree viewer's hints.
@@ -116,29 +116,30 @@ See [COSMOLOGY.md](COSMOLOGY.md) for the physics behind each item.
   - [x] A log dial for the target injection rate, with the rated-limit mark (6×10¹² ×
         Eddington, 0.004 /s × mass) and the break-even mark.
   - [x] Injector inertia as a critically damped `StepInjector` that's easy to swap.
-  - [x] The safety cap is the gravity well: it trips when the 1 g radius reaches the chamber
-        wall (1 cm at first, 14,700 t), dumps the stored charge and locks out until it's
-        rebuilt.
+  - [x] The containment limit is the gravity well: the 1 g radius reaching the chamber wall
+        (1 cm at first, 14,700 t).
   - [x] Seeing the host: a to-scale chamber cross-section with the 1 g bubble, glowing by
         temperature, with the horizon and Hawking output as numbers.
-  - [x] Ignite, the kick-start, to restart after the host evaporates.
   - [x] Tests for each.
   - [x] The outside panel: it drops down from the top of the screen (the OUTSIDE button, F
-        or Tab), and holds the dial, the chamber, the stored charge and Ignite. The status bar
+        or Tab), and holds the dial, the chamber, the alarms and Vent. The status bar
         always shows mass and net rate, and the button pulses when the outside needs
         attention.
-  - [x] The point of no return, shown in the chamber view, readouts, status bar and log.
+  - [x] The point of no return, shown in the chamber view, readouts and alarms.
         Seeding may still cross it (over-perturbing is the player's mistake to make).
   - [x] Dial buttons: Off / Hold / Limit / Max presets, and Auto Hold / Auto Limit, which
         keep the dial on its mark as the mass changes.
-  - [x] The instruments go down while the stored charge rebuilds (after a trip or Ignite):
-        no inside actions, TV static over the 3D view (hook `M_Static`), a banner, and
-        INSTRUMENTS DOWN on the status bar.
+  - [x] The instruments go down while venting: no inside actions, TV static over the 3D view
+        (hook `M_Static`), a banner, and INSTRUMENTS DOWN on the status bar.
+  - [x] No safeties: a breach or an evaporation is game over (the menu's GAME OVER page:
+        load the autosave, load, new game). Forecasting alarms (caution 5 min, warning 2,
+        critical 30 s) for both, with static flickering in near the wall; the autosave skips
+        warnings and lost games. The stored charge, the trip and Ignite are gone.
   - [x] A chamber camera screen on the outside panel (a placeholder, black or static).
   - [ ] The chamber camera as a 3D view: containment field, injectors, singularity, venting
-        (the injectors in reverse) and trips.
-  - [x] Venting mass (DESIGN.md, "Venting mass"): VENT runs the injectors in reverse (needs a
-        full stored charge); only the dial works, and the instruments are down. Nothing stops
+        (the injectors in reverse) and a breach.
+  - [x] Venting mass (DESIGN.md, "Venting mass"): VENT runs the injectors in reverse; only
+        the dial works, and the instruments are down. Nothing stops
         it at the point of no return.
   - [ ] Play and tune it in the engine: the numbers are real physics where it's playable,
         which may not be fun yet.

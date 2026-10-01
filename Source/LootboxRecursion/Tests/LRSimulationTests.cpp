@@ -286,10 +286,10 @@ namespace LRTest
 		Host.EddingtonRate = 0.01f;
 		Host.InjectorMaxRate = 50.0;
 		Host.InjectorResponseSeconds = 10.f;
-		Host.ChamberRadius = 0.f; // no cap unless a test sets one (see SetSafetyCap)
-		Host.ChargeCapacity = 400.0;
-		Host.RechargeRate = 100.0; // 4 s to recharge
+		Host.ChamberRadius = 0.f; // no containment limit unless a test sets one (see SetContainmentCap)
+		Host.CautionSeconds = 100.f;
 		Host.WarningSeconds = 50.f;
+		Host.CriticalSeconds = 20.f;
 		return Data;
 	}
 
@@ -301,8 +301,8 @@ namespace LRTest
 		return Data;
 	}
 
-	/** Size the containment chamber so the safeties trip at this host mass (kg). */
-	void SetSafetyCap(FLRGameData& Data, double CapMass)
+	/** Size the containment chamber so it fails at this host mass (kg). */
+	void SetContainmentCap(FLRGameData& Data, double CapMass)
 	{
 		Data.Host.ChamberRadius = static_cast<float>(FMath::Sqrt(LRPhysics::G * CapMass / Data.Host.SafetyGravity));
 	}
@@ -917,7 +917,7 @@ bool FLRGameDataShippedTest::RunTest(const FString& Parameters)
 	const FLRHostDef& Host = Data.Host;
 	TestTrue(TEXT("a 3,500 t host lasts about an hour, as Hawking radiation says"),
 		FMath::IsNearlyEqual(Host.StartMass * Host.StartMass * Host.StartMass * LRPhysics::HawkingLifetimePerKg3, 3600.0, 100.0));
-	TestTrue(TEXT("the first chamber caps the host at about 14,700 t"), FMath::IsNearlyEqual(Host.GetSafetyCap(), 1.47e7, 1e5));
+	TestTrue(TEXT("the first chamber caps the host at about 14,700 t"), FMath::IsNearlyEqual(Host.GetContainmentCap(), 1.47e7, 1e5));
 	TestTrue(TEXT("the injectors are rated at about 6e12 x Eddington"),
 		Host.GetEddingtonMultiple() > 5e12 && Host.GetEddingtonMultiple() < 7e12);
 	TestTrue(TEXT("has recipes"), Data.Recipes.Num() > 0);
@@ -1427,11 +1427,16 @@ bool FLRHostEvaporationTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("unfed lifetime left"), FMath::IsNearlyEqual(Data.Host.GetUnfedLifetime(Sim.GetHostMass()), 729.0, 1e-3));
 
 	Sim.Advance(700.0);
-	TestTrue(TEXT("warned before the end"), Log.Contains(TEXT("thinning")));
+	TestTrue(TEXT("warned before the end"), Log.Contains(TEXT("PAST THE POINT OF NO RETURN")));
 	Sim.Advance(40.0);
-	TestTrue(TEXT("evaporated"), Sim.IsFrozen());
+	TestTrue(TEXT("evaporated: the game is over"), Sim.IsFrozen() && Sim.GetGameOver() == ELRGameOver::Evaporated);
 	TestTrue(TEXT("a final flash"), Log.Contains(TEXT("final flash")));
+	TestTrue(TEXT("its last second, in TNT"), Sim.DescribeGameOver().Contains(TEXT("of TNT")));
 	TestFalse(TEXT("perturbing needs a host"), LRTest::SeedAt(Sim, FIntVector(1, 0, 0)));
+	const double Clock = Sim.GetNow();
+	Sim.Advance(10.0);
+	TestTrue(TEXT("nothing moves any more"), Sim.GetNow() == Clock);
+	TestFalse(TEXT("no venting"), Sim.CanVent());
 	return true;
 }
 
@@ -1537,11 +1542,11 @@ bool FLRHostAutoDialTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostVentTest, "LootboxRecursion.Host.VentingRunsTheInjectorsInReverse", LR_TEST_FLAGS)
 bool FLRHostVentTest::RunTest(const FString& Parameters)
 {
-	// No evaporation: 1,000 kg, rated at 10 kg/s, a full 400 kg charge.
+	// No evaporation: 1,000 kg, rated at 10 kg/s.
 	FLRSimulation Sim(LRTest::MakeStableCosmosData(), 1);
 	LRTest::FMessageLog Log(Sim);
 	Sim.SetInjectorAuto(ELRInjectorAuto::Limit);
-	TestTrue(TEXT("a full charge can vent"), Sim.CanVent());
+	TestTrue(TEXT("it can vent whenever there's a host"), Sim.CanVent());
 	const FLRActionResult Started = Sim.SetVenting(true);
 	TestTrue(TEXT("venting"), Started.bSuccess && Sim.IsVenting() && Log.Contains(TEXT("Venting")));
 	TestTrue(TEXT("the dial starts at OFF, auto off"), Sim.GetInjectorTarget() == 0.0 && Sim.GetInjectorAuto() == ELRInjectorAuto::Off);
@@ -1572,20 +1577,6 @@ bool FLRHostVentTest::RunTest(const FString& Parameters)
 	Sim.Advance(10.0);
 	TestTrue(TEXT("and nothing more is drawn"), Sim.GetHostMass() == Settled);
 
-	// It needs a full stored charge.
-	FLRGameData Capped = LRTest::MakeStableCosmosData();
-	LRTest::SetSafetyCap(Capped, 1100.0);
-	FLRSimulation Tripped(Capped, 1);
-	Tripped.SetInjectorTarget(50.0);
-	for (int32 Step = 0; Step < 240 && !Tripped.IsRecharging(); ++Step)
-	{
-		Tripped.Advance(0.5);
-	}
-	TestTrue(TEXT("tripped"), Tripped.IsRecharging());
-	TestFalse(TEXT("no venting without a full charge"), Tripped.CanVent());
-	const FLRActionResult NoCharge = Tripped.SetVenting(true);
-	TestTrue(TEXT("refused"), !NoCharge.bSuccess && NoCharge.Reason == FName(TEXT("recharging")) && !Tripped.IsVenting());
-
 	// Nothing stops it at the point of no return (322 kg here): vent too far and the host is lost.
 	FLRSimulation Deep(LRTest::MakeCosmosData(), 1);
 	LRTest::FMessageLog DeepLog(Deep);
@@ -1596,7 +1587,7 @@ bool FLRHostVentTest::RunTest(const FString& Parameters)
 		Deep.Advance(0.5); // about 93 s to the point of no return, 116 s to the end
 	}
 	TestTrue(TEXT("it vented past the point of no return"), DeepLog.Contains(TEXT("point of no return")));
-	TestTrue(TEXT("and on until the host was gone"), Deep.IsFrozen() && !Deep.IsVenting());
+	TestTrue(TEXT("and on until the host was gone"), Deep.GetGameOver() == ELRGameOver::Evaporated && !Deep.IsVenting());
 	return true;
 }
 
@@ -1652,79 +1643,81 @@ bool FLRHostTimeLeftTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostSafetyTest, "LootboxRecursion.Host.SafetiesTripAtTheChamberWall", LR_TEST_FLAGS)
-bool FLRHostSafetyTest::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostBreachTest, "LootboxRecursion.Host.TheAlarmsCountDownToABreach", LR_TEST_FLAGS)
+bool FLRHostBreachTest::RunTest(const FString& Parameters)
 {
-	FLRGameData Data = LRTest::MakeStableCosmosData();
-	LRTest::SetSafetyCap(Data, 1100.0);
-	TestTrue(TEXT("the cap is where the 1 g radius reaches the wall"), FMath::IsNearlyEqual(Data.Host.GetSafetyCap(), 1100.0, 0.01));
+	FLRGameData Data = LRTest::MakeStableCosmosData(); // no evaporation; alarms at 100 / 50 / 20 s
+	LRTest::SetContainmentCap(Data, 1100.0);
+	TestTrue(TEXT("the cap is where the 1 g radius reaches the wall"), FMath::IsNearlyEqual(Data.Host.GetContainmentCap(), 1100.0, 0.01));
 	TestTrue(TEXT("the gravity radius at the cap is the chamber radius"),
 		FMath::IsNearlyEqual(Data.Host.GetGravityRadius(1100.0), static_cast<double>(Data.Host.ChamberRadius), 1e-9));
 	TestEqual(TEXT("valid"), Data.Validate().Num(), 0);
 
+	// Fed 1 kg/s, the 1,000 kg host reaches the wall in about 105 s (the flow ramps up first).
 	FLRSimulation Sim(Data, 1);
 	LRTest::FMessageLog Log(Sim);
-	Sim.SetInjectorTarget(50.0);
-	for (int32 Step = 0; Step < 240 && !Sim.IsRecharging(); ++Step)
-	{
-		Sim.Advance(0.5);
-	}
-	TestTrue(TEXT("tripped"), Sim.IsRecharging() && Log.Contains(TEXT("SAFETIES TRIPPED")));
-	TestTrue(TEXT("at the cap"), Sim.GetHostMass() >= 1100.0 && Sim.GetHostMass() < 1105.0);
-	TestTrue(TEXT("the beam stopped at once"), Sim.GetInjectorFlow() == 0.0 && Sim.GetIntakeRate() == 0.0);
-	TestTrue(TEXT("the charge was dumped (and has only begun to rebuild)"), Sim.GetStoredCharge() < 100.0);
-	TestTrue(TEXT("the dial keeps its setting"), Sim.GetInjectorTarget() == 50.0);
-
-	// The instruments are down until the charge is back: no action works.
-	TestTrue(TEXT("instruments down"), Sim.AreInstrumentsDown() && Sim.GetActionStatus(LRTest::Seed).bInstrumentsDown);
-	TestFalse(TEXT("so Perturb isn't enabled"), Sim.GetActionStatus(LRTest::Seed).bEnabled);
-	const FLRActionResult Blind = Sim.RequestAction(LRTest::AtCell(LRTest::Seed, FIntVector(0, 0, 0)));
-	TestTrue(TEXT("and it's refused"), !Blind.bSuccess && Blind.Reason == FName(TEXT("instruments_down")));
-
-	const double Tripped = Sim.GetHostMass();
-	Sim.Advance(2.0);
-	TestTrue(TEXT("nothing is fed while the charge rebuilds"), Sim.GetHostMass() == Tripped && Sim.IsRecharging());
-
-	// Dialed back, the injectors come back ready (the charge takes chargeCapacity / rechargeRate = 4 s).
-	Sim.SetInjectorTarget(0.0);
-	Sim.Advance(2.5);
-	TestFalse(TEXT("recharged"), Sim.IsRecharging());
-	TestTrue(TEXT("announced"), Log.Contains(TEXT("recharged")));
-	TestFalse(TEXT("the instruments are back"), Sim.AreInstrumentsDown());
-	TestTrue(TEXT("and Perturb works again"), Sim.GetActionStatus(LRTest::Seed).bEnabled);
+	Sim.SetInjectorTarget(1.0);
+	TestFalse(TEXT("nothing within 100 s yet"), Sim.GetHostAlarm().IsActive());
 	Sim.Advance(10.0);
-	TestFalse(TEXT("and stays ready"), Sim.IsRecharging());
+	const FLRHostAlarm Caution = Sim.GetHostAlarm();
+	TestTrue(TEXT("caution: a breach in about 95 s"), Caution.Kind == ELRAlarmKind::Breach && Caution.Level == ELRAlarmLevel::Caution
+		&& FMath::Abs(Caution.Seconds - 95.0) <= 2.0);
+	TestTrue(TEXT("logged"), Log.Contains(TEXT("CAUTION")));
+	Sim.Advance(50.0);
+	TestTrue(TEXT("warning at about 46 s"), Sim.GetHostAlarm().Level == ELRAlarmLevel::Warning && Log.Contains(TEXT("WARNING")));
+	Sim.Advance(30.0);
+	TestTrue(TEXT("critical at about 16 s"), Sim.GetHostAlarm().Level == ELRAlarmLevel::Critical && Log.Contains(TEXT("CRITICAL")));
+	TestFalse(TEXT("still playing"), Sim.IsFrozen());
 
-	// Feeding again at the cap trips it again.
-	Sim.SetInjectorTarget(50.0);
-	Sim.Advance(1.0);
-	TestTrue(TEXT("feeding at the cap trips it again"), Sim.IsRecharging());
+	// There are no safeties: it goes on into the wall, and the game is over.
+	Sim.Advance(20.0);
+	TestTrue(TEXT("breached"), Sim.GetGameOver() == ELRGameOver::Breach && Log.Contains(TEXT("CONTAINMENT BREACH")));
+	TestTrue(TEXT("at the wall"), Sim.GetHostMass() >= 1100.0 && Sim.GetHostMass() < 1102.0);
+	TestFalse(TEXT("the game-over screen has something to say"), Sim.DescribeGameOver().IsEmpty());
+	const double Final = Sim.GetHostMass();
+	Sim.Advance(10.0);
+	TestTrue(TEXT("nothing moves any more"), Sim.GetHostMass() == Final);
+	TestFalse(TEXT("and nothing can be done"), LRTest::SeedAt(Sim, FIntVector(3, 0, 0)));
+
+	FLRSimulation Loaded(Data, 2);
+	TestTrue(TEXT("load"), Loaded.Load(Sim.Save()));
+	TestTrue(TEXT("a breach is saved"), Loaded.GetGameOver() == ELRGameOver::Breach);
+
+	// Turning the dial down in time clears it.
+	FLRSimulation Calm(Data, 1);
+	LRTest::FMessageLog CalmLog(Calm);
+	Calm.SetInjectorTarget(1.0);
+	Calm.Advance(90.0);
+	TestTrue(TEXT("critical"), Calm.GetHostAlarm().Level == ELRAlarmLevel::Critical);
+	Calm.SetInjectorTarget(0.0);
+	TestFalse(TEXT("off: the flow winds down short of the wall"), Calm.GetHostAlarm().IsActive());
+	Calm.Advance(1.0);
+	TestTrue(TEXT("all clear"), CalmLog.Contains(TEXT("All clear")));
+	Calm.Advance(60.0);
+	TestTrue(TEXT("and it never reaches the wall"), !Calm.IsFrozen() && Calm.GetHostMass() < 1100.0);
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostIgniteTest, "LootboxRecursion.Host.IgniteRestartsAnEvaporatedHost", LR_TEST_FLAGS)
-bool FLRHostIgniteTest::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLRHostNoReturnAlarmTest, "LootboxRecursion.Host.TheAlarmsCountDownToThePointOfNoReturn", LR_TEST_FLAGS)
+bool FLRHostNoReturnAlarmTest::RunTest(const FString& Parameters)
 {
+	// 1,000 kg lasting 1,000 s unfed: unfed, it falls past its point of no return (322 kg)
+	// at about 967 s, so the alarm starts 100 s before that.
 	FLRSimulation Sim(LRTest::MakeCosmosData(), 1);
 	LRTest::FMessageLog Log(Sim);
-	TestFalse(TEXT("not while the host is alive"), Sim.CanIgnite());
-	const FLRActionResult Early = Sim.Ignite();
-	TestTrue(TEXT("refused while the host is alive"), !Early.bSuccess && Early.Reason == FName(TEXT("host_alive")));
+	Sim.Advance(850.0);
+	TestFalse(TEXT("quiet with over 100 s to go"), Sim.GetHostAlarm().IsActive());
+	Sim.Advance(30.0);
+	const FLRHostAlarm Caution = Sim.GetHostAlarm();
+	TestTrue(TEXT("caution: past the point of no return in about 87 s"), Caution.Kind == ELRAlarmKind::NoReturn
+		&& Caution.Level == ELRAlarmLevel::Caution && FMath::Abs(Caution.Seconds - 87.0) <= 2.0);
+	TestTrue(TEXT("logged"), Log.Contains(TEXT("point of no return")));
 
-	Sim.Advance(1001.0);
-	TestTrue(TEXT("evaporated"), Sim.IsFrozen());
-	TestTrue(TEXT("the charge is full"), Sim.CanIgnite());
-	const FLRActionResult Ignited = Sim.Ignite();
-	TestTrue(TEXT("ignited"), Ignited.bSuccess && Log.Contains(TEXT("Ignited")));
-	TestFalse(TEXT("no longer frozen"), Sim.IsFrozen());
-	TestTrue(TEXT("the new host is the stored charge"), Sim.GetHostMass() == 400.0);
-	TestTrue(TEXT("the charge rebuilds before feeding resumes"), Sim.IsRecharging() && Sim.GetStoredCharge() == 0.0);
-	TestTrue(TEXT("and the instruments are down meanwhile"), Sim.AreInstrumentsDown());
-
-	// Unfed, the small new host evaporates fast (400 kg lasts 64 s), and can be ignited again.
-	Sim.Advance(70.0);
-	TestTrue(TEXT("gone again"), Sim.IsFrozen());
-	TestTrue(TEXT("the charge rebuilt meanwhile"), Sim.CanIgnite());
+	// Fed in time, it recovers.
+	Sim.SetInjectorTarget(50.0);
+	Sim.Advance(30.0);
+	TestFalse(TEXT("fed: out of danger"), Sim.GetHostAlarm().IsActive());
+	TestTrue(TEXT("all clear"), Log.Contains(TEXT("All clear")));
 	return true;
 }
 
@@ -1750,9 +1743,12 @@ bool FLRHostTippingTest::RunTest(const FString& Parameters)
 	// Then not even the rated limit saves it.
 	Sim.SetInjectorTarget(50.0);
 	Sim.Advance(1.0);
-	TestTrue(TEXT("the log says so"), Log.Contains(TEXT("point of no return")));
+	TestTrue(TEXT("the log says so"), Log.Contains(TEXT("PAST THE POINT OF NO RETURN")));
+	const FLRHostAlarm Doomed = Sim.GetHostAlarm();
+	TestTrue(TEXT("the alarm counts down to the end"), Doomed.Kind == ELRAlarmKind::Evaporating && Doomed.Level == ELRAlarmLevel::Critical
+		&& Doomed.Seconds > 0.0);
 	Sim.Advance(60.0);
-	TestTrue(TEXT("it evaporates anyway"), Sim.IsFrozen());
+	TestTrue(TEXT("it evaporates anyway"), Sim.GetGameOver() == ELRGameOver::Evaporated);
 	return true;
 }
 
@@ -1776,11 +1772,11 @@ bool FLRHostSeedCostTest::RunTest(const FString& Parameters)
 	FLRGameData TooDear = Data;
 	TooDear.Host.SeedCost = 1000.0;
 	TestTrue(TEXT("a seed costing the whole host reported"), TooDear.Validate().Num() > 0);
-	FLRGameData NoRefill = Data;
-	NoRefill.Host.RechargeRate = 0.0;
-	TestTrue(TEXT("a stored charge that never recharges reported"), NoRefill.Validate().Num() > 0);
+	FLRGameData BadAlarms = Data;
+	BadAlarms.Host.WarningSeconds = BadAlarms.Host.CautionSeconds + 1.f;
+	TestTrue(TEXT("alarms out of order reported"), BadAlarms.Validate().Num() > 0);
 	FLRGameData TinyChamber = Data;
-	LRTest::SetSafetyCap(TinyChamber, 500.0);
+	LRTest::SetContainmentCap(TinyChamber, 500.0);
 	TestTrue(TEXT("a chamber too small for the starting host reported"), TinyChamber.Validate().Num() > 0);
 	return true;
 }
@@ -1816,7 +1812,7 @@ bool FLRCosmosSaveTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("epoch"), Loaded.GetEpochIndex(), 1);
 	TestTrue(TEXT("host mass"), Loaded.GetHostMass() == Sim.GetHostMass());
 	TestTrue(TEXT("feed dial"), Loaded.GetInjectorTarget() == Sim.GetInjectorTarget() && Loaded.GetInjectorFlow() == Sim.GetInjectorFlow());
-	TestTrue(TEXT("stored charge"), Loaded.GetStoredCharge() == Sim.GetStoredCharge() && Loaded.IsRecharging() == Sim.IsRecharging());
+	TestTrue(TEXT("the same alarm"), Loaded.GetHostAlarm().Kind == Sim.GetHostAlarm().Kind && Loaded.GetHostAlarm().Level == Sim.GetHostAlarm().Level);
 	TestTrue(TEXT("cosmic time"), Loaded.GetCosmicTime() == Sim.GetCosmicTime());
 	TestEqual(TEXT("plasma fade"), Loaded.GetPlasmaOpacity(), Sim.GetPlasmaOpacity());
 	const FLRPlacedEntity* Ripple = Loaded.FindPlaced(FIntVector(0, 0, 0));

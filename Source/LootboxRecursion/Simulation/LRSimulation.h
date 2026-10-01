@@ -24,7 +24,7 @@ class LOOTBOXRECURSION_API FLRSimulation
 {
 public:
 	/** 2: 3D grid, wood -> carbon. 3: irradiator contents. 4: unlocks + stats. 5: epochs, host, primordial materials. 6: matter in cells, no inventory. 7: irradiator ids renamed (nebula, corona). 8: source ids renamed (emitters). 9: host mass in kg, feed dial and storage ring. 10: the storage ring renamed (stored charge). 11: casts became jobs in cells. */
-	static constexpr int32 SaveVersion = 11;
+	static constexpr int32 SaveVersion = 12;
 	/** Oldest save that still loads (newer fields just start empty). 10 renamed the stored charge's fields, so older saves start fresh. */
 	static constexpr int32 MinCompatibleSaveVersion = 10;
 	/** The host and injectors advance in steps of at most this many seconds (feeding and evaporation are coupled). */
@@ -147,8 +147,15 @@ public:
 	// ---- The host black hole and the injectors that feed it (the outside panel) -----------
 	/** The host black hole's mass, kg. */
 	double GetHostMass() const { return HostMass; }
-	/** The host has evaporated: nothing in the pocket universe advances until Ignite. */
-	bool IsFrozen() const { return Data.Host.IsDefined() && HostMass <= 0.0; }
+	/**
+	 * How the game ended, if it has: the containment failed (the host's 1 g sphere reached the
+	 * chamber wall), or the host evaporated. There are no safeties and no second host.
+	 */
+	ELRGameOver GetGameOver() const;
+	/** The game is over: nothing in the pocket universe advances any more. */
+	bool IsFrozen() const { return GetGameOver() != ELRGameOver::None; }
+	/** A few lines on how it ended, for the game-over screen (empty while still playing). */
+	FString DescribeGameOver() const;
 	/**
 	 * Set the feed dial: the injection rate to aim for, kg/s (clamped to 0..InjectorMaxRate).
 	 * Setting it by hand turns the auto mode off.
@@ -181,37 +188,35 @@ public:
 	 * and speeding up as it goes). A very large number if it isn't shrinking.
 	 */
 	double GetTimeToEvaporation() const;
-	/** The mass at which the safeties trip (0 = no cap). */
-	double GetSafetyCap() const { return Data.Host.GetSafetyCap(); }
-	double GetStoredCharge() const { return StoredCharge; }
-	/** The safeties tripped (or Ignite fired) and the stored charge is rebuilding: no feeding until it's full. */
-	bool IsRecharging() const { return bRecharging; }
+	/** The mass at which the containment fails (0 = no limit). */
+	double GetContainmentCap() const { return Data.Host.GetContainmentCap(); }
+	/**
+	 * The host alarm: the first disaster the current settings lead to (a breach, or falling
+	 * past the point of no return; or, past it already, evaporating), and how long until it.
+	 * It's forecast by running the host forward as the dial is set now (the auto modes and the
+	 * injectors' inertia included), up to CautionSeconds ahead. Updated as the simulation
+	 * advances and whenever the dial changes.
+	 */
+	const FLRHostAlarm& GetHostAlarm() const { return Alarm; }
 	/**
 	 * The instruments that observe and manipulate the pocket universe don't work: every action
-	 * (Perturb, Build, Open, Dismantle) is refused. They run off the stored charge, so they're
-	 * down while it rebuilds: after the host reaches the chamber wall (the safeties trip), and
-	 * after Ignite. They're also down while venting floods the chamber with radiation, until
-	 * the reversed flow has wound down.
+	 * (Perturb, Build, Open, Dismantle) is refused. That's while venting floods the chamber
+	 * with radiation, until the reversed flow has wound down.
 	 */
 	bool AreInstrumentsDown() const;
-	/** The host is gone and the stored charge is full. */
-	bool CanIgnite() const;
-	/** The kick-start: fire the whole stored charge at the singularity to make a new host. */
-	FLRActionResult Ignite();
 
 	/**
 	 * Venting (docs/DESIGN.md, "Venting mass"): the injectors run in reverse. The graviton lens
 	 * drives the horizon into stimulated emission and the beamline draws the radiation off, so
 	 * the host sheds mass at the dial's rate (up to the rated limit), far faster than it
-	 * evaporates. Starting it needs a full stored charge (it doesn't use it up); it sets the
-	 * dial to OFF and turns auto off. While it runs (and until the reversed flow has wound
+	 * evaporates. Starting it sets the dial to OFF and turns auto off. While it runs (and until the reversed flow has wound
 	 * down) the instruments are down, and only the dial itself works. Nothing stops it at the
 	 * point of no return: venting too far is the player's mistake to make. Stopping it sets
 	 * the dial to OFF again.
 	 */
 	FLRActionResult SetVenting(bool bVent);
 	bool IsVenting() const { return bVenting; }
-	/** Venting could start now. */
+	/** Venting could start now (there's a host, and it isn't venting already). */
 	bool CanVent() const;
 	/** Once venting stops, a reversed flow weaker than this (kg/s) snaps to zero. */
 	static constexpr double VentResidualRate = 1.0;
@@ -317,10 +322,28 @@ private:
 	void AdvanceIrradiation(double DeltaSeconds);
 	/** Apply one exposure of Radiation to Box; returns a log message. */
 	FString ApplyExposure(FLRLootBoxInstance& Box, const FLRRadiationDef& Radiation, const FLRItemDef& IrradiatorDef);
-	/** The host: evaporation, feeding, the safeties and the stored charge. */
+	/** The host: evaporation, feeding, and the two ways it ends. */
 	void AdvanceHost(double DeltaSeconds);
 	/** In an auto mode, point the dial at its mark for the host's current mass. */
 	void UpdateAutoTarget();
+
+	/** The host and its injectors, as one step of the physics sees them (so the alarm can run them forward). */
+	struct FHostState
+	{
+		double Mass = 0.0;
+		FLRInjectorState Injector;
+		double Target = 0.0;
+		ELRInjectorAuto Auto = ELRInjectorAuto::Off;
+		bool bVenting = false;
+	};
+	FHostState GetHostState() const;
+	/**
+	 * One slice of the host's physics: the auto mode moves the dial, the injectors follow it,
+	 * the host evaporates, and the flow feeds it (or venting draws it out) up to the rated limit.
+	 */
+	static void StepHostState(const FLRHostDef& Host, FHostState& State, double Step);
+	/** Re-forecast the alarm (see GetHostAlarm) and log it when it gets worse. */
+	void RefreshAlarm(bool bAnnounce);
 	/** The cosmic clock. */
 	void AdvanceCosmos(double DeltaSeconds);
 	/** Overdensities: yield matter into their own cell and, in later epochs, deepen on their own. */
@@ -418,10 +441,10 @@ private:
 	ELRInjectorAuto InjectorAuto = ELRInjectorAuto::Off;
 	bool bVenting = false;
 	FLRInjectorState Injector;
-	double StoredCharge = 0.0;
-	bool bRecharging = false;
-	/** The low-mass warning has been logged (until the host recovers). Not saved. */
-	bool bHostWarned = false;
-	/** The point-of-no-return warning has been logged (until the host climbs back above it). Not saved. */
-	bool bWarnedTipping = false;
+	/** The containment failed: the game is over. */
+	bool bBreached = false;
+	/** The current alarm (see GetHostAlarm). Not saved: it's forecast again. */
+	FLRHostAlarm Alarm;
+	/** The worst alarm the log has announced since things were last calm. Not saved. */
+	FLRHostAlarm Announced;
 };

@@ -31,11 +31,12 @@ struct FLRPlacedEntity;
  * actions work on the selected cell.
  *
  * That's the inside view. The outside panel (the facility's injectors: the feed dial, the host
- * in its chamber, the stored charge and Ignite) drops down from the top when the status bar's
- * OUTSIDE button or F / Tab is pressed (docs/DESIGN.md, "Two views").
+ * in its chamber, the alarms and Vent) drops down from the top when the status bar's OUTSIDE
+ * button or F / Tab is pressed (docs/DESIGN.md, "Two views").
  *
- * While the instruments are down (the stored charge is rebuilding), TV static covers the 3D
- * view and the chamber camera, and every action is disabled.
+ * While the instruments are down (venting), TV static covers the 3D view and the chamber
+ * camera, and every action is disabled. Near the chamber wall it flickers in as a warning.
+ * When the game is over, the menu opens on how it ended.
  *
  * Esc (or the MENU button) opens the game menu (SLRGameMenu) over everything and pauses. The
  * whole HUD is scaled by the player's UI scale setting.
@@ -155,7 +156,6 @@ private:
 		AutoHold,
 		AutoLimit,
 		Vent,
-		Ignite,
 		Count,
 	};
 	bool IsOutsideSlotEnabled(EOutsideSlot Button) const;
@@ -223,7 +223,7 @@ private:
 	static constexpr float OutsideMaxWidthShare = 0.9f;
 	static constexpr float OutsideMinHeight = 680.f;
 	static constexpr float OutsideMinWidth = 1000.f;
-	/** Roughly the readouts' and the stored charge's columns, with the gaps: the camera's width cap. */
+	/** Roughly the readouts' and the alarms' columns, with the gaps: the camera's width cap. */
 	static constexpr float OutsideSideColumnsWidth = 500.f;
 	static constexpr float CameraMinHeight = 240.f;
 	/** The camera screen's border and padding, both sides together. */

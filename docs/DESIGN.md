@@ -85,8 +85,8 @@ announces each one.
 - **The host black hole** has a real mass (3,500 t at the start) and evaporates by Hawking
   radiation. You feed it from outside with the feed dial (see "Feeding the host"). Seeding a
   ripple costs 500 t and deepening one 70 t, and a perturbation is refused if it would take
-  the last of it. At zero the pocket universe freezes: ripples, irradiators and the clock
-  stop until you Ignite a new host. That's the soft fail; nothing is lost.
+  the last of it. If it evaporates, or grows into the chamber wall, the game is over (see
+  "Game over").
 - **The plasma** is a glowing veil in the sky whose opacity comes from the epoch, fading over
   a few seconds between epochs. It clears at recombination.
 
@@ -94,7 +94,8 @@ announces each one.
 
 The host has a real mass, and feeding is a **dial** on the facility's mass injectors. It
 replaced the Feed button and the host-as-a-percentage.
-- **Code:** the rules are in `FLRSimulation` (`AdvanceHost`, `StepInjector`, `Ignite`).
+- **Code:** the rules are in `FLRSimulation` (`AdvanceHost`, `StepHostState`, `StepInjector`,
+  `RefreshAlarm`).
 - **Settings:** `universe.json`'s `host`.
 - **UI:** the outside panel in `SLRGameHud`, with `SLRFeedDial` and `SLRChamberView`.
 - **Not built yet:** chamber and injector upgrades in the tech tree, and showing the flow in
@@ -128,12 +129,11 @@ well swells toward the chamber wall, so you (literally) dial it back.
 - **Why the flow can't change instantly.** The graviton lens runs on superconducting magnets,
   and a magnet's current can't change instantly. Inductance limits how fast it can ramp, just
   as the LHC's magnets take minutes to ramp. So the flow follows the dial with inertia.
-- **The stored charge.** The neutronium waiting to be injected is held in a magnetic trap:
-  the mass "bucket". The panel calls it the **stored charge**, measured in tonnes.
-- **Emergency shutdown.** The safeties do what particle accelerators do. A **beam dump**
-  sends the whole stored charge into an absorber instantly, and the magnets **quench**
-  (shed their stored energy). Before feeding can resume, the charge has to be rebuilt and the
-  magnets ramped back up. That's the lockout, and the ramp afterwards is the inertia again.
+- **No safeties.** Nothing in the facility can stop the host growing into the wall, or save
+  it once it's past the point of no return. The alarms are all there is, and the operator's
+  hand on the dial. (Safeties were built and then removed: a trip that dumped a stored charge
+  and locked the injectors out, and an Ignite button that restarted a dead host. The stakes
+  read better without them; see "Game over".)
 
 ### The dial
 
@@ -182,7 +182,7 @@ flow'   = change
   constant-acceleration ramp with a top speed, or doing the same in log space so every
   decade takes equally long.
 
-### The safety cap: the gravity well
+### The containment limit: the gravity well
 
 The host is held in a containment chamber. What limits its size is its **gravity well**:
 the sphere around it inside which its pull is stronger than 1 g. That radius is
@@ -195,17 +195,17 @@ the sphere around it inside which its pull is stronger than 1 g. That radius is
 | 3,500 t | 4.9 mm |
 | 14,700 t | 10 mm |
 
-- **The chamber rating.** The first chamber's field emitters sit 1 cm from the host, so the
-  safeties trip when the 1 g sphere reaches them, at 14,700 t. Each larger chamber is a
-  tech-tree upgrade, and 10 times the radius allows 100 times the mass: 10 cm allows
-  1.5 million t, and 1 m about 150 million t (a small mountain).
-- **The trip.** Injection stops **instantly** (the beam dump), with no inertia, and the
-  stored charge is lost.
-- **Locked out.** Nothing can be fed until the charge has rebuilt (`chargeCapacity /
-  rechargeRate`). After that, the flow ramps up again from zero, with inertia.
-- **Why it's a skill.** Because of the inertia, turning the dial down near the cap takes
+- **The chamber rating.** The first chamber's field emitters sit 1 cm from the host, rated
+  for 1 g, so the containment holds up to 14,700 t. Each larger chamber is a tech-tree
+  upgrade, and 10 times the radius allows 100 times the mass: 10 cm allows 1.5 million t, and
+  1 m about 150 million t (a small mountain).
+- **The breach.** When the 1 g sphere reaches the wall, the containment field fails and the
+  game is over. (A loose 15,000 t hole wouldn't swallow the Earth in a hurry: its horizon is
+  10⁻²⁰ m. But it's an unshielded source glowing at 1.6×10¹⁸ W falling through the floor, and
+  the facility is gone either way.)
+- **Why it's a skill.** Because of the inertia, turning the dial down near the wall takes
   effect late. At 20 t/s, 15 s of lag is about 300 t more mass, so you have to dial back
-  before the cap, not at it.
+  before the wall, not at it. The alarms forecast the inertia too.
 - **Later game.** Evaporation is negligible for a big host. In the later game the gravity well
   is the constraint, and chamber upgrades are how the host (and the injectors' flow) keeps
   growing.
@@ -214,14 +214,14 @@ the sphere around it inside which its pull is stronger than 1 g. That radius is
 
 The outside panel shows the host itself, not only numbers:
 
-- **A chamber cross-section, drawn to scale.** It shows the chamber wall (the trip line), and
+- **A chamber cross-section, drawn to scale.** It shows the chamber wall (the breach line), and
   the 1 g sphere as a glowing bubble that swells and shrinks with the mass. At the start
   (3,500 t) it's about halfway to the wall.
 - **The horizon,** as an inset with a scale bar: 5×10⁻²¹ m, far too small to draw otherwise.
 - **The glow.** The host's temperature and Hawking output, shown as a colour or glow that's
   hottest and brightest when it's small and in danger (3.5×10¹⁶ K and 3×10¹⁹ W at the start).
 - **Size is readable at a glance.** How close the bubble is to the wall shows how close the
-  trip is, with no arithmetic.
+  breach is, with no arithmetic.
 - **A camera into the chamber** (built as a placeholder), labelled CAM 1. The outside panel
   takes 80% of the viewport's height (and at most 90% of its width); the dial and the
   chamber view keep their size, and the camera fills the space under them at 4:3 (at least
@@ -236,24 +236,40 @@ The outside panel shows the host itself, not only numbers:
   - the singularity with its glow, hotter and brighter as it shrinks;
   - venting: the injectors running in reverse, the horizon blazing with stimulated emission,
     and the radiation streaming back up the beamline to the beam dump;
-  - a trip: the beam dump firing and the magnets quenching.
+  - a breach: the containment field failing.
+
+### The alarms (built)
+
+There are no safeties, so the alarms have to give fair warning.
+
+- **They forecast.** The simulation runs the host forward as the dial is set now (the auto
+  modes and the injectors' inertia included), up to five minutes ahead, and finds the first
+  disaster: a **breach** (the 1 g sphere reaching the wall), or falling **past the point of
+  no return**. Turn the dial and the forecast changes at once. (`FLRSimulation::GetHostAlarm`,
+  forecast in one-second steps by `RefreshAlarm`.)
+- **Three levels, by time left:** CAUTION under 5 minutes, WARNING under 2, CRITICAL under
+  30 s (`cautionSeconds`, `warningSeconds`, `criticalSeconds` in `universe.json`). Past the
+  point of no return it's CRITICAL for good, counting down to the end.
+- **Where they show.**
+  - The outside panel's ALARMS column has a lamp for each disaster (Containment, No return),
+    amber for caution, red for warning, flashing red when critical, with the countdown.
+  - The status bar shows the alarm in place of the host's trend, in the same colours, and
+    the OUTSIDE button pulses while any alarm is on.
+  - The log announces each step up ("WARNING: at this setting the host's gravity well
+    reaches the chamber wall (14,700 t) in 1 min 40 s...") and "All clear" when it's over.
+  - Near the wall the instruments start to fail: TV static flickers in at WARNING, and more
+    at CRITICAL.
+- **The autosave never catches you in real danger.** It's skipped at WARNING or worse, so a
+  lost game always reloads somewhere with at least two minutes to fix it.
 
 ### The instruments go down (built)
 
-Playtesting found that growing too big cost nothing: at the cap the host has three days of
-unfed life, so a trip only paused the injectors. Now reaching the wall hurts.
-
-- **The fiction.** The scientists observe and manipulate the pocket universe through
-  instruments that run off the stored charge. When the host's gravity well reaches the
-  containment barrier, the safeties trip, the magnets quench, and the charge is dumped. The
-  instruments stop working correctly until the charge is full again.
-- **The rule.** The instruments are down whenever the stored charge is rebuilding: after a
-  trip (20 s at the start), and after Ignite. Meanwhile every inside action (Perturb, Build,
-  Open, Dismantle) is refused. The universe itself keeps running: ripples gather and
-  irradiators irradiate.
+- **The rule.** While venting floods the chamber with radiation, and until the reversed flow
+  has wound down, every inside action (Perturb, Build, Open, Dismantle) is refused. The
+  universe itself keeps running: ripples gather and irradiators irradiate.
 - **What you see.** Old-school TV static over the 3D view (and NO SIGNAL on the chamber camera),
-  with a banner saying the instruments are down and how full the charge is. The status bar
-  says INSTRUMENTS DOWN. The outside controls keep working, so you can dial back.
+  with a banner saying the instruments are down and why. The status bar says INSTRUMENTS
+  DOWN. Near the chamber wall the same static flickers in as a warning (see "The alarms").
 - **The static** is drawn by `SLRStaticNoise`: grey noise redrawn 30 times a second, each row
   a little brighter or darker, with a brighter band rolling down. It has a material hook,
   `M_Static` (docs/MATERIALS.md).
@@ -267,10 +283,9 @@ A way to shed mass on purpose, faster than evaporation. At the cap the host evap
   horizon into **stimulated Hawking emission**: it radiates far more than it would on its own,
   and the lens focuses that radiation back up the beamline and off to the beam dump. In short,
   instead of forcing mass in, the injectors draw radiation out. All that radiation floods the
-  chamber, so the instruments are down while venting, as after a trip.
+  chamber, so the instruments are down while venting.
 - **The rule.**
-  - VENT (on the outside panel, next to Ignite) needs a **full stored charge** to start. It
-    doesn't use the charge up.
+  - VENT is on the outside panel, under the alarms. It works whenever there's a host.
   - Starting it sets the dial to OFF and turns auto off. The dial then sets how hard the
     injectors pull, and they pull no harder than the rated limit (the lens pulls only as hard
     as it can push). At the cap, full reverse (20 t/s) sheds about 1,000 t a minute.
@@ -279,7 +294,7 @@ A way to shed mass on purpose, faster than evaporation. At the cap the host evap
   - **Only the dial works.** The presets and auto buttons under it are disabled.
   - The instruments are down while venting, and until the reversed flow has wound down.
   - **No interlock.** Nothing stops venting at the point of no return: vent too far and the
-    host can't be saved (the log warns as it crosses). Like over-perturbing, it's the
+    host can't be saved (the alarms count down to it). Like over-perturbing, it's the
     player's mistake to make. (An interlock at 1.25 × the point of no return was tried and
     dropped.)
   - STOP VENTING sets the dial to OFF, and the reversed flow winds down (about 15 s).
@@ -289,19 +304,21 @@ A way to shed mass on purpose, faster than evaporation. At the cap the host evap
 - **Why it's interesting.** It trades time without instruments for size, so it's a choice
   rather than a free undo. Later the radiation could feed something (a resource).
 
-### Losing the host, and the kick-start
+### Game over
 
-When the host evaporates completely (in a final flash as its last tonnes go), the pocket
-universe freezes. Nothing is lost, as now.
-- **Why the dial can't restart it.** The rated limit is proportional to mass, so an empty
-  host can't be fed at all. And a tiny new host evaporates faster than anything can reach
-  it.
-- **Ignite.** The kick-start is a button that fires the whole stored charge at the
-  singularity in one go. A charge that big collapses straight into a new horizon, with no
-  Eddington limit. This is hand-feeding coal to restart a dead power grid (as in
-  Satisfactory).
-- **Size the charge above the tipping point.** Then a freshly ignited host survives, as long
-  as you open the dial right away.
+The game ends one of two ways, and there's no second host:
+- **Containment breach:** the host's 1 g sphere reaches the chamber wall.
+- **Evaporation:** past its point of no return the host evaporates, hotter and faster to the
+  end. Its last second releases about 2×10²² J at the shipped settings (about 5 teratons of
+  TNT); the game-over screen gives the figure.
+
+When it happens, the simulation stops and the menu opens on GAME OVER: what happened, then
+**Load the autosave**, Load a save, New Game or Quit. It can't be dismissed back into the
+lost game. The autosave (every 30 s) skips a lost game and any moment at WARNING or worse, so
+it's always a fair place to start again.
+
+(It used to be a soft fail: the universe froze until Ignite fired a stored charge into a new
+host. Ignite and the stored charge are gone.)
 
 ### The point of no return
 
@@ -310,13 +327,12 @@ setting can save the host. It's shown, so the player can see it coming:
 - The chamber view draws the point of no return as a faint red ring (the 1 g radius it would
   have). A bubble inside it is doomed.
 - The outside readouts give it in tonnes.
-- The status bar says so when the host is below it.
-- The log warns when the host crosses it.
+- The alarms count down to it at the current setting, and past it, to the end.
 
 **You can shoot yourself in the foot.** Nothing stops seeding from spending the host below
 the line: over-perturbing early is a mistake the player is allowed to make, and learns from.
-The way back is to let the host go and Ignite a new one. (A playtest tried an "emergency
-charge", firing the stored charge into a living host, plus a guard on seeding. Both were
+Past it, the game is over; the autosave is from before. (A playtest tried an "emergency
+charge", firing a stored charge into a living host, plus a guard on seeding. Both were
 dropped: the charge didn't fit the fiction, and the guard took the lesson away.)
 
 ### The dial's buttons
@@ -329,16 +345,16 @@ Under the dial:
   the host's mass steady (it loses a little while the injectors ramp up), and Auto Limit grows
   it as fast as it can. Both stop at the injectors' maximum. Touching the dial or a preset
   turns auto off, and so does clicking the lit toggle.
-- **Auto Limit doesn't stop at the wall.** It follows the limit right up to the safety cap and
-  trips it. Stopping short would be an upgrade (a tech-tree governor), if we want one.
+- **Auto Limit doesn't stop at the wall.** It follows the limit right into the wall, and the
+  game is over; the alarms say when to stop. Stopping short would be an upgrade (a tech-tree
+  governor), if we want one.
 
 ### Ripples cost host mass
 
 Seeding a new ripple costs a fixed mass (`seedCost`, 500 t), and
 deepening one costs a smaller mass.
 - **Early,** that's what makes feeding urgent.
-- **Near the cap,** seeding becomes a useful way to spend mass instead of tripping the
-  safeties.
+- **Near the wall,** seeding becomes a useful way to spend mass instead of breaching.
 
 ### Starting numbers (real physics where it's playable)
 
@@ -367,11 +383,10 @@ kg/s, while it evaporates 324 kg/s.
 | Evaporation | 3.96×10¹⁵ / M² kg/s | real |
 | Rated limit (`eddingtonRate`) | 0.004 /s × M (6×10¹² × Eddington) | 14 t/s at the start; above 5,000 t the injectors' 20 t/s maximum is the real cap |
 | Tipping point | about 1,000 t | where the rated limit just equals evaporation: below it, nothing can save the host |
-| Safety cap | the 1 g sphere reaches the chamber wall | first chamber 1 cm: 14,700 t (74 hours unfed) |
+| Containment | the 1 g sphere reaches the chamber wall | first chamber 1 cm: 14,700 t (74 hours unfed) |
 | Injector maximum | 20 t/s | the top of the dial, until injector upgrades |
 | `injectorResponseSeconds` (to 90%) | 15 s | ω ≈ 0.26 /s |
-| Stored charge (Ignite) | 2,000 t | above the tipping point |
-| Recharge rate | 100 t/s | 20 s lockout after a trip, or to recharge after Ignite (it was 200 s, which felt too long) |
+| Alarms | caution 5 min, warning 2 min, critical 30 s | time to a breach or the point of no return at the current setting |
 | Seed a ripple | 500 t | three seeds take a fresh host from 3,500 t to 2,000 t, 11 minutes from death |
 | Deepen a ripple | 70 t | |
 
@@ -381,8 +396,8 @@ kg/s, while it evaporates 324 kg/s.
 2. Open the dial toward the mark. At the limit, and then at the injectors' 20 t/s maximum,
    2,000 t grows to 3,000 t in about 2 minutes and to the 14,700 t cap in about 12, with the
    bubble swelling toward the wall.
-3. Start dialing back around 14,000 t to avoid tripping, and settle a little above the
-   break-even mark (18 kg/s at the cap).
+3. Start dialing back when the alarm comes on (it forecasts the inertia), and settle a little
+   above the break-even mark (18 kg/s at the wall).
 
 ### Two views: inside and outside
 
@@ -393,8 +408,8 @@ The game has two UIs, one for each side of the horizon.
 - **Outside** is the facility's control panel for the host. It holds only the injector
   controls:
   - the dial, with the Eddington and break-even marks and the setting and flow needles;
-  - the stored charge (the mass "bucket"): how full it is, and any lockout;
-  - VENT and Ignite;
+  - the alarms: a lamp and a countdown for a breach and for the point of no return;
+  - VENT;
   - the host's mass and net rate next to the dial.
 
 **How it looks.** The outside is the inverse of the inside: a light grey console with dark
@@ -411,10 +426,8 @@ key raises it again.
 its net rate and, while it shrinks, how long it has left at that rate, whichever view is up.
 The controls are behind its (?) button. Its outside button lights up or pulses when the outside
 needs attention:
-- the host is below break-even (shrinking);
-- the safeties have tripped, or the host is closing on the cap;
-- the container is recharging;
-- the host is gone and Ignite is ready.
+- an alarm is on (see "The alarms");
+- the injectors are venting.
 
 The `host` requirement check compares tonnes. The redone sky can show the flow, e.g. the disk
 brightening as more is injected.
@@ -423,15 +436,15 @@ brightening as more is injected.
 
 | Satisfactory | Here | When |
 |---|---|---|
-| Hand-feeding coal to restart | **Ignite**, then the dial | whole game, mostly early |
+| Hand-feeding coal | **the dial** | whole game, mostly early |
 | Coal on a conveyor | **Horizon Siphon** (working name; or Throat Pump) | mid game |
 | Late-game free power | **Dark energy** | late game, with expansion |
 
 **Horizon Siphon.** A structure built in a cell from recombination on. It pipes matter from
 the cells within its reach through the "throat" into the host. In lore, that's the
 Einstein–Rosen bridge between the pocket universe and the host (Popławski).
-- **It adds to the injectors' flow.** Together they share the Eddington limit, and the
-  safeties trip it too.
+- **It adds to the injectors' flow.** Together they share the Eddington limit, and it can
+  breach the containment just the same.
 - **It's Perturb in reverse, and a trade-off.** Matter siphoned is matter not built with.
 - **Mass value.** Materials count by their balance value (hydrogen 1, helium 2, carbon 4,
   iron 8, as in `Tools/balance.py`). Some constant turns value into tonnes.
@@ -444,8 +457,8 @@ expanding universe. Alan Guth called inflation "the ultimate free lunch" for thi
   mass to the host directly.
 - **When it matters.** It's negligible before the dark-energy era (it took over at about 9.8
   billion years) and dominant after.
-- **It bypasses the injectors,** so neither the Eddington limit nor the safeties apply. Late
-  on, the host outgrows the facility's cap and the universe sustains itself.
+- **It bypasses the injectors,** so the Eddington limit doesn't apply, and the chamber
+  upgrades have to keep ahead of it. Late on, the universe sustains itself.
 - **Before that,** the vacuum energy of inflation is spent making the matter (reheating), not
   the host.
 
@@ -454,7 +467,6 @@ expanding universe. Alan Guth called inflation "the ultimate free lunch" for thi
 - **Hawking power.** The host's glow (3×10¹⁹ W at the start) could be the facility's power
   supply. A small, hot host gives plenty of power but dies fast, and a big, cool one is safe
   but gives little. Power could then limit the injectors or the tech.
-- A buffer in the stored charge, so the injectors can briefly run faster than it rebuilds.
 
 ## Time controls (planned)
 
@@ -581,8 +593,8 @@ presses; that's all that holds the player back.
 **Room in the cells.** Entities are drawn smaller (`EntityScale` 0.225 of a cell, was 0.7, then 0.45): a
 cell holds a whole nebula, so its contents shouldn't crowd it.
 
-**The outside panel's keys.** While the outside panel is down, the slot keys (1-8) press its
-buttons instead, in order: Off, Hold, Limit, Max, Auto Hold, Auto Limit, VENT, IGNITE (each
+**The outside panel's keys.** While the outside panel is down, the slot keys (1-7) press its
+buttons instead, in order: Off, Hold, Limit, Max, Auto Hold, Auto Limit, VENT (each
 button shows its key). The camera's pan keys turn the dial: left/right (A/D) in fine steps,
 up/down (W/S) in coarse ones, along the dial's arc like dragging it. That's manual tuning, so
 it also works while venting and turns auto off.
@@ -797,7 +809,7 @@ Cheat items (`LRGive`) don't count.
 | Unlocks | When |
 |---|---|
 | Perturb | from the start |
-| The feed dial and Ignite (outside panel, F) | from the start |
+| The feed dial and Vent (outside panel, F) | from the start |
 | Build, Quantum Cache recipe | at nucleosynthesis |
 | Open, Dismantle | after building your first cache |
 | Nebula Irradiator | after opening a cache |

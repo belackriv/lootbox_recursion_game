@@ -42,7 +42,7 @@ What `Amount` means:
 - **Ripple:** its amplitude, as a fraction of the most it can reach.
 - **Irradiator:** its cache's stacks, as a fraction of the cap (1 once observed).
 - **Matter disc:** how full the cell is (0 is a small puff, 1 is the largest disc).
-- **Static:** how strong it is (it fades in and out as the instruments go down and come back).
+- **Static:** how strong it is (it fades in and out as the instruments go down and come back, and flickers near the chamber wall).
 
 The sky is seen from inside a sphere, which is why `M_SkyBackdrop` and `M_Plasma` must be Two
 Sided.

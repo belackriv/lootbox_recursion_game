@@ -16,6 +16,52 @@ enum class ELRInjectorAuto : uint8
 	Limit
 };
 
+/** How a game ends (docs/DESIGN.md, "Feeding the host"). */
+enum class ELRGameOver : uint8
+{
+	/** Still playing. */
+	None,
+	/** The host's 1 g sphere reached the chamber wall and the containment failed. */
+	Breach,
+	/** The host evaporated in a final flash. */
+	Evaporated
+};
+
+/** Which disaster an alarm is counting down to. */
+enum class ELRAlarmKind : uint8
+{
+	None,
+	/** Growing: the host's 1 g sphere reaches the chamber wall. */
+	Breach,
+	/** Shrinking: the host falls past its point of no return. */
+	NoReturn,
+	/** Already past the point of no return: nothing can stop it evaporating. */
+	Evaporating
+};
+
+/** How close the disaster is, by the time left at the current settings. */
+enum class ELRAlarmLevel : uint8
+{
+	None,
+	Caution,
+	Warning,
+	Critical
+};
+
+/**
+ * The host alarm: the first disaster the current dial setting leads to, and how long until it
+ * (see FLRSimulation::GetHostAlarm).
+ */
+struct FLRHostAlarm
+{
+	ELRAlarmKind Kind = ELRAlarmKind::None;
+	ELRAlarmLevel Level = ELRAlarmLevel::None;
+	/** Seconds until it happens at the current settings. */
+	double Seconds = 0.0;
+
+	bool IsActive() const { return Level != ELRAlarmLevel::None; }
+};
+
 /**
  * Runtime (mutable) game state. Rails equivalent: the database rows.
  *
@@ -435,12 +481,9 @@ struct LOOTBOXRECURSION_API FLRSaveData
 	UPROPERTY()
 	double InjectorChange = 0.0;
 
-	/** The stored charge, kg, and whether feeding is locked out until it's full. */
+	/** The host breached its containment: the game is over. */
 	UPROPERTY()
-	double StoredCharge = 0.0;
-
-	UPROPERTY()
-	bool bRecharging = false;
+	bool bBreached = false;
 
 	/** The injectors run in reverse, drawing radiation out of the host. */
 	UPROPERTY()

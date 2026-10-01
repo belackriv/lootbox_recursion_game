@@ -19,7 +19,7 @@ CHECKS = {"matter", "placed", "stat", "unlocked", "epoch", "host"}
 REQUIRED_ACTIONS = {"perturb", "craft", "use", "dismantle"}
 HOST_DEFAULTS = {"startMass": 0, "lifetimeSeconds": 0, "seedCost": 0, "perturbCost": 0, "eddingtonRate": 0,
                  "injectorMaxRate": 0, "injectorResponseSeconds": 15, "chamberRadius": 0, "safetyGravity": 9.80665,
-                 "chargeCapacity": 0, "rechargeRate": 0, "warningSeconds": 300}
+                 "cautionSeconds": 300, "warningSeconds": 120, "criticalSeconds": 30}
 G = 6.674e-11  # mirrors LRPhysics::G
 GAS_DEFAULTS = {"spreadRate": -1, "referenceTemperature": 3000, "temperatureExponent": 0.5, "maxSpeedup": 4,
                 "stepSeconds": 1, "ionizationTemperature": 3000, "jeansMass": 0, "infallRate": 0}
@@ -235,19 +235,19 @@ def main() -> int:
     if host["startMass"] < 0:
         errors.append("host: startMass must be >= 0")
     if host["startMass"] > 0:
-        if any(host[k] < 0 for k in ("lifetimeSeconds", "eddingtonRate", "injectorMaxRate", "chamberRadius", "chargeCapacity",
-                                     "rechargeRate", "warningSeconds")):
-            errors.append("host: lifetimeSeconds, eddingtonRate, injectorMaxRate, chamberRadius, chargeCapacity, rechargeRate and warningSeconds must be >= 0")
+        if any(host[k] < 0 for k in ("lifetimeSeconds", "eddingtonRate", "injectorMaxRate", "chamberRadius")):
+            errors.append("host: lifetimeSeconds, eddingtonRate, injectorMaxRate and chamberRadius must be >= 0")
+        if (host["criticalSeconds"] <= 0 or host["warningSeconds"] < host["criticalSeconds"]
+                or host["cautionSeconds"] < host["warningSeconds"]):
+            errors.append("host: the alarms need cautionSeconds >= warningSeconds >= criticalSeconds > 0")
         if (host["seedCost"] < 0 or host["perturbCost"] < 0 or host["seedCost"] >= host["startMass"]
                 or host["perturbCost"] >= host["startMass"]):
             errors.append("host: seedCost and perturbCost must be >= 0 and less than startMass")
         if host["injectorResponseSeconds"] <= 0 or host["safetyGravity"] <= 0:
             errors.append("host: injectorResponseSeconds and safetyGravity must be > 0")
-        if host["chargeCapacity"] > 0 and host["rechargeRate"] <= 0:
-            errors.append("host: a stored charge (chargeCapacity > 0) needs rechargeRate > 0")
         cap = host["safetyGravity"] * host["chamberRadius"] ** 2 / G if host["chamberRadius"] > 0 else 0
         if 0 < cap <= host["startMass"]:
-            errors.append(f"host: the chamber caps the host at {cap:.0f} kg, not above its startMass")
+            errors.append(f"host: the chamber holds the host only up to {cap:.0f} kg, not above its startMass")
 
     if errors:
         print(f"{len(errors)} problem(s) in {DATA_DIR}:")

@@ -1,6 +1,7 @@
 #include "Simulation/LRSimulation.h"
 
 #include "Simulation/LRHexGrid.h"
+#include "Simulation/LRPhysics.h"
 
 namespace
 {
@@ -25,15 +26,39 @@ namespace
 	const FName ReasonRippleAtMax(TEXT("ripple_at_max"));
 	const FName ReasonHorizonWeak(TEXT("horizon_too_weak"));
 	const FName ReasonNoHost(TEXT("no_host"));
-	const FName ReasonRecharging(TEXT("recharging"));
-	const FName ReasonHostAlive(TEXT("host_alive"));
 	const FName ReasonInstrumentsDown(TEXT("instruments_down"));
 	const FName ReasonNoBuilds(TEXT("no_builds"));
+	const FName ReasonGameOver(TEXT("game_over"));
 
 	/** The universe's temperature a second after the Big Bang, K (radiation era: T ~ 1 / sqrt(t)). */
 	constexpr double CosmicRadiationTemperature = 1.5e10;
 	/** Matter-radiation equality, s (about 50,000 years): after it, T ~ t^(-2/3). */
 	constexpr double CosmicEqualitySeconds = 1.6e12;
+
+	/** Seconds between the steps of the alarm's forecast. */
+	constexpr double AlarmStepSeconds = 1.0;
+
+	/** "45 s", "4 min 50 s" for the alarms. */
+	FString FormatAlarmTime(double Seconds)
+	{
+		const int32 Whole = FMath::Max(0, FMath::CeilToInt32(Seconds));
+		return Whole < 60 ? FString::Printf(TEXT("%d s"), Whole) : FString::Printf(TEXT("%d min %02d s"), Whole / 60, Whole % 60);
+	}
+
+	/** "4.9 teratons of TNT", "12 kilotons of TNT". */
+	FString FormatTntEquivalent(double Joules)
+	{
+		const double Tons = Joules / 4.184e9;
+		const TCHAR* Units[] = { TEXT("tons"), TEXT("kilotons"), TEXT("megatons"), TEXT("gigatons"), TEXT("teratons") };
+		int32 Unit = 0;
+		double Amount = Tons;
+		while (Amount >= 1000.0 && Unit < 4)
+		{
+			Amount /= 1000.0;
+			++Unit;
+		}
+		return FString::Printf(Amount < 10.0 ? TEXT("%.1f %s of TNT") : TEXT("%.0f %s of TNT"), Amount, Units[Unit]);
+	}
 
 	/** A fixed order for the two cells of a grid edge, so each edge has one key. */
 	bool IsGasEdgeFirst(const FIntVector& A, const FIntVector& B)
@@ -67,6 +92,7 @@ FString FLRSimulation::DescribeReasonShort(FName Reason)
 	if (Reason == ReasonHorizonWeak) { return TEXT("host too small"); }
 	if (Reason == ReasonNoHost) { return TEXT("no host"); }
 	if (Reason == ReasonNoBuilds) { return TEXT("no builds"); }
+	if (Reason == ReasonGameOver) { return TEXT("game over"); }
 	return TEXT("unavailable");
 }
 
@@ -90,10 +116,9 @@ FString FLRSimulation::DescribeReason(FName Reason)
 	if (Reason == ReasonRippleAtMax) { return TEXT("that ripple can't get any deeper"); }
 	if (Reason == ReasonHorizonWeak) { return TEXT("the host black hole can't spare that much mass, feed it first"); }
 	if (Reason == ReasonNoHost) { return TEXT("there is no host black hole"); }
-	if (Reason == ReasonRecharging) { return TEXT("the stored charge is still recharging"); }
-	if (Reason == ReasonHostAlive) { return TEXT("the host is still there, feed it with the dial"); }
 	if (Reason == ReasonInstrumentsDown) { return TEXT("the instruments are down"); }
 	if (Reason == ReasonNoBuilds) { return TEXT("nothing can be built there"); }
+	if (Reason == ReasonGameOver) { return TEXT("the game is over"); }
 	return Reason.ToString();
 }
 
@@ -151,10 +176,9 @@ void FLRSimulation::Reset(int32 Seed)
 	InjectorAuto = ELRInjectorAuto::Off;
 	bVenting = false;
 	Injector = FLRInjectorState();
-	StoredCharge = Data.Host.ChargeCapacity;
-	bRecharging = false;
-	bHostWarned = false;
-	bWarnedTipping = false;
+	bBreached = false;
+	Announced = FLRHostAlarm();
+	RefreshAlarm(/*bAnnounce*/ false);
 	CosmicTime = 0.0;
 	EnterEpoch(0);
 	RefreshUnlocks(); // starting unlocks, not announced
@@ -197,8 +221,7 @@ FLRSaveData FLRSimulation::Save() const
 	Out.bVenting = bVenting;
 	Out.InjectorFlow = Injector.Flow;
 	Out.InjectorChange = Injector.Change;
-	Out.StoredCharge = StoredCharge;
-	Out.bRecharging = bRecharging;
+	Out.bBreached = bBreached;
 	return Out;
 }
 
@@ -258,10 +281,9 @@ bool FLRSimulation::Load(const FLRSaveData& SaveData)
 	bVenting = SaveData.bVenting && Data.Host.IsDefined();
 	Injector.Flow = FMath::Clamp(SaveData.InjectorFlow, -Data.Host.InjectorMaxRate, Data.Host.InjectorMaxRate);
 	Injector.Change = SaveData.InjectorChange;
-	StoredCharge = FMath::Clamp(SaveData.StoredCharge, 0.0, Data.Host.ChargeCapacity);
-	bRecharging = SaveData.bRecharging;
-	bHostWarned = false;
-	bWarnedTipping = false;
+	bBreached = SaveData.bBreached && Data.Host.IsDefined();
+	Announced = FLRHostAlarm(); // the log announces any alarm the loaded game is in
+	RefreshAlarm(/*bAnnounce*/ false);
 	CosmicTime = SaveData.CosmicTime;
 	EnterEpoch(FMath::Max(0, Data.FindEpochIndex(SaveData.Epoch)));
 	EpochStartedAt = SaveData.EpochStartedAt; // keep an in-progress plasma fade going
@@ -290,9 +312,9 @@ bool FLRSimulation::Load(const FLRSaveData& SaveData)
 
 void FLRSimulation::Advance(double DeltaSeconds)
 {
-	if (DeltaSeconds <= 0.0)
+	if (DeltaSeconds <= 0.0 || IsFrozen())
 	{
-		return;
+		return; // once the game is over, nothing moves
 	}
 	Now += DeltaSeconds;
 
@@ -333,125 +355,237 @@ void FLRSimulation::Advance(double DeltaSeconds)
 void FLRSimulation::AdvanceHost(double DeltaSeconds)
 {
 	const FLRHostDef& Host = Data.Host;
-	if (!Host.IsDefined())
+	if (!Host.IsDefined() || IsFrozen())
 	{
 		return;
 	}
-	const bool bWasAlive = HostMass > 0.0;
 	const int32 TonnesBefore = FMath::FloorToInt32(HostMass / 1000.0);
-	const double K = Host.GetEvaporationConstant();
-	const double Cap = Host.GetSafetyCap();
+	const double Cap = Host.GetContainmentCap();
 	TArray<FString> Messages;
 
 	// Feeding and evaporation are coupled (the rated limit and the loss both depend on the
 	// mass), so step in small slices. Each slice is exact for evaporation and the injectors.
+	FHostState State = GetHostState();
 	double Remaining = DeltaSeconds;
 	while (Remaining > 0.0)
 	{
 		const double Step = FMath::Min(Remaining, HostStepSeconds);
 		Remaining -= Step;
-
-		// The stored charge rebuilds; after a trip (or Ignite) nothing is fed until it's full.
-		if (StoredCharge < Host.ChargeCapacity)
+		StepHostState(Host, State, Step);
+		if (State.Mass <= 0.0)
 		{
-			StoredCharge = FMath::Min(Host.ChargeCapacity, StoredCharge + Host.RechargeRate * Step);
+			State.Mass = 0.0;
+			Messages.Add(TEXT("THE HOST HAS EVAPORATED. Past its point of no return it burned hotter and faster, and went off in a final flash. The facility is gone with it."));
+			break;
 		}
-		if (bRecharging && StoredCharge >= Host.ChargeCapacity)
+		// No safeties: once the 1 g sphere reaches the chamber wall, the containment fails.
+		if (Cap > 0.0 && State.Mass >= Cap)
 		{
-			bRecharging = false;
-			Messages.Add(TEXT("Stored charge recharged: the instruments are back online, and the injectors ramp back up to the dial."));
-		}
-
-		UpdateAutoTarget();
-		const bool bFeeding = HostMass > 0.0 && !bRecharging;
-		// Venting runs the same injectors in reverse: the dial sets how hard they pull.
-		const double Target = bVenting ? -InjectorTarget : InjectorTarget;
-		Injector = bFeeding ? StepInjector(Injector, Target, Step, Host.InjectorResponseSeconds) : FLRInjectorState();
-		if (FMath::Abs(Injector.Flow) > Host.InjectorMaxRate)
-		{
-			Injector.Flow = FMath::Sign(Injector.Flow) * Host.InjectorMaxRate;
-			Injector.Change = 0.0;
-		}
-		if (!bVenting && Injector.Flow < 0.0 && Injector.Flow > -VentResidualRate)
-		{
-			Injector = FLRInjectorState(); // wound down after venting
-		}
-		if (HostMass <= 0.0)
-		{
-			continue;
-		}
-
-		// Hawking evaporation, exact over the slice: dM/dt = -K / M^2, so M^3 falls by 3K per second.
-		if (K > 0.0)
-		{
-			const double Cubed = HostMass * HostMass * HostMass - 3.0 * K * Step;
-			HostMass = Cubed > 0.0 ? FMath::Pow(Cubed, 1.0 / 3.0) : 0.0;
-		}
-		if (HostMass <= 0.0)
-		{
-			HostMass = 0.0;
-			Injector = FLRInjectorState();
-			bVenting = false;
-			Messages.Add(TEXT("The host black hole has evaporated in a final flash. The pocket universe is frozen until you Ignite a new one (outside panel)."));
-			continue;
-		}
-
-		// Feeding: the flow reaches the host up to the rated limit; the rest is blown back out.
-		// Venting pulls no harder than that either.
-		const double Limit = Host.GetRatedLimit(HostMass);
-		const double Intake = (bFeeding && Injector.Flow > 0.0) ? FMath::Min(Injector.Flow, Limit) : 0.0;
-		const double Extraction = (bFeeding && Injector.Flow < 0.0) ? FMath::Min(-Injector.Flow, Limit) : 0.0;
-		HostMass += (Intake - Extraction) * Step;
-
-		// The safeties: once the 1 g radius reaches the chamber wall, dump the beam at once.
-		if (Cap > 0.0 && Intake > 0.0 && HostMass >= Cap)
-		{
-			Injector = FLRInjectorState();
-			StoredCharge = 0.0;
-			bRecharging = true;
-			Messages.Add(FString::Printf(TEXT("SAFETIES TRIPPED: the host's gravity well reached the chamber wall at %s. The beam was dumped, and until the charge rebuilds, feeding is locked out and the instruments are down (no Perturb, Build, Open or Dismantle). Dial back before the cap."),
-				*FormatMass(HostMass)));
+			bBreached = true;
+			Messages.Add(FString::Printf(TEXT("CONTAINMENT BREACH: the host's gravity well reached the chamber wall at %s, and the containment field failed."),
+				*FormatMass(State.Mass)));
+			break;
 		}
 	}
-
-	UpdateAutoTarget(); // so the dial shows where it's heading now
-
-	// Warn when the host drops below its point of no return (it can't be fed out of it).
-	const double Tipping = Host.GetTippingMass();
-	const bool bBelowTipping = HostMass > 0.0 && Tipping > 0.0 && HostMass < Tipping;
-	if (bBelowTipping && !bWarnedTipping)
+	HostMass = State.Mass;
+	Injector = State.Injector;
+	InjectorTarget = State.Target;
+	if (IsFrozen())
 	{
-		bWarnedTipping = true;
-		Messages.Add(FString::Printf(TEXT("The host (%s) fell below its point of no return (%s): evaporation outruns even the rated limit, so no dial setting can save it. When it's gone, Ignite a new one (outside panel)."),
-			*FormatMass(HostMass), *FormatMass(Tipping)));
+		Injector = FLRInjectorState();
+		bVenting = false;
+		Alarm = FLRHostAlarm();
 	}
-	else if (!bBelowTipping)
+	else
 	{
-		bWarnedTipping = false;
-	}
-
-	// Warn once when a shrinking host gets close to evaporating.
-	const double Lifetime = Host.GetUnfedLifetime(HostMass);
-	if (HostMass > 0.0 && Lifetime <= Host.WarningSeconds && GetNetRate() < 0.0 && !bHostWarned)
-	{
-		bHostWarned = true;
-		Messages.Add(FString::Printf(TEXT("The horizon is thinning: the host (%s) evaporates in about %.0f s unless it's fed. Open the feed dial (outside panel)."),
-			*FormatMass(HostMass), Lifetime));
-	}
-	else if (HostMass <= 0.0 || Lifetime > Host.WarningSeconds * 1.5)
-	{
-		bHostWarned = false;
+		RefreshAlarm(/*bAnnounce*/ true);
 	}
 
 	AnnounceEvents(HostEvent, Messages);
 	// "host" requirements count whole tonnes, so only re-check when that changes.
-	if (FMath::FloorToInt32(HostMass / 1000.0) != TonnesBefore)
+	if (!IsFrozen() && FMath::FloorToInt32(HostMass / 1000.0) != TonnesBefore)
 	{
 		AnnounceUnlocks(RefreshUnlocks());
 	}
-	if (bWasAlive != (HostMass > 0.0))
+	if (IsFrozen())
 	{
 		OnWorldChanged.Broadcast();
+	}
+}
+
+FLRSimulation::FHostState FLRSimulation::GetHostState() const
+{
+	FHostState State;
+	State.Mass = HostMass;
+	State.Injector = Injector;
+	State.Target = InjectorTarget;
+	State.Auto = InjectorAuto;
+	State.bVenting = bVenting;
+	return State;
+}
+
+void FLRSimulation::StepHostState(const FLRHostDef& Host, FHostState& State, double Step)
+{
+	if (State.Mass <= 0.0)
+	{
+		return;
+	}
+	// An auto mode keeps the dial on its mark for the mass now.
+	if (State.Auto != ELRInjectorAuto::Off && !State.bVenting)
+	{
+		const double Mark = State.Auto == ELRInjectorAuto::Hold ? Host.GetEvaporationRate(State.Mass) : Host.GetRatedLimit(State.Mass);
+		State.Target = FMath::Clamp(Mark, 0.0, FMath::Max(0.0, Host.InjectorMaxRate));
+	}
+	// Venting runs the same injectors in reverse: the dial sets how hard they pull.
+	State.Injector = StepInjector(State.Injector, State.bVenting ? -State.Target : State.Target, Step, Host.InjectorResponseSeconds);
+	if (FMath::Abs(State.Injector.Flow) > Host.InjectorMaxRate)
+	{
+		State.Injector.Flow = FMath::Sign(State.Injector.Flow) * Host.InjectorMaxRate;
+		State.Injector.Change = 0.0;
+	}
+	if (!State.bVenting && State.Injector.Flow < 0.0 && State.Injector.Flow > -VentResidualRate)
+	{
+		State.Injector = FLRInjectorState(); // wound down after venting
+	}
+
+	// Hawking evaporation, exact over the slice: dM/dt = -K / M^2, so M^3 falls by 3K per second.
+	const double K = Host.GetEvaporationConstant();
+	if (K > 0.0)
+	{
+		const double Cubed = State.Mass * State.Mass * State.Mass - 3.0 * K * Step;
+		State.Mass = Cubed > 0.0 ? FMath::Pow(Cubed, 1.0 / 3.0) : 0.0;
+		if (State.Mass <= 0.0)
+		{
+			return;
+		}
+	}
+
+	// Feeding: the flow reaches the host up to the rated limit; the rest is blown back out.
+	// Venting pulls no harder than that either.
+	const double Limit = Host.GetRatedLimit(State.Mass);
+	const double Intake = State.Injector.Flow > 0.0 ? FMath::Min(State.Injector.Flow, Limit) : 0.0;
+	const double Extraction = State.Injector.Flow < 0.0 ? FMath::Min(-State.Injector.Flow, Limit) : 0.0;
+	State.Mass = FMath::Max(0.0, State.Mass + (Intake - Extraction) * Step);
+}
+
+void FLRSimulation::RefreshAlarm(bool bAnnounce)
+{
+	FLRHostAlarm Next;
+	const FLRHostDef& Host = Data.Host;
+	if (Host.IsDefined() && !IsFrozen() && HostMass > 0.0)
+	{
+		const double Tipping = Host.GetTippingMass();
+		const double Cap = Host.GetContainmentCap();
+		if (Tipping > 0.0 && HostMass < Tipping)
+		{
+			// Past the point of no return: it's only a matter of time.
+			Next.Kind = ELRAlarmKind::Evaporating;
+			Next.Seconds = GetTimeToEvaporation();
+		}
+		else
+		{
+			// Run the host forward as the dial is set now, to the first disaster within the
+			// caution horizon.
+			FHostState State = GetHostState();
+			double Elapsed = 0.0;
+			while (Elapsed < static_cast<double>(Host.CautionSeconds))
+			{
+				StepHostState(Host, State, AlarmStepSeconds);
+				Elapsed += AlarmStepSeconds;
+				if (Cap > 0.0 && State.Mass >= Cap)
+				{
+					Next.Kind = ELRAlarmKind::Breach;
+					break;
+				}
+				if (Tipping > 0.0 && State.Mass < Tipping)
+				{
+					Next.Kind = ELRAlarmKind::NoReturn;
+					break;
+				}
+			}
+			Next.Seconds = Elapsed;
+		}
+		if (Next.Kind != ELRAlarmKind::None)
+		{
+			Next.Level = (Next.Kind == ELRAlarmKind::Evaporating || Next.Seconds <= Host.CriticalSeconds) ? ELRAlarmLevel::Critical
+				: (Next.Seconds <= Host.WarningSeconds ? ELRAlarmLevel::Warning : ELRAlarmLevel::Caution);
+		}
+		else
+		{
+			Next.Seconds = 0.0;
+		}
+	}
+	Alarm = Next;
+	if (!bAnnounce)
+	{
+		return;
+	}
+
+	// The log: once per step up (or a different disaster), and once when it's all clear.
+	const bool bWorse = Next.Level > Announced.Level || (Next.IsActive() && Next.Kind != Announced.Kind);
+	if (bWorse)
+	{
+		const TCHAR* Level = Next.Level == ELRAlarmLevel::Critical ? TEXT("CRITICAL") : (Next.Level == ELRAlarmLevel::Warning ? TEXT("WARNING") : TEXT("CAUTION"));
+		FString Message;
+		switch (Next.Kind)
+		{
+		case ELRAlarmKind::Breach:
+			Message = FString::Printf(TEXT("%s: at this setting the host's gravity well reaches the chamber wall (%s) in %s. There are no safeties: turn the dial down."),
+				Level, *FormatMass(Host.GetContainmentCap()), *FormatAlarmTime(Next.Seconds));
+			break;
+		case ELRAlarmKind::NoReturn:
+			Message = FString::Printf(TEXT("%s: at this setting the host falls past its point of no return (%s) in %s. Feed it: open the dial."),
+				Level, *FormatMass(Host.GetTippingMass()), *FormatAlarmTime(Next.Seconds));
+			break;
+		case ELRAlarmKind::Evaporating:
+			Message = FString::Printf(TEXT("PAST THE POINT OF NO RETURN: evaporation outruns anything the injectors can feed. The host goes off in about %s."),
+				*FormatAlarmTime(Next.Seconds));
+			break;
+		default:
+			break;
+		}
+		AnnounceEvents(HostEvent, { Message });
+	}
+	else if (!Next.IsActive() && Announced.IsActive())
+	{
+		AnnounceEvents(HostEvent, { FString(TEXT("All clear: the host is out of danger at this setting.")) });
+	}
+	if (bWorse || Next.Level < Announced.Level)
+	{
+		Announced = Next; // stepping down lets it announce again if things get worse
+	}
+}
+
+ELRGameOver FLRSimulation::GetGameOver() const
+{
+	if (!Data.Host.IsDefined())
+	{
+		return ELRGameOver::None;
+	}
+	if (bBreached)
+	{
+		return ELRGameOver::Breach;
+	}
+	return HostMass <= 0.0 ? ELRGameOver::Evaporated : ELRGameOver::None;
+}
+
+FString FLRSimulation::DescribeGameOver() const
+{
+	switch (GetGameOver())
+	{
+	case ELRGameOver::Breach:
+		return FString::Printf(TEXT("The host's gravity well reached the chamber wall at %s, and with no safeties the containment field failed. An unshielded singularity glowing at %.1e W fell through the floor of the facility."),
+			*FormatMass(HostMass), LRPhysics::HawkingPower(HostMass));
+	case ELRGameOver::Evaporated:
+	{
+		// Its last second: the mass it had with one second to go, all turned to energy.
+		const double LastMass = FMath::Pow(3.0 * Data.Host.GetEvaporationConstant(), 1.0 / 3.0);
+		const double Joules = LastMass * LRPhysics::C * LRPhysics::C;
+		return FString::Printf(TEXT("Past its point of no return the host evaporated, faster and hotter to the end. Its last second released %.1e J, about %s. The facility, and the pocket universe it held, are gone."),
+			Joules, *FormatTntEquivalent(Joules));
+	}
+	default:
+		return FString();
 	}
 }
 
@@ -487,17 +621,19 @@ void FLRSimulation::SetInjectorTarget(double KgPerSecond)
 {
 	InjectorAuto = ELRInjectorAuto::Off;
 	InjectorTarget = FMath::Clamp(KgPerSecond, 0.0, FMath::Max(0.0, Data.Host.InjectorMaxRate));
+	RefreshAlarm(/*bAnnounce*/ false);
 }
 
 void FLRSimulation::SetInjectorAuto(ELRInjectorAuto Mode)
 {
 	InjectorAuto = bVenting ? ELRInjectorAuto::Off : Mode; // only the dial itself works while venting
 	UpdateAutoTarget();
+	RefreshAlarm(/*bAnnounce*/ false);
 }
 
 void FLRSimulation::UpdateAutoTarget()
 {
-	// With no host there's no mark to follow: the dial keeps its last setting until Ignite.
+	// With no host there's no mark to follow.
 	if (InjectorAuto == ELRInjectorAuto::Off || bVenting || HostMass <= 0.0)
 	{
 		return;
@@ -508,7 +644,7 @@ void FLRSimulation::UpdateAutoTarget()
 
 double FLRSimulation::GetIntakeRate() const
 {
-	if (HostMass <= 0.0 || bRecharging || Injector.Flow <= 0.0)
+	if (HostMass <= 0.0 || Injector.Flow <= 0.0)
 	{
 		return 0.0;
 	}
@@ -517,7 +653,7 @@ double FLRSimulation::GetIntakeRate() const
 
 double FLRSimulation::GetExtractionRate() const
 {
-	if (HostMass <= 0.0 || bRecharging || Injector.Flow >= 0.0)
+	if (HostMass <= 0.0 || Injector.Flow >= 0.0)
 	{
 		return 0.0;
 	}
@@ -567,14 +703,12 @@ double FLRSimulation::GetTimeToEvaporation() const
 
 bool FLRSimulation::AreInstrumentsDown() const
 {
-	return Data.Host.IsDefined() && (bRecharging || bVenting || Injector.Flow < 0.0);
+	return Data.Host.IsDefined() && (bVenting || Injector.Flow < 0.0);
 }
 
 bool FLRSimulation::CanVent() const
 {
-	const FLRHostDef& Host = Data.Host;
-	return Host.IsDefined() && !bVenting && Host.ChargeCapacity > 0.0 && !bRecharging && StoredCharge >= Host.ChargeCapacity
-		&& HostMass > 0.0;
+	return Data.Host.IsDefined() && !bVenting && !IsFrozen() && HostMass > 0.0;
 }
 
 FLRActionResult FLRSimulation::SetVenting(bool bVent)
@@ -590,24 +724,16 @@ FLRActionResult FLRSimulation::SetVenting(bool bVent)
 	{
 		bVenting = false;
 		InjectorTarget = 0.0;
+		RefreshAlarm(/*bAnnounce*/ false);
 		Result.bSuccess = true;
 		Result.Message = TEXT("Vent stopped: the dial is at OFF and the reversed injectors wind down. The instruments come back once they're still.");
 		Complete(Result);
 		return Result;
 	}
 
-	FName Reason = NAME_None;
-	if (!Data.Host.IsDefined() || Data.Host.ChargeCapacity <= 0.0 || HostMass <= 0.0)
+	if (!CanVent())
 	{
-		Reason = ReasonNoHost;
-	}
-	else if (bRecharging || StoredCharge < Data.Host.ChargeCapacity)
-	{
-		Reason = ReasonRecharging;
-	}
-	if (!Reason.IsNone())
-	{
-		FLRActionResult Failure = MakeFailure(LRNames::Vent, Reason, FString::Printf(TEXT("Can't vent: %s"), *DescribeReason(Reason)));
+		FLRActionResult Failure = MakeFailure(LRNames::Vent, ReasonNoHost, FString::Printf(TEXT("Can't vent: %s"), *DescribeReason(ReasonNoHost)));
 		Complete(Failure);
 		return Failure;
 	}
@@ -615,55 +741,10 @@ FLRActionResult FLRSimulation::SetVenting(bool bVent)
 	bVenting = true;
 	InjectorAuto = ELRInjectorAuto::Off;
 	InjectorTarget = 0.0;
+	RefreshAlarm(/*bAnnounce*/ false);
 	Result.bSuccess = true;
 	Result.Message = FString::Printf(TEXT("Venting: the injectors run in reverse. The graviton lens drives the horizon into stimulated emission, and the beamline draws the radiation off, so the host sheds mass as fast as the dial says (up to the rated limit). The radiation floods the chamber, so the instruments are down while it runs. Turn the dial up to start. Nothing stops it at the point of no return (%s): watch the host."),
 		*FormatMass(GetTippingMass()));
-	Complete(Result);
-	return Result;
-}
-
-bool FLRSimulation::CanIgnite() const
-{
-	return Data.Host.IsDefined() && HostMass <= 0.0 && Data.Host.ChargeCapacity > 0.0
-		&& !bRecharging && StoredCharge >= Data.Host.ChargeCapacity;
-}
-
-FLRActionResult FLRSimulation::Ignite()
-{
-	FName Reason = NAME_None;
-	if (!Data.Host.IsDefined() || Data.Host.ChargeCapacity <= 0.0)
-	{
-		Reason = ReasonNoHost;
-	}
-	else if (HostMass > 0.0)
-	{
-		Reason = ReasonHostAlive;
-	}
-	else if (!CanIgnite())
-	{
-		Reason = ReasonRecharging;
-	}
-	if (!Reason.IsNone())
-	{
-		const FLRActionResult Failure = MakeFailure(LRNames::Ignite, Reason, FString::Printf(TEXT("Can't ignite: %s"), *DescribeReason(Reason)));
-		OnActionCompleted.Broadcast(Failure);
-		return Failure;
-	}
-
-	// A charge this big collapses straight into a new horizon: no Eddington limit applies.
-	HostMass = StoredCharge;
-	StoredCharge = 0.0;
-	bRecharging = true;
-	bVenting = false;
-	Injector = FLRInjectorState();
-	bHostWarned = false;
-
-	FLRActionResult Result;
-	Result.Action = LRNames::Ignite;
-	Result.bSuccess = true;
-	Result.Message = FString::Printf(TEXT("Ignited: the stored charge (%s) collapsed into a new horizon. The pocket universe stirs again, but the instruments stay down until the charge is back. Then open the feed dial."),
-		*FormatMass(HostMass));
-	OnWorldChanged.Broadcast();
 	Complete(Result);
 	return Result;
 }
@@ -1645,6 +1726,7 @@ FName FLRSimulation::CheckRequest(const FLRActionRequest& Request) const
 		return ReasonUnknownAction;
 	}
 	const FLRActionStatus Status = GetActionStatus(Request.Action);
+	if (IsFrozen())                                 { return ReasonGameOver; }
 	if (!Status.bRevealed)                          { return ReasonNotRevealed; }
 	if (Status.bInstrumentsDown)                    { return ReasonInstrumentsDown; }
 	if (Status.bOnCooldown)                         { return ReasonOnCooldown; }

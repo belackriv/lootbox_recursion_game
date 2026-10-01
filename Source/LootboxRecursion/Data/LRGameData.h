@@ -19,8 +19,7 @@ namespace LRNames
 {
 	// Actions (actions.json "name")
 	inline const FName Perturb(TEXT("perturb"));
-	/** Not an action in actions.json: the outside panel's kick-start (FLRSimulation::Ignite). */
-	inline const FName Ignite(TEXT("ignite"));
+	/** Not an action in actions.json: the outside panel's Vent (FLRSimulation::SetVenting). */
 	inline const FName Vent(TEXT("vent"));
 	inline const FName Craft(TEXT("craft"));
 	inline const FName Use(TEXT("use"));
@@ -451,9 +450,9 @@ struct LOOTBOXRECURSION_API FLREpochDef
  *   StartMass host lasts LifetimeSeconds unfed (3,500 t and an hour match real physics).
  * - The injectors feed it at a dial-set rate, with inertia, no faster than the rated limit
  *   (EddingtonRate * mass).
- * - The safeties trip when its 1 g radius reaches the chamber wall (ChamberRadius), dumping
- *   the stored charge, which must rebuild before feeding resumes.
- * - At zero the pocket universe freezes until Ignite fires the stored charge.
+ * - There are no safeties. When its 1 g radius reaches the chamber wall (ChamberRadius) the
+ *   containment fails, and below its point of no return it will evaporate: either way the
+ *   game is over. The alarms (CautionSeconds...) count down to them.
  */
 USTRUCT(BlueprintType)
 struct LOOTBOXRECURSION_API FLRHostDef
@@ -488,25 +487,26 @@ struct LOOTBOXRECURSION_API FLRHostDef
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	float InjectorResponseSeconds = 15.f;
 
-	/** Distance from the host to the containment chamber's wall, m. The safeties trip when the 1 g radius reaches it. 0 = no cap. */
+	/** Distance from the host to the containment chamber's wall, m. The containment fails when the 1 g radius reaches it. 0 = no limit. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	float ChamberRadius = 0.f;
 
-	/** The pull the chamber wall tolerates, m/s^2 (1 g by default). */
+	/** The pull the chamber wall is rated for, m/s^2 (1 g by default). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
 	float SafetyGravity = 9.80665f;
 
-	/** The full stored charge, kg: dumped when the safeties trip, fired by Ignite. */
+	/**
+	 * The alarm levels, by seconds until a disaster at the current settings (a breach, or
+	 * falling past the point of no return): caution, warning and critical.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	double ChargeCapacity = 0.0;
+	float CautionSeconds = 300.f;
 
-	/** How fast the stored charge rebuilds, kg/s. Feeding is locked out while it recharges. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	double RechargeRate = 0.0;
+	float WarningSeconds = 120.f;
 
-	/** The log warns when the host, shrinking, has less than this many seconds left unfed. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "LR")
-	float WarningSeconds = 300.f;
+	float CriticalSeconds = 30.f;
 
 	bool IsDefined() const { return StartMass > 0.0; }
 
@@ -537,13 +537,13 @@ struct LOOTBOXRECURSION_API FLRHostDef
 
 	/**
 	 * The point of no return: below this mass, evaporation outruns even the most the injectors
-	 * can feed (the rated limit, or their maximum), so the host can't be saved (only replaced, by Ignite once it's gone).
+	 * can feed (the rated limit, or their maximum), so the host can't be saved: it will evaporate.
 	 * 0 if the host never evaporates.
 	 */
 	double GetTippingMass() const;
 
-	/** The mass at which the safeties trip (its 1 g radius reaches the chamber wall), or 0 for no cap. */
-	double GetSafetyCap() const;
+	/** The mass at which the containment fails (its 1 g radius reaches the chamber wall), or 0 for no limit. */
+	double GetContainmentCap() const;
 
 	/** Radius inside which a host of this mass pulls harder than SafetyGravity, m. */
 	double GetGravityRadius(double Mass) const;

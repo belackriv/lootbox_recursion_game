@@ -9,6 +9,7 @@
 #include "Game/LRUserSettings.h"
 #include "GameFramework/GameUserSettings.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Simulation/LRSimulation.h"
 #include "UI/LRHudStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
@@ -57,7 +58,7 @@ void SLRGameMenu::Construct(const FArguments& InArgs)
 						SNew(STextBlock)
 						.Font(Style.TitleFont)
 						.ColorAndOpacity(Style.Orange)
-						.Text(LOCTEXT("Paused", "PAUSED"))
+						.Text_Lambda([this]() { return IsGameOver() ? LOCTEXT("GameOver", "GAME OVER") : LOCTEXT("Paused", "PAUSED"); })
 					]
 					+ SVerticalBox::Slot()
 					.AutoHeight()
@@ -100,13 +101,23 @@ void SLRGameMenu::Back()
 	{
 		SettingsChanged(/*bSave*/ true);
 	}
-	if (Page != EPage::Main)
+	if (Page != EPage::Main && Page != EPage::GameOver)
 	{
 		Notice.Reset();
 		ShowPage(EPage::Main);
 		return;
 	}
-	OnClose.ExecuteIfBound();
+	if (!IsGameOver())
+	{
+		OnClose.ExecuteIfBound(); // there's no going back into a game that's over
+	}
+}
+
+bool SLRGameMenu::IsGameOver() const
+{
+	const ULRGameSubsystem* Sub = Subsystem.Get();
+	const FLRSimulation* Sim = Sub ? Sub->GetSimulation() : nullptr;
+	return Sim && Sim->IsFrozen();
 }
 
 FReply SLRGameMenu::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
@@ -165,7 +176,8 @@ void SLRGameMenu::SettingsChanged(bool bSave)
 
 void SLRGameMenu::ShowPage(EPage NewPage)
 {
-	Page = NewPage;
+	// Once the game is over, the game-over page is the menu's front page.
+	Page = (NewPage == EPage::Main && IsGameOver()) ? EPage::GameOver : NewPage;
 	CaptureCommand = NAME_None;
 	if (!PageBox.IsValid())
 	{
@@ -177,6 +189,7 @@ void SLRGameMenu::ShowPage(EPage NewPage)
 	case EPage::Save:     PageBox->SetContent(BuildSavePage()); break;
 	case EPage::Load:     PageBox->SetContent(BuildLoadPage()); break;
 	case EPage::Settings: PageBox->SetContent(BuildSettingsPage()); break;
+	case EPage::GameOver: PageBox->SetContent(BuildGameOverPage()); break;
 	case EPage::ConfirmNewGame:
 		PageBox->SetContent(BuildConfirmPage(LOCTEXT("ConfirmNew", "Start a new game? Anything you haven't saved is lost."), [this]()
 		{
@@ -242,6 +255,65 @@ TSharedRef<SWidget> SLRGameMenu::BuildMainPage()
 	Add(MakeMenuButton(LOCTEXT("Load", "Load"), [this]() { ShowPage(EPage::Load); }));
 	Add(MakeMenuButton(LOCTEXT("Settings", "Settings"), [this]() { ShowPage(EPage::Settings); }));
 	Add(MakeMenuButton(LOCTEXT("Quit", "Quit"), [this]() { ShowPage(EPage::ConfirmQuit); }));
+	return Box;
+}
+
+TSharedRef<SWidget> SLRGameMenu::BuildGameOverPage()
+{
+	const FLRHudStyle& Style = FLRHudStyle::Get();
+	ULRGameSubsystem* Sub = Subsystem.Get();
+	const FLRSimulation* Sim = Sub ? Sub->GetSimulation() : nullptr;
+	const bool bBreach = Sim && Sim->GetGameOver() == ELRGameOver::Breach;
+
+	TSharedRef<SVerticalBox> Box = SNew(SVerticalBox);
+	Box->AddSlot().AutoHeight().HAlign(HAlign_Center).Padding(FMargin(0.f, 0.f, 0.f, 6.f))
+	[
+		SNew(STextBlock)
+		.Font(Style.HeadingFont)
+		.ColorAndOpacity(Style.Red)
+		.Text(bBreach ? LOCTEXT("Breach", "CONTAINMENT BREACH") : LOCTEXT("Evaporated", "THE HOST HAS EVAPORATED"))
+	];
+	Box->AddSlot().AutoHeight().HAlign(HAlign_Center).Padding(FMargin(0.f, 0.f, 0.f, 12.f))
+	[
+		SNew(SBox)
+		.WidthOverride(520.f)
+		[
+			SNew(STextBlock)
+			.Font(Style.BodyFont)
+			.ColorAndOpacity(Style.Text)
+			.AutoWrapText(true)
+			.Justification(ETextJustify::Center)
+			.Text(FText::FromString(Sim ? Sim->DescribeGameOver() : FString()))
+		]
+	];
+	auto Add = [&Box](const TSharedRef<SWidget>& Widget)
+	{
+		Box->AddSlot().AutoHeight().HAlign(HAlign_Center).Padding(FMargin(0.f, 3.f))[Widget];
+	};
+	if (Sub && Sub->HasAutosave())
+	{
+		Add(MakeMenuButton(LOCTEXT("LoadAutosave", "Load the autosave"), [this]()
+		{
+			ULRGameSubsystem* Owner = Subsystem.Get();
+			if (Owner && Owner->LoadAutosave() && !IsGameOver())
+			{
+				OnClose.ExecuteIfBound();
+				return;
+			}
+			Notice = TEXT("Couldn't load the autosave.");
+			ShowPage(EPage::GameOver);
+		}));
+	}
+	Add(MakeMenuButton(LOCTEXT("LoadOther", "Load a save"), [this]() { ShowPage(EPage::Load); }));
+	Add(MakeMenuButton(LOCTEXT("NewGameOver", "New Game"), [this]()
+	{
+		if (ULRGameSubsystem* Owner = Subsystem.Get())
+		{
+			Owner->ResetGame();
+		}
+		OnClose.ExecuteIfBound();
+	}));
+	Add(MakeMenuButton(LOCTEXT("QuitOver", "Quit"), [this]() { ShowPage(EPage::ConfirmQuit); }));
 	return Box;
 }
 

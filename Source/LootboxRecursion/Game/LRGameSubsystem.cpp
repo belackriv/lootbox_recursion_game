@@ -95,14 +95,31 @@ bool ULRGameSubsystem::Tick(float DeltaSeconds)
 
 bool ULRGameSubsystem::SaveNow()
 {
+	// The autosave is where a lost game starts again, so it never catches the host in real
+	// danger: not at an alarm of WARNING or worse (two minutes from disaster), nor past the
+	// point of no return.
+	if (Simulation && Simulation->GetHostAlarm().Level >= ELRAlarmLevel::Warning)
+	{
+		return false;
+	}
 	return WriteSlot(SaveSlotName, TEXT("Autosave"), /*bAutosave*/ true);
+}
+
+bool ULRGameSubsystem::HasAutosave() const
+{
+	return UGameplayStatics::DoesSaveGameExist(SaveSlotName, 0);
+}
+
+bool ULRGameSubsystem::LoadAutosave()
+{
+	return LoadFromSlot(SaveSlotName);
 }
 
 bool ULRGameSubsystem::WriteSlot(const FString& SlotName, const FString& DisplayName, bool bAutosave)
 {
-	if (!Simulation || !DataErrors.IsEmpty())
+	if (!Simulation || !DataErrors.IsEmpty() || Simulation->IsFrozen())
 	{
-		// Never overwrite a good save while running on broken data.
+		// Never overwrite a good save while running on broken data, or with a game that's over.
 		return false;
 	}
 	ULRSaveGame* Save = Cast<ULRSaveGame>(UGameplayStatics::CreateSaveGameObject(ULRSaveGame::StaticClass()));
@@ -401,11 +418,6 @@ FLRActionResult ULRGameSubsystem::SetVenting(bool bVent)
 bool ULRGameSubsystem::IsVenting() const
 {
 	return Simulation && Simulation->IsVenting();
-}
-
-FLRActionResult ULRGameSubsystem::Ignite()
-{
-	return Simulation ? Simulation->Ignite() : FLRActionResult();
 }
 
 float ULRGameSubsystem::GetPlasmaOpacity() const

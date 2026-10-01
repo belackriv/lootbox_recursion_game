@@ -105,16 +105,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Outside")
 	ELRInjectorAuto GetInjectorAuto() const;
 
-	/** Run the injectors in reverse to shed mass (needs a full stored charge), or stop. */
+	/** Run the injectors in reverse to shed mass, or stop. */
 	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Outside")
 	FLRActionResult SetVenting(bool bVent);
 
 	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Outside")
 	bool IsVenting() const;
-
-	/** Fire the stored charge at the singularity to make a new host (only once the host is gone). */
-	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Outside")
-	FLRActionResult Ignite();
 
 	/** Whether the outside panel (the injector controls) is dropped down. UI state, not saved. */
 	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Outside")
@@ -188,9 +184,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Debug")
 	void ResetGame();
 
-	/** Autosave now (the autosave slot). */
+	/**
+	 * Autosave now (the autosave slot). It skips a game that's over, or whose host alarm is at
+	 * WARNING or worse, so the autosave is always somewhere a lost game can start again.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Debug")
 	bool SaveNow();
+
+	UFUNCTION(BlueprintPure, Category = "Quantum Recursion|Menu")
+	bool HasAutosave() const;
+
+	/** Load the autosave (the game-over screen's first choice). */
+	UFUNCTION(BlueprintCallable, Category = "Quantum Recursion|Menu")
+	bool LoadAutosave();
 
 	// ---- The game menu: pause, save slots, settings -------------------------------------
 	/** Paused (the Esc menu is open): the simulation doesn't advance and nothing autosaves. */
