@@ -144,6 +144,11 @@ See [COSMOLOGY.md](COSMOLOGY.md) for the physics behind each item.
   - [ ] Play and tune it in the engine: the numbers are real physics where it's playable,
         which may not be fun yet.
   - [ ] Chamber and injector upgrades in the tech tree (a larger chamber, a higher rating).
+  - [ ] Spin, the recycler and the matter well (DESIGN.md, "Spin, the recycler and the
+        matter well"): the injectors feed from a neutronium well (production, recycler and
+        captured jet mass in); a recycler dial returns a share of the Hawking output as mass
+        (100% = HOLD); an injection angle spins the host up (cooler, slower evaporation);
+        spinning down sheds mass through jets into the well.
 - [ ] Expansion, stage 1 (DESIGN.md, "Expansion"): the grid shrinks and a bigger grid fades
       in over it, an endless zoom out. The rate is per epoch in `universe.json`. Prototype
       aperture-7 nesting against a plain ×2 cross-fade. Visual only.

@@ -432,6 +432,90 @@ needs attention:
 The `host` requirement check compares tonnes. The redone sky can show the flow, e.g. the disk
 brightening as more is injected.
 
+### Spin, the recycler and the matter well (planned)
+
+The basics, agreed in discussion; the details get refined in play. Nothing here is built yet.
+A black hole has only three properties: mass, spin and charge. Mass is the game so far. Spin
+becomes the second lever. Charge stays lore: a hole this small can't hold even one
+electron's worth (any charge is torn back out as particle pairs, Schwinger pair production),
+which is the second reason the injectors feed neutral neutronium.
+
+**The matter well (replaces the old stored charge, but not as a ring).** The injectors no
+longer draw on an endless supply. They feed from the **matter well**, a neutronium reservoir:
+- **In:** the facility's neutronium production (a fixed, modest rate, upgradeable later), the
+  recycler, and the mass captured from the jets.
+- **Out:** the injectors. When the well runs dry, the flow is limited to what's coming in.
+- **Capacity:** the well holds a limited amount (tuning).
+- **The point:** neutronium production alone can't keep up with evaporation (a 3,500 t host
+  evaporates 324 kg/s), so the player has to recycle the host's own Hawking radiation to keep
+  it alive, and save production for growth.
+- **Shown** on the outside panel as a gauge (level, inflows, outflow), not a ring.
+
+**The recycler (player-controlled).** A second dial on the outside panel: the percentage of
+the host's Hawking output turned back into mass and sent to the matter well.
+- **The physics.** Evaporation *is* the glow: the host loses mass at its radiated power / c².
+  So recycling 100% returns exactly what it loses: a 100% recycler, fed straight back in,
+  holds the host steady (the HOLD mark). It can never do more; growth needs fresh mass.
+- **The lore.** At 10¹⁷ K the glow is ultra-high-energy gamma rays, which turn into
+  matter-antimatter pairs when they hit anything. Baryon number means matter comes with its
+  antimatter, but a black hole doesn't care: both weigh the same to it. The recycler catches
+  the pairs and feeds both halves back.
+- **The rest of the energy** (100% minus the setting) goes somewhere; what it does (power for
+  the facility, upgrades, heat) is decided later.
+
+| Host mass | Hawking output | Recycled at 100% (= HOLD) |
+|---|---|---|
+| 1,000 t | 3.6×10²⁰ W | 4.0 t/s |
+| 3,500 t | 2.9×10¹⁹ W | 324 kg/s |
+| 14,700 t | 1.6×10¹⁸ W | 18 kg/s |
+
+**Spin.** The host gets a spin, a* from 0 to just under 1 (real accretion stalls at 0.998;
+a* = 1 would leave a naked singularity, which physics forbids).
+- **Spinning it up:** an **injection angle** control next to the dial, from radial (mass
+  only) to tangential (mass and angular momentum).
+- **Spin cools the host,** so it evaporates more slowly (and glows less, so there's less to
+  recycle too):
+
+| Spin a* | Temperature (vs none) | Horizon size | Mass that can be extracted |
+|---|---|---|---|
+| 0 | 100% | 100% | 0 |
+| 0.5 | 93% | 93% | 3.4% |
+| 0.9 | 61% | 72% | 15% |
+| 0.99 | 25% | 57% | 24% |
+| 0.998 | 12% | 53% | about 26% |
+
+  (Temperature factor 2√(1−a²) / (1 + √(1−a²)); horizon (1 + √(1−a²)) / 2.) So near the
+  point of no return, spinning up lowers the HOLD mark and the point of no return itself.
+- **Spin decays.** A small, hot host sheds spin through its radiation faster than it loses
+  mass, so holding a spin takes steady tangential feed.
+- **Spinning it down: the jets.** Spin is stored mass: M² = M_irr² + (J c / 2 G M_irr)², and
+  the rotational part (up to 29% at a* = 1) can be drawn out (the Penrose and
+  Blandford-Znajek processes, which power quasar jets). Spinning down lowers the host's mass
+  without the waste of venting, and the **jets' mass is captured into the matter well**. So
+  near the chamber wall, spin down rather than vent.
+- **The wall doesn't move.** At 1 cm the host is 5×10¹⁷ horizon radii away, where gravity
+  depends only on mass (spin changes the pull there by about 10⁻³⁶). The 1 g at 1 cm is real:
+  G·M / r² = 9.81 m/s² for 14,700 t. The wall stays a pure mass limit.
+- **Later, inside:** in Popławski's cosmology a universe born inside a spinning black hole
+  inherits a preferred axis (a 2025 JWST study claimed about two thirds of early galaxies
+  rotate the same way, contested). The host's spin could make gas in the pocket universe
+  spiral one way.
+
+**What changes in the code (sketch).**
+- `FLRHostDef`: neutronium production rate, well capacity, spin decay, the spin cap, the jets'
+  capture fraction and extraction rate.
+- `FHostState` / `StepHostState`: spin (a*), the well's level, the recycler setting, the
+  injection angle, and spinning down. The alarm forecast runs the same step, so it covers all
+  of it.
+- Evaporation uses the Kerr temperature factor; the injectors' flow is limited by the well.
+- Saved: spin, the well, the recycler setting, the angle (save version bump).
+- The outside panel: the well gauge, the recycler dial, the angle control, a spin readout
+  and a spin-down control. Tests for each.
+
+**Open questions.** Production rate and well capacity; whether the recycler starts below
+100% and is upgraded; what the leftover energy does; how fast spin decays; how the jets are
+controlled (a rate, or a toggle like Vent); whether Vent stays once spin-down exists.
+
 ### How the universe comes to feed itself
 
 | Satisfactory | Here | When |
